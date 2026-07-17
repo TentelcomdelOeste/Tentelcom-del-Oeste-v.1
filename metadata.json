@@ -1,0 +1,6 @@
+{
+  "name": "Telecom del Oeste - Gestión Operativa",
+  "description": "Comprehensive management portal for telecommunications companies, featuring quotation generation, financial tracking, invoice management with attachments, and service scheduling.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

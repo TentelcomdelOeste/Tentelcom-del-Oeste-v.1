@@ -1,0 +1,90 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/800.css";
+@import "@fontsource/inter/900.css";
+@import "tailwindcss";
+@import "react-big-calendar/lib/css/react-big-calendar.css";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: 80px 2fr 120px 150px 150px 120px;
+  align-items: center;
+}
+
+.input-disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  pointer-events: none;
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+/* React Big Calendar Overrides */
+.rbc-time-header {
+  min-height: 50px !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.rbc-header {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 4px 0 !important;
+  line-height: normal !important;
+  overflow: visible !important;
+}
+
+.rbc-header span {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+}
+
+.rbc-time-content {
+  overflow: visible !important;
+}
+
+@keyframes pulso-naranja {
+  0% {
+    background-color: rgba(255, 165, 0, 0.10);
+    box-shadow: 0 0 0px rgba(255, 165, 0, 0.0);
+  }
+  50% {
+    background-color: rgba(255, 165, 0, 0.25);
+    box-shadow: 0 0 12px rgba(255, 165, 0, 0.4);
+  }
+  100% {
+    background-color: rgba(255, 165, 0, 0.10);
+    box-shadow: 0 0 0px rgba(255, 165, 0, 0.0);
+  }
+}
+
+.animate-pulso-naranja {
+  animation: pulso-naranja 1.8s infinite ease-in-out;
+}
+
+@keyframes progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-progress {
+  animation: progress 1.5s infinite linear;
+}
+
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}

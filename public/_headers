@@ -1,0 +1,9 @@
+/*.wasm
+  Content-Type: application/wasm
+
+/firebase-messaging-sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+
+/index.html
+  Cache-Control: no-cache

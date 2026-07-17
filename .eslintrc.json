@@ -1,0 +1,101 @@
+
+{
+  "env": {
+    "browser": true,
+    "es2021": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaFeatures": {
+      "jsx": true
+    },
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "plugins": [
+    "react",
+    "react-hooks",
+    "@typescript-eslint",
+    "import",
+    "unused-imports"
+  ],
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/react-in-jsx-scope": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": "off",
+    "unused-imports/no-unused-imports": "error",
+    "unused-imports/no-unused-vars": [
+      "warn",
+      { "vars": "all", "varsIgnorePattern": "^_", "args": "after-used", "argsIgnorePattern": "^_" }
+    ],
+    "no-alert": "warn",
+    "no-restricted-globals": ["error", "event", "fdescribe"],
+    
+    // IMPORT SAFETY RULES
+    "import/no-unresolved": "error", 
+    
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "window",
+        "property": "confirm",
+        "message": "Use ConfirmModal from Design System via useConfirm hook."
+      },
+      {
+        "object": "window",
+        "property": "alert",
+        "message": "Use ConfirmModal as alert or a Toast notification."
+      },
+      {
+        "object": "window",
+        "property": "prompt",
+        "message": "Use a proper Modal with form inputs."
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "JSXElement[openingElement.name.name='button']",
+        "message": "UI GOVERNANCE: Do not use raw <button>. Use <ActionButton> or <IconButton> from 'design-system'."
+      },
+      {
+        "selector": "JSXElement[openingElement.name.name='table']",
+        "message": "UI GOVERNANCE: Do not use raw <table>. Use <DataTable> from 'design-system'."
+      },
+      {
+        "selector": "VariableDeclarator[id.name='StatusBadge']",
+        "message": "UI GOVERNANCE: Do not define local StatusBadge. Import it from 'design-system'."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.test.ts", "tests/**/*.test.tsx", "tests/setup.ts"],
+      "rules": {
+        "import/no-unresolved": "off"
+      }
+    }
+  ],
+  "settings": {
+    "react": {
+      "version": "detect"
+    },
+    "import/resolver": {
+      "typescript": {
+        "alwaysTryTypes": true,
+        "project": "./tsconfig.json"
+      },
+      "node": {
+        "extensions": [".js", ".jsx", ".ts", ".tsx", ".png", ".jpg", ".svg"]
+      }
+    }
+  }
+}

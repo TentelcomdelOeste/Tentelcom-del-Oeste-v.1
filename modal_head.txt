@@ -1,0 +1,120 @@
+import React, { useState, useRef } from 'react';
+import { FiX, FiUploadCloud, FiFileText, FiCheckCircle, FiAlertCircle, FiMessageSquare } from 'react-icons/fi';
+import { ActionButton, IconButton } from '@/design-system';
+import { parseWhatsAppText } from '../parsers/whatsappParser';
+import { ImportedConversationEvent } from '../types';
+
+interface Props {
+  show: boolean;
+  onClose: () => void;
+}
+
+export const ImportWizardModal: React.FC<Props> = ({ show, onClose }) => {
+  const [step, setStep] = useState(1);
+  const [source, setSource] = useState<'whatsapp'>('whatsapp');
+  const [file, setFile] = useState<File | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [parsedEvents, setParsedEvents] = useState<ImportedConversationEvent[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (!show) return null;
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFile(e.target.files[0] || null);
+      setError(null);
+    }
+  };
+
+  const processFile = async () => {
+    if (!file) return;
+    
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      let text = '';
+      let chatName = '';
+
+      if (file.name.endsWith('.zip')) {
+        const { extractTextFromZip } = await import('../parsers/whatsappParser');
+        const extracted = await extractTextFromZip(file);
+        if (!extracted) {
+           setError("No se encontró ningún archivo .txt en el archivo ZIP.");
+           setIsProcessing(false);
+           return;
+        }
+        text = extracted.text;
+        chatName = extracted.chatName;
+      } else {
+        text = await file.text();
+        chatName = file.name.replace('.txt', '').replace('Chat de WhatsApp con ', '').trim();
+      }
+
+      if (!text.trim()) {
+         setError("El archivo está vacío.");
+         setIsProcessing(false);
+         return;
+      }
+      
+      const events = parseWhatsAppText(text, chatName);
+      
+      if (events.length === 0) {
+          setError("No se detectaron mensajes. El formato podría ser desconocido.");
+      } else {
+          setParsedEvents(events);
+          setStep(3);
+      }
+    } catch (err: any) {
+      setError(`Error de lectura: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const getSummary = () => {
+    if (parsedEvents.length === 0) return null;
+
+    const participants = new Set(parsedEvents.map(e => e.author));
+    let photos = 0, videos = 0, docs = 0, audios = 0;
+    
+    // Very rudimentary detection based on common WhatsApp patterns if it wasn't omitted
+    // Or if omitted we don't know the exact type, but we can count total attachments
+    let totalAttachments = 0;
+
+    parsedEvents.forEach(e => {
+       totalAttachments += e.attachments.length;
+       if (e.message.includes('omiti')) {
+           photos++; // Just guessing they are media
+       }
+    });
+
+    const dates = parsedEvents.map(e => e.timestamp.getTime()).filter(t => !isNaN(t));
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+
+    return {
+      total: parsedEvents.length,
+      participants: Array.from(participants),
+      totalAttachments,
+      minDate,
+      maxDate
+    };
+  };
+
+  const renderStep = () => {
+    switch (step) {
+      case 1:
+        return (
+          <div className="space-y-4">
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Seleccionar Origen</h3>
+            <div 
+              className="p-4 border-2 border-blue-500 bg-blue-50 rounded-2xl flex items-center gap-3 cursor-pointer"
+            >
+              <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center shrink-0">
+                <FiMessageSquare className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-800">WhatsApp</p>

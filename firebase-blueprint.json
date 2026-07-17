@@ -1,0 +1,261 @@
+{
+  "entities": {
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Represents a material in the inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "unit": { "type": "string" },
+        "stock": { "type": "number" },
+        "reserved": { "type": "number", "description": "Quantity reserved by pending requests" },
+        "minStock": { "type": "number" },
+        "location": { "type": "string" },
+        "price": { "type": "number" },
+        "currency": { "type": "string", "enum": ["USD", "CRC"] },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["id", "code", "description", "stock"]
+    },
+    "MaterialRequest": {
+      "title": "MaterialRequest",
+      "description": "A request for materials for a project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "projectName": { "type": "string" },
+        "origin": { "type": "string", "enum": ["IBUX-CLARO", "CNFL", "PRIVADO"] },
+        "requestedBy": { "type": "string" },
+        "requestedByName": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["Pendiente", "Aprobada", "Despachada", "Rechazada", "Eliminada"] },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "inventoryItemId": { "type": "string" },
+              "code": { "type": "string" },
+              "description": { "type": "string" },
+              "unit": { "type": "string" },
+              "quantityRequested": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["id", "projectId", "projectName", "origin", "requestedBy", "status", "items"]
+    },
+    "DispatchResponsible": {
+      "title": "DispatchResponsible",
+      "description": "Historical record of delivery responsible names",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Normalized name (lowercase, trimmed)" },
+        "name": { "type": "string", "description": "Original name as entered" },
+        "lastUsed": { "type": "string", "format": "date-time" },
+        "usageCount": { "type": "number" }
+      },
+      "required": ["id", "name", "lastUsed"]
+    },
+    "Trabajo": {
+      "title": "Trabajo",
+      "description": "Operational job scheduling entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "otCode": { "type": "string", "description": "Professional Job Order Code (OT-YYYY-NNNN)" },
+        "tipo_trabajo": { "type": "string" },
+        "descripcion": { "type": "string" },
+        "fecha_inicio": { "type": "string", "format": "date-time" },
+        "fecha_fin": { "type": "string", "format": "date-time" },
+        "hora_inicio": { "type": "string" },
+        "hora_fin": { "type": "string" },
+        "cuadrilla": { "type": "array", "items": { "type": "string" } },
+        "unidades": { "type": "array", "items": { "type": "string" } },
+        "ubicacion": { "type": "string" },
+        "observaciones": { "type": "string" },
+        "estado": { "type": "string", "enum": ["programado", "en_proceso", "finalizado", "cancelado"] },
+        "progreso": { "type": "number" },
+        "creado_en": { "type": "string", "format": "date-time" },
+        "actualizado_en": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tipo_trabajo", "fecha_inicio", "fecha_fin", "estado"]
+    },
+    "JobType": {
+      "title": "JobType",
+      "description": "Custom job types for scheduling",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "creado_en": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "creado_en"]
+    },
+    "BitacoraVehiculo": {
+      "title": "BitacoraVehiculo",
+      "description": "Vehicle logs tracking gas and mileage",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "conductorId": { "type": "string" },
+        "conductorName": { "type": "string" },
+        "fecha": { "type": "string" },
+        "unidadId": { "type": "string" },
+        "unidadName": { "type": "string" },
+        "kmSalida": { "type": "number" },
+        "kmLlegada": { "type": "number" },
+        "combustible": { "type": "string" },
+        "combustibleFinal": { "type": "string" },
+        "eventosCarretera": { "type": "string" },
+        "firma": { "type": "object" },
+        "isDeleted": { "type": "boolean" },
+        "createdBy": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["conductorId", "fecha", "unidadName", "firma"]
+    },
+    "Vehiculo": {
+      "title": "Vehiculo",
+      "description": "Vehicle entity representing a fleet unit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "unidad": { "type": "string" },
+        "placa": { "type": "string" },
+        "modelo": { "type": "string" },
+        "activo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["unidad", "placa", "modelo", "activo", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification for mentions, replies, etc.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["mention", "reply", "assignment", "comment", "important_edit"] },
+        "targetUserId": { "type": "string" },
+        "triggeredBy": { "type": "string" },
+        "triggeredByName": { "type": "string" },
+        "trabajoId": { "type": "string" },
+        "trabajoTitle": { "type": "string" },
+        "comentarioId": { "type": "string" },
+        "comentarioTexto": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "targetUserId", "triggeredBy", "trabajoId", "read"]
+    },
+    "TimelineEvent": {
+      "title": "TimelineEvent",
+      "description": "Represents an event, message or file uploaded in an operational timeline",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tipo": { "type": "string", "enum": ["comentario", "imagen", "foto", "archivo", "sistema", "ubicacion"] },
+        "mensaje": { "type": "string" },
+        "usuarioId": { "type": "string" },
+        "usuarioNombre": { "type": "string" },
+        "timestamp": { "type": "object" },
+        "fileUrls": { "type": "array", "items": { "type": "string" } },
+        "fileNames": { "type": "array", "items": { "type": "string" } },
+        "fileSizes": { "type": "array", "items": { "type": "number" } },
+        "thumbnailUrls": { "type": "array", "items": { "type": "string" } },
+        "editado": { "type": "boolean" },
+        "eliminado": { "type": "boolean" },
+        "pinned": { "type": "boolean" },
+        "pinnedAt": { "type": "object" },
+        "pinnedBy": { "type": "string" }
+      },
+      "required": ["tipo", "usuarioId", "usuarioNombre"]
+    },
+    "OperationalTimeline": {
+      "title": "OperationalTimeline",
+      "description": "Sovereign standalone timeline for a continuous multi-entity conversation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "metadata": { "type": "object" },
+        "creado_en": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id"]
+    },
+    "SystemAccessLog": {
+      "title": "SystemAccessLog",
+      "description": "Records user login and navigation activity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "action": { "type": "string", "enum": ["login", "logout", "session_closed", "ingreso_modulo", "salida_modulo", "cambio_modulo"] },
+        "module": { "type": "string" },
+        "route": { "type": "string" },
+        "timestamp": { "type": "object", "description": "Firestore server timestamp" },
+        "browser": { "type": "string" },
+        "operatingSystem": { "type": "string" },
+        "onlineStatus": { "type": "boolean" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["userId", "action", "timestamp", "sessionId"]
+    }
+  },
+  "firestore": {
+    "/inventory": {
+      "schema": "InventoryItem",
+      "description": "Collection of inventory materials"
+    },
+    "/materialRequests": {
+      "schema": "MaterialRequest",
+      "description": "Collection of material requests"
+    },
+    "/dispatch_responsibles": {
+      "schema": "DispatchResponsible",
+      "description": "Collection of delivery responsible names history"
+    },
+    "/trabajos": {
+      "schema": "Trabajo",
+      "description": "Collection of scheduled operational jobs"
+    },
+    "/job_types": {
+      "schema": "JobType",
+      "description": "Collection of custom job types"
+    },
+    "/counters": {
+      "description": "Collection for atomic counters (e.g., OT codes)"
+    },
+    "/bitacora_vehiculos": {
+      "schema": "BitacoraVehiculo",
+      "description": "Vehicle logs tracking gas and mileage"
+    },
+    "/vehiculos": {
+      "schema": "Vehiculo",
+      "description": "Collection of all fleet vehicles"
+    },
+    "/notifications": {
+      "schema": "Notification",
+      "description": "User notifications"
+    },
+    "/operational_timelines": {
+      "schema": "OperationalTimeline",
+      "description": "Collection of standalone sovereign operational timelines"
+    },
+    "/operational_timelines/{timelineId}/events": {
+      "schema": "TimelineEvent",
+      "description": "Collection of chronological communication events under an operational timeline"
+    },
+    "/system_access_logs": {
+      "schema": "SystemAccessLog",
+      "description": "Audit logs of user access and module navigation"
+    }
+  }
+}

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://apis.google.com blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.googleusercontent.com https://picsum.photos https://*.firebasestorage.app https://firebasestorage.googleapis.com https://*.firebasestorage.googleapis.com; connect-src 'self' https: blob: https://*.googleapis.com https://*.firebaseio.com https://*.firebasestorage.app; frame-src 'self' https://www.google.com https://tentelcom-del-oeste.firebaseapp.com; object-src 'none'; worker-src 'self' blob:; base-uri 'self'; form-action 'self';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Portal de Gestión TENTELCOM DEL OESTE S.A. - Soluciones integrales en telecomunicaciones y fibra óptica.">
+    <meta name="author" content="TENTELCOM DEL OESTE S.A.">
+    <meta name="theme-color" content="#1e3a8a">
+    <title>TENTELCOM DEL OESTE S.A. | Sistema de Gestión</title>
+    
+    <!-- PWA & Iconos -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="shortcut icon" href="/favicon.ico">
+    
+    <style>
+        
+        html { scroll-behavior: smooth; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f8fafc; 
+            margin: 0;
+            -webkit-font-smoothing: antialiased;
+            cursor: default;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Diagnostic Error Overlay */
+        #diagnostic-error-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 10000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            font-family: monospace;
+            text-align: left;
+        }
+
+        #diagnostic-error-overlay h1 { color: #ef4444; margin-bottom: 20px; }
+        #diagnostic-error-overlay pre {
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 20px;
+            border-radius: 12px;
+            max-width: 100%;
+            overflow: auto;
+            white-space: pre-wrap;
+            font-size: 13px;
+        }
+
+        *:not(input):not(textarea):not([contenteditable="true"]) {
+            caret-color: transparent !important;
+        }
+
+        input, textarea, [contenteditable="true"] {
+            caret-color: auto !important;
+            user-select: text !important;
+            -webkit-user-select: text !important;
+        }
+
+        /* Ocultar flechas negras en inputs numéricos */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        .selectable, td, p, span, h1, h2, h3, h4, h5, h6 {
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        *:focus:not(:focus-visible) {
+            outline: none !important;
+            box-shadow: none !important;
+        }
+
+        *:focus-visible {
+            outline: 2px solid #2563eb !important;
+            outline-offset: 2px;
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        #root:empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: white;
+            padding: 20px;
+            text-align: center;
+        }
+        #loading-error {
+            display: none;
+            color: #ef4444;
+            font-size: 14px;
+            margin-top: 20px;
+            max-width: 300px;
+        }
+        #reload-btn {
+            display: none;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #1e3a8a;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+
+    <script>
+        // Protección contra errores de asignación en window.fetch (común en entornos de iframe/AI Studio)
+        (function() {
+            try {
+                const originalFetch = window.fetch;
+                Object.defineProperty(window, 'fetch', {
+                    get: function() { return originalFetch; },
+                    set: function() { 
+                        console.warn('⚠️ Intento de sobrescribir window.fetch bloqueado para evitar errores de "solo lectura".');
+                    },
+                    configurable: true
+                });
+            } catch (e) {
+                // Ya es inmutable o no se puede redefinir, lo cual es el estado deseado
+            }
+        })();
+
+        // Capturar errores tempranos
+        window.onerror = function(msg, url, line, col, error) {
+            console.error("Error crítico detectado:", msg, "en", url, ":", line);
+            var errorDiv = document.getElementById('loading-error');
+            if (errorDiv) {
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = "<strong>Error de carga:</strong><br>" + msg + "<br><small>" + url + ":" + line + "</small>";
+            }
+            var reloadBtn = document.getElementById('reload-btn');
+            if (reloadBtn) reloadBtn.style.display = 'block';
+            var clearBtn = document.getElementById('clear-cache-btn');
+            if (clearBtn) clearBtn.style.display = 'block';
+            return false;
+        };
+
+        // Función para limpiar todo y recargar
+        function clearAndReload() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for(let registration of registrations) {
+                        registration.unregister();
+                    }
+                });
+            }
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    for (let name of names) caches.delete(name);
+                });
+            }
+            window.location.reload(true);
+        }
+
+        // Timeout de seguridad para el spinner
+        // setTimeout(function() {
+        //     var root = document.getElementById('root');
+        //     // Si el root sigue vacío o solo contiene los elementos de error ocultos
+        //     if (root && (root.innerHTML === "" || root.children.length <= 2)) {
+        //         var reloadBtn = document.getElementById('reload-btn');
+        //         if (reloadBtn) reloadBtn.style.display = 'block';
+        //         var clearBtn = document.getElementById('clear-cache-btn');
+        //         if (clearBtn) clearBtn.style.display = 'block';
+        //         var errorDiv = document.getElementById('loading-error');
+        //         if (errorDiv) {
+        //             errorDiv.style.display = 'block';
+        //             errorDiv.innerText = "La aplicación está tardando demasiado en iniciar. Esto puede deberse a una conexión lenta o un error en el caché.";
+        //         }
+        //     }
+        // }, 12000);
+    </script>
+    <script>
+        // Captura errores de carga de módulos (chunks)
+        window.addEventListener('error', function(e) {
+            if (e.message && (
+                e.message.includes('Loading chunk') ||
+                e.message.includes('Failed to fetch dynamically imported module') ||
+                e.message.includes('Importing a module script failed') ||
+                e.message.includes('error loading dynamically imported module')
+            )) {
+                console.warn('Chunk load error detected. Forcing reload to get latest version...');
+                window.location.reload(true);
+            }
+        }, true);
+
+        // Captura errores no manejados de promesas (ej. imports dinámicos fallidos)
+        window.onunhandledrejection = function(e) {
+            if (e.reason && (e.reason.name === 'ChunkLoadError' || (e.reason.message && e.reason.message.includes('Loading chunk')))) {
+                console.warn('Unhandled ChunkLoadError detected. Forcing reload...');
+                window.location.reload(true);
+            }
+        };
+    </script>
+</head>
+<body class="text-slate-900">
+    <div id="root">
+        <div id="loading-error" style="display:none; color: #ef4444; font-size: 14px; margin-top: 20px; max-width: 300px; background: #fee2e2; padding: 15px; border-radius: 12px; border: 1px solid #fecaca;"></div>
+        <button id="reload-btn" style="display:none; margin-top: 20px; padding: 12px 24px; background: #1e3a8a; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; width: 200px;" onclick="window.location.reload(true)">Recargar</button>
+        <button id="clear-cache-btn" style="display:none; margin-top: 10px; padding: 12px 24px; background: #64748b; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; width: 200px;" onclick="clearAndReload()">Limpiar Caché y Forzar</button>
+    </div>
+    <div id="modal-root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

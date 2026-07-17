@@ -1,0 +1,240 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/employees/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+          (request.auth.token.email == "jenamorado@tentelcom.com") ||
+          (getUserData() != null && (
+              getUserData().data.role == "admin" || 
+              getUserData().data.role == "administrador" ||
+              getUserData().data.role == "administración" ||
+              getUserData().data.role == "administracion" ||
+              getUserData().data.role == "rrhh"
+          ))
+      );
+    }
+
+    function hasPermission(path) {
+      let userDoc = getUserData();
+      return isAuthenticated() && userDoc != null && (
+        isAdmin() ||
+        (userDoc.data.permissions != null && userDoc.data.permissions[path] == true)
+      );
+    }
+
+    function hasNestedPermission(module, submodule) {
+      let userDoc = getUserData();
+      return isAuthenticated() && userDoc != null && (
+        isAdmin() ||
+        (userDoc.data.permissions != null && 
+         userDoc.data.permissions[module] != null && 
+         userDoc.data.permissions[module][submodule] == true)
+      );
+    }
+
+    function isSupervisor() {
+      let userDoc = getUserData();
+      return isAuthenticated() && userDoc != null && userDoc.data.role == "supervisor";
+    }
+
+    function isAdjustmentField(data) {
+      return (data.extraHours != null && data.extraHours != 0) || 
+             (data.bonuses != null && data.bonuses != 0) || 
+             (data.advancePayment != null && data.advancePayment != 0) || 
+             (data.travelExpenses != null && data.travelExpenses != 0) || 
+             (data.availabilityBonus != null && data.availabilityBonus != 0);
+    }
+
+    // EMPLOYEES
+    match /employees/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+      
+      match /work_history/{historyId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin();
+      }
+      
+      match /admin_log/{logId} {
+        allow read, write: if isAdmin();
+      }
+      
+      match /employee_files/{fileId} {
+        allow read: if isAdmin();
+        allow write: if isAdmin();
+      }
+    }
+
+    // CLIENTS
+    match /clients/{id} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission("cotizaciones");
+    }
+
+    // COTIZACIONES
+    match /quotes/{id} {
+      allow read, write: if hasPermission("cotizaciones");
+    }
+
+    // CATÁLOGO EXTERNO
+    match /external_products/{id} {
+      allow read, write: if hasPermission("external_products");
+    }
+
+    // TRABAJOS
+    match /trabajos/{id} {
+      allow read, write: if hasPermission("trabajos");
+      
+      match /timeline/{commentId} {
+        allow read, write: if hasPermission("trabajos");
+      }
+    }
+
+    // COUNTERS (PARA OT CODES)
+    match /counters/{id} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission("trabajos");
+    }
+
+    // JOB TYPES
+    match /job_types/{id} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission("trabajos");
+    }
+
+    // LOGS DE REPORTES DE MATERIALES
+    match /material_reports_log/{id} {
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos");
+    }
+
+    // INVENTARIO
+    match /inventory/{id} {
+      allow read, write: if hasNestedPermission("inventario", "general");
+    }
+    match /inventory_items/{id} {
+      allow read, write: if hasNestedPermission("inventario", "general");
+    }
+    match /inventory_movements/{id} {
+      allow read, write: if hasNestedPermission("inventario", "movimientos");
+    }
+    match /material_reports/{id} {
+      allow read, write: if hasNestedPermission("inventario", "solicitudes");
+    }
+    match /materialRequests/{id} {
+      allow read, write: if hasNestedPermission("inventario", "solicitudes");
+    }
+
+    // FINANZAS
+    match /invoices/{id} {
+      allow read, write: if hasNestedPermission("finanzas", "movimientos");
+    }
+    match /cashflow_entries/{id} {
+      allow read, write: if hasNestedPermission("finanzas", "movimientos");
+    }
+    match /absence_records/{id} {
+      allow read, write: if hasNestedPermission("finanzas", "ausencias");
+    }
+    match /pay_stubs/{id} {
+      allow read: if hasNestedPermission("finanzas", "comprobantes") || (isAuthenticated() && resource.data.employeeEmail == request.auth.token.email);
+      allow create, update: if (hasNestedPermission("finanzas", "comprobantes") || isSupervisor()) && (!isAdjustmentField(request.resource.data) || isAdmin());
+      allow delete: if isAdmin();
+    }
+    match /automatic_adjustments/{id} {
+      allow read, write: if hasNestedPermission("finanzas", "comprobantes");
+    }
+    match /purchase_orders/{id} {
+      allow read, write: if hasNestedPermission("finanzas", "ordenes_compra");
+    }
+
+    match /bitacora_vehiculos/{id} {
+      allow read: if hasNestedPermission("bitacoraVehiculos", "registros") || hasNestedPermission("bitacoraVehiculos", "analisis") || hasPermission("trabajos") || (resource != null && resource.data.createdBy == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        hasNestedPermission("bitacoraVehiculos", "registros") || 
+        hasPermission("trabajos") ||
+        isAdmin() || 
+        (resource != null && resource.data.createdBy == request.auth.uid) ||
+        request.resource.data.updatedBy == request.auth.uid
+      );
+      allow delete: if hasNestedPermission("bitacoraVehiculos", "registros") || isAdmin();
+      
+      match /timeline/{commentId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    match /vehicle_expenses/{id} {
+      allow read: if hasNestedPermission("bitacoraVehiculos", "analisis") || isAdmin();
+      allow write: if hasNestedPermission("bitacoraVehiculos", "analisis") || isAdmin();
+    }
+
+    // OPERATIONAL TIMELINES
+    match /operational_timelines/{timelineId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      
+      match /events/{eventId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if hasNestedPermission("bitacoraVehiculos", "registros") || hasPermission("trabajos");
+      }
+    }
+
+    match /vehiculos/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // NOTIFICATIONS
+    match /notifications/{id} {
+      allow read: if isAuthenticated();
+      allow update: if isAuthenticated() && resource.data.targetUserId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create: if isAuthenticated();
+    }
+
+    // METADATA (e.g. counters)
+    match /metadata/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ANALÍTICA
+    match /analytics_events/{id} {
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated();
+    }
+
+    // TEST CONNECTION
+    match /test/{id} {
+      allow read: if isAuthenticated();
+    }
+
+    // AUDIT LOG
+    match /audit_log/{entryId} {
+      allow read: if isAdmin();
+      allow write: if false;
+      allow delete: if false;
+    }
+
+    // SYSTEM ACCESS LOGS
+    match /system_access_logs/{id} {
+      allow create: if isAuthenticated();
+      allow read: if isAdmin();
+    }
+
+    // ACCESO TOTAL ADMIN A TODO
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
+
