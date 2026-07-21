@@ -51,20 +51,20 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           {description}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <ActionButton 
             label="Cancelar"
             variant="ghost"
             onClick={onClose}
             disabled={isLoading}
-            className="flex-1"
+            className="flex-1 w-full"
           />
           <ActionButton 
             label={confirmLabel}
             variant={variant}
             onClick={onConfirm}
             isLoading={isLoading}
-            className="flex-1"
+            className="flex-1 w-full"
           />
         </div>
       </div>

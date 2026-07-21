@@ -134,25 +134,25 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
               <div className="space-y-4">
                 <div className="grid grid-cols-[30px_1fr] items-center">
                   <FiTag className="text-slate-400 text-sm" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Título:</span>
-                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-right">{trabajo.titulo || 'No registrado'}</span>
+                  <div className="flex items-center">
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Título:</span>
+                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">{trabajo.titulo || 'No registrado'}</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-[30px_1fr] items-center">
                   <FiTag className="text-slate-400 text-sm" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Tipo:</span>
-                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-right">{trabajo.tipo_trabajo || 'No registrado'}</span>
+                  <div className="flex items-center">
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Tipo:</span>
+                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">{trabajo.tipo_trabajo || 'No registrado'}</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-[30px_1fr] items-center">
                   <FiCalendar className="text-slate-400 text-sm" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Fecha:</span>
-                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-right">
+                  <div className="flex items-center">
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Fecha:</span>
+                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">
                       {formatJobDateRange(trabajo.fecha_inicio, trabajo.fecha_fin)}
                     </span>
                   </div>
@@ -160,9 +160,9 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
 
                 <div className="grid grid-cols-[30px_1fr] items-center">
                   <FiClock className="text-slate-400 text-sm" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Hora:</span>
-                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-right">
+                  <div className="flex items-center">
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Hora:</span>
+                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">
                       {trabajo.hora_inicio || 'N/D'} - {trabajo.hora_fin || 'N/D'}
                     </span>
                   </div>

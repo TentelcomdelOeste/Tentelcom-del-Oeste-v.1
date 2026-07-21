@@ -4,7 +4,7 @@ import parse from 'date-fns/parse';
 import { es } from 'date-fns/locale';
 import { Trabajo, EstadoTrabajo } from './types';
 import { createTrabajo, updateTrabajo, deleteTrabajo } from './jobService';
-import { createJobType, getJobTypes, deactivateJobType, JobType } from './jobTypeService';
+import { createOrUpdateJobType } from './jobTypeService';
 import { createOrUpdateJobTitle } from './jobTitleService';
 import { ActionButton, Select, UI_TOKENS, useConfirm } from '@/design-system';
 import { localDocStore } from '@/core/offline/localDocStore';
@@ -37,23 +37,20 @@ export const VEHICLES = [
   { value: 'U8', label: 'U8 - SUZUKI GRAN VITARA - 578994' },
 ];
 
-const DEFAULT_JOB_TYPES = [
-  'Mantenimiento Preventivo',
-  'Mantenimiento Correctivo',
-  'Instalación de Fibra Óptica',
-  'Reparación de Avería',
-  'Levantamiento de Campo',
-  'Auditoría de Red',
-  'Instalación de Postes',
-  'Tendidos Eléctricos',
-];
+const toUpperCase = (text: string) => text ? text.toUpperCase() : '';
+const toTitleCase = (text: string) => {
+  if (!text) return '';
+  return text.toLowerCase().split(' ').map(word => {
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }).join(' ');
+};
 
 export const JobForm: React.FC<JobFormProps> = ({ 
   trabajo, 
   onClose, 
   defaultStart, 
   defaultEnd, 
-  existingJobTypes = [], 
+  existingJobTypes: _existingJobTypes = [], 
   parentId, 
   parentData,
   mode
@@ -70,35 +67,21 @@ export const JobForm: React.FC<JobFormProps> = ({
   const [confirmarEliminacion, setConfirmarEliminacion] = useState(false);
   const [employees, setEmployees] = useState<{ id: string, name: string }[]>([]);
   const [vehicleLogs, setVehicleLogs] = useState<{ id: string, label: string }[]>([]);
-  const [jobTypes, setJobTypes] = useState<JobType[]>([]);
-  const [hiddenJobTypes, setHiddenJobTypes] = useState<string[]>(() => {
-    const saved = localStorage.getItem('hiddenJobTypes');
-    return saved ? JSON.parse(saved) : [];
-  });
   const [loading, setLoading] = useState(false);
-  const [showOther, setShowOther] = useState(false);
-  const [otherType, setOtherType] = useState('');
   const [searchTermEmployees, setSearchTermEmployees] = useState('');
   const [searchTermLogs, setSearchTermLogs] = useState('');
   const [isLinkingSelectorOpen, setIsLinkingSelectorOpen] = useState(false);
-  
-  const JOB_TYPES = useMemo(() => {
-    const types = new Set([...DEFAULT_JOB_TYPES, ...existingJobTypes, ...jobTypes.map(t => t.name)]);
-    return Array.from(types)
-      .filter(t => !hiddenJobTypes.includes(t))
-      .map(t => {
-      const found = jobTypes.find(jt => jt.name === t);
-      return { value: t, label: t, id: found?.id };
-    }).concat([{ value: 'Otro', label: 'Otro' }]);
-  }, [existingJobTypes, jobTypes, hiddenJobTypes]);
 
   const [formData, setFormData] = useState<Partial<Trabajo>>(
     trabajo ? {
         ...trabajo,
+        titulo: trabajo.titulo ? toUpperCase(trabajo.titulo) : '',
+        tipo_trabajo: trabajo.tipo_trabajo ? toUpperCase(trabajo.tipo_trabajo) : '',
+        ubicacion: trabajo.ubicacion ? toTitleCase(trabajo.ubicacion) : '',
         bitacorasRelacionadas: trabajo.bitacorasRelacionadas || (trabajo.registroBitacoraId ? [{ bitacoraId: trabajo.registroBitacoraId, fecha: 'legacy' }] : []),
     } : {
-      titulo: parentData?.titulo || '',
-      tipo_trabajo: parentData?.tipo_trabajo || '',
+      titulo: parentData?.titulo ? toUpperCase(parentData.titulo) : '',
+      tipo_trabajo: parentData?.tipo_trabajo ? toUpperCase(parentData.tipo_trabajo) : '',
       descripcion: parentData?.descripcion || '',
       fecha_inicio: defaultStart || new Date(),
       fecha_fin: defaultEnd || new Date(),
@@ -106,7 +89,7 @@ export const JobForm: React.FC<JobFormProps> = ({
       hora_fin: mode === 'create' ? '16:00' : (defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00'),
       cuadrilla: [],
       unidades: [],
-      ubicacion: parentData?.ubicacion || '',
+      ubicacion: parentData?.ubicacion ? toTitleCase(parentData.ubicacion) : '',
       observaciones: '',
       estado: 'programado',
       progreso: 0,
@@ -251,9 +234,7 @@ export const JobForm: React.FC<JobFormProps> = ({
     }
   }, [fechaInicio, fechaFin, formData.dias_detalle, generateDiasDetalle]);
 
-  useEffect(() => {
-    getJobTypes().then(setJobTypes);
-  }, []);
+
 
   const clearError = () => {
     if (error) setError(null);
@@ -357,15 +338,6 @@ export const JobForm: React.FC<JobFormProps> = ({
       });
       setFechaInicio(format(trabajo.fecha_inicio instanceof Date ? trabajo.fecha_inicio : (trabajo.fecha_inicio as any).toDate?.() || new Date(trabajo.fecha_inicio), 'yyyy-MM-dd'));
       setFechaFin(format(trabajo.fecha_fin instanceof Date ? trabajo.fecha_fin : (trabajo.fecha_fin as any).toDate?.() || new Date(trabajo.fecha_fin), 'yyyy-MM-dd'));
-      
-      const found = JOB_TYPES.find(jt => jt.value === trabajo.tipo_trabajo);
-      if (found) {
-        setShowOther(false);
-        setOtherType('');
-      } else {
-        setShowOther(true);
-        setOtherType(trabajo.tipo_trabajo || '');
-      }
     } else if (mode === 'create') {
       setFormData({
         estado: 'programado',
@@ -381,10 +353,8 @@ export const JobForm: React.FC<JobFormProps> = ({
       const today = format(new Date(), 'yyyy-MM-dd');
       setFechaInicio(today);
       setFechaFin(today);
-      setShowOther(false);
-      setOtherType('');
     }
-  }, [trabajo, mode, JOB_TYPES]);
+  }, [trabajo, mode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,8 +364,7 @@ export const JobForm: React.FC<JobFormProps> = ({
     // Initial Manual Validations
     let validationError = null;
     if (!formData.titulo?.trim()) validationError = 'El título del trabajo es obligatorio';
-    else if (!formData.tipo_trabajo && !showOther) validationError = 'El tipo de trabajo es obligatorio';
-    else if (showOther && !otherType.trim()) validationError = 'Debe especificar el nuevo tipo de trabajo';
+    else if (!formData.tipo_trabajo?.trim()) validationError = 'El tipo de trabajo es obligatorio';
     else if (!formData.descripcion?.trim()) validationError = 'La descripción es obligatoria';
     else if (!fechaInicio || !fechaFin) validationError = 'Las fechas son obligatorias';
     else if (!formData.hora_inicio || !formData.hora_fin) validationError = 'Las horas son obligatorias';
@@ -425,14 +394,11 @@ export const JobForm: React.FC<JobFormProps> = ({
         }
       }
 
-      // Logic for new Job Type
-      let jobTypeToUse = formData.tipo_trabajo;
-      if (showOther && otherType.trim() !== '') {
+      if (formData.tipo_trabajo && formData.tipo_trabajo.trim() !== '') {
         try {
-          await createJobType(otherType.trim());
-          jobTypeToUse = otherType.trim();
+          await createOrUpdateJobType(formData.tipo_trabajo.trim());
         } catch (err) {
-          console.warn("Could not create job type, but continuing:", err);
+          console.warn("Could not update job type catalog:", err);
         }
       }
 
@@ -477,7 +443,7 @@ export const JobForm: React.FC<JobFormProps> = ({
         observaciones: formData.observaciones,
         dias_detalle: formData.dias_detalle,
         progreso: formData.progreso,
-        tipo_trabajo: jobTypeToUse,
+        tipo_trabajo: formData.tipo_trabajo,
         fecha_inicio,
         fecha_fin,
         estado: formData.estado || 'programado',
@@ -635,32 +601,12 @@ export const JobForm: React.FC<JobFormProps> = ({
                 Tipo de Trabajo <span className="text-red-500">*</span>
               </span>
             }
-            options={JOB_TYPES}
             value={formData.tipo_trabajo || ''}
             onChange={(val) => {
               clearError();
-              if (val === 'Otro') {
-                setShowOther(true);
-                setFormData({ ...formData, tipo_trabajo: '' });
-              } else {
-                setShowOther(false);
-                setFormData({ ...formData, tipo_trabajo: val });
-              }
+              setFormData({ ...formData, tipo_trabajo: toUpperCase(val) });
             }}
-            placeholder="Seleccione tipo..."
-            required
-            onRefresh={() => getJobTypes().then(setJobTypes)}
-            onDelete={async (id, label) => {
-              const found = jobTypes.find(jt => jt.name === label);
-              if (found) {
-                await deactivateJobType(found.id!);
-              }
-              setHiddenJobTypes(prev => {
-                const next = [...prev, label];
-                localStorage.setItem('hiddenJobTypes', JSON.stringify(next));
-                return next;
-              });
-            }}
+            placeholder="Seleccione o escriba tipo..."
           />
 
           <div>
@@ -671,33 +617,13 @@ export const JobForm: React.FC<JobFormProps> = ({
               value={formData.titulo || ''}
               onChange={(val) => {
                 clearError();
-                setFormData({ ...formData, titulo: val });
+                setFormData({ ...formData, titulo: toUpperCase(val) });
               }}
             />
             <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold tracking-tight">
               Nombre corto para visualización rápida (máx 40-60 caracteres)
             </p>
           </div>
-
-          {showOther && (
-            <div>
-              <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1"}>
-                Nuevo Tipo de Trabajo <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={otherType}
-                onChange={(e) => {
-                  clearError();
-                  setOtherType(e.target.value);
-                  setFormData({ ...formData, tipo_trabajo: e.target.value });
-                }}
-                placeholder="Escriba el nuevo tipo de trabajo..."
-                className={`w-full ${UI_TOKENS.SPACING.inputPadding} ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} outline-none focus:ring-2 focus:ring-blue-100 text-sm`}
-                required
-              />
-            </div>
-          )}
 
           <div>
             <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1"}>
@@ -760,7 +686,7 @@ export const JobForm: React.FC<JobFormProps> = ({
                 value={formData.ubicacion || ''}
                 onChange={(e) => {
                   clearError();
-                  setFormData({ ...formData, ubicacion: e.target.value });
+                  setFormData({ ...formData, ubicacion: toTitleCase(e.target.value) });
                 }}
                 className={`w-full pl-10 pr-3 py-2 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} outline-none focus:ring-2 focus:ring-blue-100 text-sm`}
                 placeholder="Dirección o coordenadas..."
@@ -1469,7 +1395,7 @@ export const JobForm: React.FC<JobFormProps> = ({
             <div className="flex gap-2 pt-4">
               <ActionButton label="Entendido" variant="secondary" onClick={() => setShowForceDeleteModal(false)} className="flex-1" />
               <ActionButton 
-                label={confirmarEliminacion ? "ELIMINAR REPORTE" : "Entendido"}
+                label={confirmarEliminacion ? "ELIMINAR" : "Entendido"}
                 variant="danger" 
                 onClick={handleForceDelete} 
                 disabled={!confirmarEliminacion || loading}

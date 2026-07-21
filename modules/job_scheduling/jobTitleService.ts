@@ -1,5 +1,5 @@
 import { db } from "../../firebase";
-import { collection, addDoc, getDocs, query, where, serverTimestamp, Timestamp, updateDoc, doc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, serverTimestamp, Timestamp, updateDoc, doc, deleteDoc, limit } from "firebase/firestore";
 
 const COLLECTION_NAME = "job_titles";
 
@@ -32,7 +32,7 @@ export const createOrUpdateJobTitle = async (titulo: string) => {
   if (!querySnapshot.empty) {
     const docRef = doc(db, COLLECTION_NAME, querySnapshot.docs[0].id);
     await updateDoc(docRef, {
-        frecuenciaUso: querySnapshot.docs[0].data().frecuenciaUso + 1,
+        frecuenciaUso: (querySnapshot.docs[0].data().frecuenciaUso || 0) + 1,
         ultimaUtilizacion: serverTimestamp(),
         updatedAt: serverTimestamp(),
         isActive: true
@@ -51,7 +51,27 @@ export const createOrUpdateJobTitle = async (titulo: string) => {
   });
 };
 
+export const updateJobTitle = async (id: string, titulo: string) => {
+  const docRef = doc(db, COLLECTION_NAME, id);
+  await updateDoc(docRef, {
+    titulo: titulo.trim(),
+    tituloNormalizado: titulo.trim().toLowerCase(),
+    updatedAt: serverTimestamp()
+  });
+};
+
 export const deactivateJobTitle = async (id: string) => {
     const docRef = doc(db, COLLECTION_NAME, id);
     await updateDoc(docRef, { isActive: false, updatedAt: serverTimestamp() });
+};
+
+export const deleteJobTitle = async (id: string) => {
+    const docRef = doc(db, COLLECTION_NAME, id);
+    await deleteDoc(docRef);
+};
+
+export const checkIfJobTitleUsed = async (titulo: string): Promise<boolean> => {
+  const q = query(collection(db, "trabajos"), where("titulo", "==", titulo.trim()), limit(1));
+  const snapshot = await getDocs(q);
+  return !snapshot.empty;
 };

@@ -157,13 +157,24 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         orderBy('fecha', 'desc'),
                         limit(15)
                     );
-                    const snapLogs = await getDocsFromServer(qLogs);
+                    
+                    const timeoutPromise = new Promise<any>((_, reject) => setTimeout(() => reject(new Error("TIMEOUT_GETDOCS")), 2500));
+                    const snapLogs = await Promise.race([
+                        getDocsFromServer(qLogs),
+                        timeoutPromise
+                    ]);
+                    
                     remoteLogs = snapLogs.docs.map(doc => ({ ...doc.data() as VehicleLog, id: doc.id }));
                 } catch (e) {
-                    console.warn("[VehicleLogModal] Server fetch failed, using standard getDocs:", e);
-                    const qLogs = query(collection(db, 'bitacora_vehiculos'), where('unidad', '==', unitName), orderBy('fecha', 'desc'), limit(15));
-                    const snapLogs = await getDocs(qLogs).catch(() => ({ empty: true, docs: [] }));
-                    remoteLogs = !snapLogs.empty ? snapLogs.docs.map(doc => ({ ...doc.data() as VehicleLog, id: doc.id })) : [];
+                    console.warn("[VehicleLogModal] Server fetch failed or timed out, using getDocsFromCache:", e);
+                    try {
+                        const { getDocsFromCache } = await import('firebase/firestore');
+                        const qLogs = query(collection(db, 'bitacora_vehiculos'), where('unidad', '==', unitName), orderBy('fecha', 'desc'), limit(15));
+                        const snapLogs = await getDocsFromCache(qLogs);
+                        remoteLogs = !snapLogs.empty ? snapLogs.docs.map(doc => ({ ...doc.data() as VehicleLog, id: doc.id })) : [];
+                    } catch (cacheError) {
+                        console.warn("[VehicleLogModal] Cache fetch failed, relying on localDocStore:", cacheError);
+                    }
                 }
 
                 // 2. Fetch Local Logs and Pending Mutations
@@ -623,13 +634,13 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     {index > 0 && (
                                         <div className="flex justify-between items-center mb-3">
                                             <span className="text-[10px] font-black text-orange-700 uppercase tracking-wider">Recarga #{index + 1}</span>
-                                            <button 
-                                                type="button" 
-                                                onClick={() => removeRecarga(recarga.id)}
-                                                className="text-[10px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
-                                            >
-                                                <span>🗑 Eliminar recarga</span>
-                                            </button>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => removeRecarga(recarga.id)}
+                                                    className="text-[10px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center"
+                                                >
+                                                    <span>Eliminar</span>
+                                                </button>
                                         </div>
                                     )}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">

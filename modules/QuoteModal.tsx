@@ -182,7 +182,16 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
 
   // Estado para el ID personalizado
   const [customId, setCustomId] = useState('');
-  const [lastQuoteNumber, setLastQuoteNumber] = useState<number | null>(null);
+  // Optimización: Cálculo determinista durante render para evitar flicker y desaparición de frames
+  const lastQuoteNumber = React.useMemo(() => {
+    if (loadingAllQuotes && (!allQuotes || allQuotes.length === 0)) return null;
+    const safeQuotes = allQuotes || [];
+    const numericIds = safeQuotes
+      .map(q => parseInt(q.id.toString()))
+      .filter(id => !isNaN(id));
+    return numericIds.length > 0 ? Math.max(...numericIds) : 0;
+  }, [allQuotes, loadingAllQuotes]);
+
   const [idError, setIdError] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [duplicateQuoteInfo, setDuplicateQuoteInfo] = useState<string | null>(null);
@@ -315,17 +324,12 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
     }
   }, [show, quote, getNextClientCodePreview]);
 
-  // Cálculo de último número registrado e información auxiliar (GLOBAL)                
+  // Cálculo de ID sugerido (Solo para nuevas cotizaciones y solo si el campo está vacío para evitar sobrescribir)
   useEffect(() => {
-    if (show && !quote && allQuotes.length > 0) {
-        const numericIds = allQuotes
-          .map(q => parseInt(q.id.toString()))
-          .filter(id => !isNaN(id));
-        const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
-        setLastQuoteNumber(maxId);                
-        setCustomId((maxId + 1).toString().padStart(3, '0'));
+    if (show && !quote && lastQuoteNumber !== null && customId === '') {
+        setCustomId((lastQuoteNumber + 1).toString().padStart(3, '0'));
     }
-  }, [show, quote, allQuotes]);
+  }, [show, quote, lastQuoteNumber, customId]);
 
   // Validación de modificación de cliente
   useEffect(() => {
@@ -911,14 +915,14 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
                 </div>
                 
                 {(lastQuoteNumber !== null || loadingAllQuotes) && (
-                    <span className="text-[11px] md:text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
-                        {loadingAllQuotes ? (
+                    <span className="text-[11px] md:text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg min-w-[32px] inline-flex items-center justify-center">
+                        {loadingAllQuotes && lastQuoteNumber === null ? (
                             <span className="animate-pulse">...</span>
                         ) : (
                             <>
                                 <span className="md:hidden">Últ. Reg.: </span>
                                 <span className="hidden md:inline">Último número registrado: </span>
-                                {lastQuoteNumber.toString().padStart(3, '0')}
+                                {lastQuoteNumber !== null ? lastQuoteNumber.toString().padStart(3, '0') : '...'}
                             </>
                         )}
                     </span>

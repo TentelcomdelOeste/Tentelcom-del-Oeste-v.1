@@ -40,6 +40,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     alias: {
       "@": path.resolve(__dirname, "./"),
+      "firebase/firestore": path.resolve(__dirname, "./core/firestore-wrapper.ts"),
     }
   },
   define: {

@@ -176,16 +176,28 @@ export const saveVehicleLog = async (
                 limit(5)
             );
             
-            // Forzar consulta al servidor para evitar registros borrados que sigan en caché de Firestore
-            const snapLogs = await getDocsFromServer(qLogs).catch(() => null);
+            // Forzar consulta al servidor con un timeout estricto para evitar bloqueos
+            const timeoutPromise = new Promise<any>((_, reject) => setTimeout(() => reject(new Error("TIMEOUT_GETDOCS")), 2500));
+            const snapLogs = await Promise.race([
+                getDocsFromServer(qLogs),
+                timeoutPromise
+            ]);
+            
             if (snapLogs && !snapLogs.empty) {
                 remoteLogs = snapLogs.docs.map(doc => ({ ...doc.data() as VehicleLog, id: doc.id }));
             }
         } catch (serverError) {
-            console.warn("[vehicleService] getDocsFromServer failed, falling back to standard getDocs:", serverError);
-            const qLogs = query(collection(db, 'bitacora_vehiculos'), where('unidad', '==', vUnidad), orderBy('fecha', 'desc'), limit(5));
-            const snapLogs = await getDocs(qLogs).catch(() => ({ empty: true, docs: [] }));
-            remoteLogs = !snapLogs.empty ? snapLogs.docs.map(doc => ({ ...doc.data() as VehicleLog, id: doc.id })) : [];
+            console.warn("[vehicleService] getDocsFromServer failed or timed out, falling back to local cache:", serverError);
+            try {
+                const { getDocsFromCache } = await import('firebase/firestore');
+                const qLogs = query(collection(db, 'bitacora_vehiculos'), where('unidad', '==', vUnidad), orderBy('fecha', 'desc'), limit(5));
+                const snapLogs = await getDocsFromCache(qLogs);
+                if (!snapLogs.empty) {
+                    remoteLogs = snapLogs.docs.map(doc => ({ ...doc.data() as VehicleLog, id: doc.id }));
+                }
+            } catch (cacheError) {
+                console.warn("[vehicleService] getDocsFromCache failed, relying purely on offline localDocStore:", cacheError);
+            }
         }
 
         // 2. Fetch Local Logs (for unsynced records)
@@ -252,6 +264,8 @@ export const saveVehicleLog = async (
 
     // 3. Persistencia y Disparo de Eventos
     try {
+        let resultLogDoc = null;
+
         if (isEditing && initialData) {
             // --- FLUJO DE ACTUALIZACIÓN ---
             if (!finalTimelineId) {
@@ -268,18 +282,7 @@ export const saveVehicleLog = async (
 
             // Migración: updateVersionedDocOffline (SQLite + Mutation Queue)
             await updateVersionedDocOffline('bitacora_vehiculos', initialData.id, dataToSave);
-
-            // Evento: bitacora_actualizada
-            const finalEventDate = new Date();
-            createSystemEvent(finalTimelineId, "bitacora_actualizada", {
-                conductor: dataToSave.conductorName || currentUser?.name || 'Sistema',
-                unidad: dataToSave.unidad || 'Unidad',
-                destino: dataToSave.destino || "Actualizado",
-                fechaHora: formatSystemEventDateTime(finalEventDate),
-                bitacoraId: initialData.id, // Added for navigation
-                descripcion: "Se actualizó la información de la bitácora."
-            }, finalEventDate, `actualizada_${finalTimelineId}_${Date.now()}`).catch(console.error);
-
+            resultLogDoc = { ...initialData, ...dataToSave, id: initialData.id };
         } else {
             // --- FLUJO DE CREACIÓN ---
             const createdAtStr = now.toISOString();
@@ -287,9 +290,26 @@ export const saveVehicleLog = async (
             // Resolver timelineId desde el trabajo si existe
             if (trabajoId && !finalTimelineId) {
                 try {
-                    const jobSnap = await getDoc(doc(db, 'trabajos', trabajoId));
-                    if (jobSnap.exists() && jobSnap.data().timelineId) {
-                        finalTimelineId = jobSnap.data().timelineId;
+                    // Primero, intentar leer de IndexedDB (LocalDB) que es instantáneo y offline-first
+                    const { getEntity } = await import("../../services/localRepositories");
+                    const { STORES } = await import("../../services/localDb");
+                    const localJob = await getEntity(STORES.trabajos as any, trabajoId).catch(() => null);
+                    if (localJob && localJob.timelineId) {
+                        finalTimelineId = localJob.timelineId;
+                    } else {
+                        // Fallback a Firestore con timeout controlado para evitar bloqueos
+                        const { getDocFromCache } = await import('firebase/firestore');
+                        const timeoutPromise = new Promise<any>((_, reject) => setTimeout(() => reject(new Error("TIMEOUT_GETDOC")), 1500));
+                        const getDocPromise = getDoc(doc(db, 'trabajos', trabajoId));
+                        
+                        const jobSnap = await Promise.race([getDocPromise, timeoutPromise]).catch(async (err) => {
+                            console.warn("[vehicleService] Firestore fetch for job timed out or failed, trying cache:", err);
+                            return await getDocFromCache(doc(db, 'trabajos', trabajoId)).catch(() => null);
+                        });
+                        
+                        if (jobSnap && jobSnap.exists() && jobSnap.data().timelineId) {
+                            finalTimelineId = jobSnap.data().timelineId;
+                        }
                     }
                 } catch(e) { console.warn("Job timeline resolution failed:", e); }
             }
@@ -318,6 +338,7 @@ export const saveVehicleLog = async (
             
             // Migración: setVersionedDocOffline (SQLite + Mutation Queue)
             await setVersionedDocOffline('bitacora_vehiculos', bitacoraId, dataToSaveCreate);
+            resultLogDoc = { ...dataToSaveCreate, id: bitacoraId };
 
             // CORRECCIÓN CRITIC: Update the job directly so it contains the correct references
             if (trabajoId) {
@@ -331,88 +352,109 @@ export const saveVehicleLog = async (
                     console.warn("[vehicleService] Failed to update job with new bitacora/timeline IDs:", err);
                 }
             }
-
-            // Evento: bitacora_iniciada
-            const finalEventDate = new Date();
-            const conductor = dataToSaveCreate.conductorName || currentUser?.name || 'Sistema';
-            const kmSalida = dataToSaveCreate.kmSalida || 0;
-            const combustibleInicial = dataToSaveCreate.combustible || 'Full';
-
-            createSystemEvent(finalTimelineId, "bitacora_iniciada", {
-                conductor,
-                unidad: vUnidad,
-                destino: sanitizedData.destino || "No especificado",
-                kmSalida,
-                combustibleInicial,
-                fechaHora: formatSystemEventDateTime(finalEventDate),
-                bitacoraId: bitacoraId, // Added for navigation
-                descripcion: `Se inició una nueva sesión operacional para la unidad ${vUnidad} con destino a "${sanitizedData.destino || "No especificado"}". Km salida: ${kmSalida} km, combustible inicial: ${combustibleInicial}.`
-            }, finalEventDate, `iniciada_${finalTimelineId}_${vUnidad.replace(/\s+/g, '_')}`).catch(console.error);
         }
 
-        // 4. Sincronizar Metadatos del Timeline (Cabecera)
-        // Intentamos actualizar metadatos; si falla (offline), el sistema lo reparará visualmente o en sync posterior
-        const tlRef = doc(db, 'operational_timelines', finalTimelineId);
-        setDoc(tlRef, {
-            id: finalTimelineId,
-            creado_en: now.toISOString(),
-            metadata: {
-                title: `Bitácora de Salida: ${vUnidad || ""}`,
-                subtitle: `${vPlaca || ""} - ${currentUser.name || ""}`,
-                status: dataToSave.kmLlegada ? "finalizado" : "en_proceso",
-                vehiculoId: vehiculoId || null,
-                unidad: vUnidad || null,
-                placa: vPlaca || null,
-                createdBy: currentUser.id,
-                createdAt: now.toISOString(),
-                bitacoraId: bitacoraId // Added for navigation
+        // 4. Operaciones Secundarias Desacopladas
+        // Ninguna de estas operaciones debe hacer fallar el guardado principal de la bitácora
+        setTimeout(() => {
+            try {
+                if (isEditing && initialData) {
+                    // Evento: bitacora_actualizada
+                    const finalEventDate = new Date();
+                    createSystemEvent(finalTimelineId, "bitacora_actualizada", {
+                        conductor: dataToSave.conductorName || currentUser?.name || 'Sistema',
+                        unidad: dataToSave.unidad || 'Unidad',
+                        destino: dataToSave.destino || "Actualizado",
+                        fechaHora: formatSystemEventDateTime(finalEventDate),
+                        bitacoraId: initialData.id, // Added for navigation
+                        descripcion: "Se actualizó la información de la bitácora."
+                    }, finalEventDate, `actualizada_${finalTimelineId}_${Date.now()}`).catch(err => console.error("[vehicleService] Secondary event failed:", err));
+                } else {
+                    // Evento: bitacora_iniciada
+                    const finalEventDate = new Date();
+                    const conductor = resultLogDoc.conductorName || currentUser?.name || 'Sistema';
+                    const kmSalida = resultLogDoc.kmSalida || 0;
+                    const combustibleInicial = resultLogDoc.combustible || 'Full';
+
+                    createSystemEvent(finalTimelineId, "bitacora_iniciada", {
+                        conductor,
+                        unidad: vUnidad,
+                        destino: sanitizedData.destino || "No especificado",
+                        kmSalida,
+                        combustibleInicial,
+                        fechaHora: formatSystemEventDateTime(finalEventDate),
+                        bitacoraId: bitacoraId, // Added for navigation
+                        descripcion: `Se inició una nueva sesión operacional para la unidad ${vUnidad} con destino a "${sanitizedData.destino || "No especificado"}". Km salida: ${kmSalida} km, combustible inicial: ${combustibleInicial}.`
+                    }, finalEventDate, `iniciada_${finalTimelineId}_${vUnidad.replace(/\s+/g, '_')}`).catch(err => console.error("[vehicleService] Secondary event failed:", err));
+                }
+
+                // 4.1. Sincronizar Metadatos del Timeline (Cabecera)
+                const tlRef = doc(db, 'operational_timelines', finalTimelineId);
+                setDoc(tlRef, {
+                    id: finalTimelineId,
+                    creado_en: now.toISOString(),
+                    metadata: {
+                        title: `Bitácora de Salida: ${vUnidad || ""}`,
+                        subtitle: `${vPlaca || ""} - ${currentUser.name || ""}`,
+                        status: resultLogDoc.kmLlegada ? "finalizado" : "en_proceso",
+                        vehiculoId: vehiculoId || null,
+                        unidad: vUnidad || null,
+                        placa: vPlaca || null,
+                        createdBy: currentUser.id,
+                        createdAt: now.toISOString(),
+                        bitacoraId: bitacoraId || resultLogDoc.id || null
+                    }
+                }, { merge: true }).catch(tlErr => {
+                    console.warn("[vehicleService] Operational timeline metadata update deferred (app is offline)", tlErr);
+                });
+
+                // 4.2. Trigger de Recarga de combustible si aplica
+                const tieneRecarga = dataToSave.kmRecarga || dataToSave.monto || dataToSave.litros;
+                const recargaExistia = (isEditing && initialData) ? (initialData.kmRecarga || initialData.monto || initialData.litros) : false;
+
+                if (tieneRecarga && !recargaExistia) {
+                    const finalEventDate = new Date();
+                    const eventData: any = {
+                        conductor: dataToSave.conductorName || currentUser?.name || 'Sistema',
+                        unidad: dataToSave.unidad || 'Unidad',
+                        kmRecarga: dataToSave.kmRecarga || 0,
+                        monto: dataToSave.monto || 0,
+                        litros: dataToSave.litros || 0,
+                        gasolinera: dataToSave.gasolinera || 'No especificada',
+                        combustible: dataToSave.combustible || 'No especificado',
+                        fechaHora: formatSystemEventDateTime(finalEventDate),
+                        bitacoraId: bitacoraId || resultLogDoc.id, // Added for navigation
+                        descripcion: `Se registró una recarga de combustible de la unidad ${dataToSave.unidad || "Unidad"}.\nDetalle: ₡${(dataToSave.monto || 0).toLocaleString()} por ${(dataToSave.litros || 0)} litros en la estación "${dataToSave.gasolinera || 'No especificada'}". Km de recarga: ${dataToSave.kmRecarga || 0} km.`
+                    };
+                    const deterministicId = `recarga_${finalTimelineId}_${Date.now()}`;
+                    createSystemEvent(finalTimelineId, "bitacora_recarga_combustible", eventData, finalEventDate, deterministicId)
+                        .then(() => console.log(`[VEHICLE_SERVICE] [CREATE_SYSTEM_EVENT_SUCCESS] Action: bitacora_recarga_combustible, TimelineId: ${finalTimelineId}`))
+                        .catch(err => console.error("[vehicleService] Failed to record refueling event:", err));
+                }
+
+                // 4.3. Trigger de Finalización si aplica
+                if (isFinalizando) {
+                    recordBitacoraFinalizedEvent(finalTimelineId, resultLogDoc).catch(console.error);
+                }
+
+                // 4.4. Auditoría
+                auditService.logEvent({
+                  action: isEditing ? (isFinalizando ? 'finalize_record' : 'update_record') : 'create_record',
+                  module: 'Bitácora de Vehículos',
+                  submodule: 'Bitácora',
+                  route: '/bitacora-vehiculos',
+                  recordId: resultLogDoc.id || 'new-log',
+                  recordCode: dataToSave.unidad
+                });
+            } catch (secondaryError) {
+                console.error("[vehicleService] Error in secondary operations (ignored for main save):", secondaryError);
             }
-        }, { merge: true }).catch(tlErr => {
-            console.warn("[vehicleService] Operational timeline metadata update deferred (app is offline)", tlErr);
-        });
-
-        // 4.5. Trigger de Recarga de combustible si aplica
-        const tieneRecarga = dataToSave.kmRecarga || dataToSave.monto || dataToSave.litros;
-        const recargaExistia = (isEditing && initialData) ? (initialData.kmRecarga || initialData.monto || initialData.litros) : false;
-
-        if (tieneRecarga && !recargaExistia) {
-            const finalEventDate = new Date();
-            const eventData: any = {
-                conductor: dataToSave.conductorName || currentUser?.name || 'Sistema',
-                unidad: dataToSave.unidad || 'Unidad',
-                kmRecarga: dataToSave.kmRecarga || 0,
-                monto: dataToSave.monto || 0,
-                litros: dataToSave.litros || 0,
-                gasolinera: dataToSave.gasolinera || 'No especificada',
-                combustible: dataToSave.combustible || 'No especificado',
-                fechaHora: formatSystemEventDateTime(finalEventDate),
-                bitacoraId: bitacoraId, // Added for navigation
-                descripcion: `Se registró una recarga de combustible de la unidad ${dataToSave.unidad || "Unidad"}.\nDetalle: ₡${(dataToSave.monto || 0).toLocaleString()} por ${(dataToSave.litros || 0)} litros en la estación "${dataToSave.gasolinera || 'No especificada'}". Km de recarga: ${dataToSave.kmRecarga || 0} km.`
-            };
-            const deterministicId = `recarga_${finalTimelineId}_${Date.now()}`;
-            createSystemEvent(finalTimelineId, "bitacora_recarga_combustible", eventData, finalEventDate, deterministicId)
-                .then(() => console.log(`[VEHICLE_SERVICE] [CREATE_SYSTEM_EVENT_SUCCESS] Action: bitacora_recarga_combustible, TimelineId: ${finalTimelineId}`))
-                .catch(err => console.error("[vehicleService] Failed to record refueling event:", err));
-        }
-
-        // 5. Trigger de Finalización si aplica
-        if (isFinalizando) {
-            recordBitacoraFinalizedEvent(finalTimelineId, { ...initialData, ...dataToSave }).catch(console.error);
-        }
-
-        auditService.logEvent({
-          action: isEditing ? (isFinalizando ? 'finalize_record' : 'update_record') : 'create_record',
-          module: 'Bitácora de Vehículos',
-          submodule: 'Bitácora',
-          route: '/bitacora-vehiculos',
-          recordId: initialData?.id || 'new-log',
-          recordCode: dataToSave.unidad
-        });
+        }, 0);
 
         return { 
             success: true, 
             timelineId: finalTimelineId, 
-            logDoc: { ...initialData, ...dataToSave, id: initialData?.id || 'new-log' } 
+            logDoc: resultLogDoc 
         };
 
     } catch (err) {
