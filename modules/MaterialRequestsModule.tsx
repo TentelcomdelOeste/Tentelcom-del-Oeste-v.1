@@ -61,12 +61,20 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
   const [editingRequest, setEditingRequest] = useState<MaterialRequest | null>(null);
 
   // --- AUTO-OPEN AND HIGHLIGHT FROM SEARCH ---
+  const autoOpenedIdRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
-    if (selectedId && selectedKey && requests.length > 0) {
-      const target = requests.find(req => (req as any)[selectedKey] === selectedId);
-      if (target) {
-        setEditingRequest(target);
-        setShowModal(true);
+    if (selectedId && requests.length > 0) {
+      if (autoOpenedIdRef.current !== selectedId) {
+        const target = requests.find(req => 
+          (selectedKey && (req as any)[selectedKey] === selectedId) || 
+          req.id === selectedId
+        );
+        if (target) {
+          autoOpenedIdRef.current = selectedId;
+          setEditingRequest(target);
+          setShowModal(true);
+        }
       }
     }
   }, [selectedId, selectedKey, requests]);
@@ -468,7 +476,7 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
               <ShortagesView currentUser={currentUser} />
           )}
 
-          <MaterialRequestModal show={showModal} onClose={() => setShowModal(false)} onSubmit={handleSave} currentUser={currentUser} inventoryItems={inventoryItems} approvedQuotes={approvedQuotes} initialData={editingRequest} />
+          <MaterialRequestModal show={showModal} onClose={() => { setShowModal(false); onClearSelectedId?.(); }} onSubmit={handleSave} currentUser={currentUser} inventoryItems={inventoryItems} approvedQuotes={approvedQuotes} initialData={editingRequest} />
       </ModulePage>
     </div>
   );

@@ -75,7 +75,6 @@ export function useLogTimeline(
 
   // Snapshot Listeners for Multi-source Collections (Pinned & Recent)
   useEffect(() => {
-    console.log("[TRACE][useSharedTimeline] EFFECT START");
     if (!authReady || !currentUser) return;
     if (!parentId && !timelineId) return;
 

@@ -15,6 +15,8 @@ import { getYearFromDateString, getMonthFromDateString } from '../utils/dateUtil
 import { updateVersionedDocOffline } from '../core/versionControl';
 import { guardarCotizacionSeguro as guardarCotizacionSeguroService } from '../services/quoteService';
 import { useUserContext } from '../contexts/UserContext';
+import { globalSearchEngine, quoteSearchPlugin } from '../core/search';
+
 import { localDocStore } from '../core/offline/localDocStore';
 import { useLocalCollection } from './useLocalCollection';
 import { logger } from '../utils/logger';
@@ -223,11 +225,29 @@ export const useQuotes = (currentUser: User | null, filterYear: number = 0, filt
     const unsubscribe = onSnapshot(qQuotes, async (snapshot) => {
         try {
           // Detectar eliminaciones físicas para limpiar cache local
-          for (const change of snapshot.docChanges()) {
-            if (change.type === "removed") {
-              await localDocStore.removeLocalDoc("quotes", change.doc.id);
+          
+          try {
+            for (const change of snapshot.docChanges()) {
+              if (change.type === "removed") {
+                await localDocStore.removeLocalDoc("quotes", change.doc.id);
+                globalSearchEngine.removeDocument(`quote_${change.doc.id}`);
+              } else {
+                const data = change.doc.data() || {};
+                const quote = {
+                  ...data,
+                  docId: change.doc.id,
+                  monto: Number(data.monto || 0),
+                  estado: String(data.estado || 'Pendiente'),
+                  status: String(data.estado || 'Pendiente'),
+                  fecha: String(data.fecha || new Date().toISOString())
+                } as Quote;
+                globalSearchEngine.upsertDocument(quoteSearchPlugin.mapToSearchableItem(quote));
+              }
             }
+          } catch (searchError) {
+             console.warn("[GlobalSearchEngine] Error en quotes:", searchError);
           }
+
 
           const docs = snapshot.docs || [];
           const remoteData = docs.map(doc => {
@@ -505,7 +525,7 @@ export const useAllQuotes = (currentUser: User | null) => {
   }, [remoteQuotes, localDocuments]);
 
   useEffect(() => {
-    if (!authReady || !currentUser) return;
+    if (!authReady || !currentUser?.uid) return;
     
     // UNIFICACIÓN DE PERMISOS: Solo permitir 'admin' o permiso explícito de 'cotizaciones'
     const canViewQuotes = !!(currentUser && (
@@ -562,7 +582,7 @@ export const useAllQuotes = (currentUser: User | null) => {
     });
 
     return () => unsubscribe();
-  }, [currentUser, authReady]);
+  }, [currentUser?.uid, currentUser?.role, authReady]);
 
   return { allQuotes, loading, error };
 };

@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useUserContext } from '../../contexts/UserContext';
 import { isAdmin } from '../../utils/permissions';
 import { DataTable } from '../../design-system';
-import { FiActivity, FiServer, FiShield } from 'react-icons/fi';
+import { FiServer, FiShield } from 'react-icons/fi';
 
 const AuditDashboard = lazy(() => import('./AuditDashboard'));
 

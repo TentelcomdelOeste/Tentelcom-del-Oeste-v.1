@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { User } from "../../utils/types";
 import { Virtuoso } from "react-virtuoso";
 import {
@@ -35,6 +35,8 @@ import { VehicleLogModal } from "./VehicleLogModal";
 import SharedTimeline from "../core/SharedTimeline/SharedTimelineView";
 import { useLocalCollection } from "../../hooks/useLocalCollection";
 import { VehicleExpense } from "../../types/vehicle.types";
+import { globalSearchEngine, vehicleLogSearchPlugin } from '../../core/search';
+
 
 import { generateVehicleLogPDF } from "../../utils/export/vehicleLogPdf";
 import { VehicleLogCard } from "./components/VehicleLogCard";
@@ -60,10 +62,11 @@ interface VehicleLogsProps {
   currentUser: User;
   onSetActiveModule?: (module: any) => void;
   selectedId?: string; // Added for external navigation
+  onClearSelectedId?: () => void;
 }
 
 // Component Entry Point
-export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActiveModule, selectedId }) => {
+export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActiveModule, selectedId, onClearSelectedId }) => {
   const { authReady } = useAuth();
   const localDocuments = useLocalCollection("bitacora_vehiculos");
   const [isLoading, setIsLoading] = useState(true);
@@ -175,15 +178,20 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
       });
   }, [localDocuments, filterYear, filterMonth]);
 
+  const autoOpenedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!logs.length) return;
     
     // Auto-open log if selectedId is provided
     if (selectedId) {
-      const logToOpen = logs.find(l => l.id === selectedId);
-      if (logToOpen) {
-        setSelectedLog(logToOpen);
-        setIsModalOpen(true);
+      if (autoOpenedIdRef.current !== selectedId) {
+        const logToOpen = logs.find(l => l.id === selectedId);
+        if (logToOpen) {
+          autoOpenedIdRef.current = selectedId;
+          setSelectedLog(logToOpen);
+          setIsModalOpen(true);
+        }
       }
     }
   }, [logs, selectedId, setSelectedLog, setIsModalOpen]);
@@ -238,12 +246,27 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
     const unsubscribe = onSnapshot(
       q,
       async (snapshot) => {
+        
         // Detectar cambios incrementales (especialmente eliminaciones físicas)
-        for (const change of snapshot.docChanges()) {
-          if (change.type === "removed") {
-            await localDocStore.removeLocalDoc("bitacora_vehiculos", change.doc.id);
+        try {
+          for (const change of snapshot.docChanges()) {
+            if (change.type === "removed") {
+              await localDocStore.removeLocalDoc("bitacora_vehiculos", change.doc.id);
+              globalSearchEngine.removeDocument(`vehicleLog_${change.doc.id}`);
+            } else {
+              const data = change.doc.data();
+              const log = { ...data, id: change.doc.id } as VehicleLog;
+              if (!log.isDeleted) {
+                globalSearchEngine.upsertDocument(vehicleLogSearchPlugin.mapToSearchableItem(log));
+              } else {
+                globalSearchEngine.removeDocument(`vehicleLog_${change.doc.id}`);
+              }
+            }
           }
+        } catch(searchErr) {
+          console.warn("[GlobalSearchEngine] Error en vehicles:", searchErr);
         }
+
 
         const remoteData = snapshot.docs
           .map((doc) => ({ ...doc.data(), id: doc.id }) as VehicleLog)
@@ -817,6 +840,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
                   }) as VehicleLog);
                 }
                 setIsModalOpen(false);
+                onClearSelectedId?.();
               }}
               currentUser={currentUser}
               initialData={selectedLog}

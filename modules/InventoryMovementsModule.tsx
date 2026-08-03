@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useInventoryMovements } from '../hooks/useInventoryMovements';
 import { useInventory } from '../hooks/useInventory';
 import { useQuotes } from '../hooks/useQuotes';
@@ -60,12 +60,17 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
   const [editingMovement, setEditingMovement] = useState<InventoryMovement | null>(null);
 
   // --- AUTO-OPEN AND HIGHLIGHT FROM SEARCH ---
+  const autoOpenedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (selectedId && movements.length > 0) {
-      const target = movements.find(m => m.id === selectedId);
-      if (target) {
-        setEditingMovement(target);
-        setShowModal(true);
+      if (autoOpenedIdRef.current !== selectedId) {
+        const target = movements.find(m => m.id === selectedId);
+        if (target) {
+          autoOpenedIdRef.current = selectedId;
+          setEditingMovement(target);
+          setShowModal(true);
+        }
       }
     }
   }, [selectedId, movements]);
@@ -160,7 +165,8 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
   const handleCloseModal = useCallback(() => {
       setShowModal(false);
       setEditingMovement(null);
-  }, []);
+      onClearSelectedId?.();
+  }, [onClearSelectedId]);
 
   const canViewDispatch = hasPermission(currentUser, 'inventario', 'solicitudes');
 

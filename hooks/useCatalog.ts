@@ -15,7 +15,7 @@ export const useCatalog = (currentUser: User | null) => {
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    if (!authReady || !currentUser) {
+    if (!authReady || !currentUser?.uid) {
       setCatalog([]);
       setIsLoading(false);
       return;
@@ -58,7 +58,7 @@ export const useCatalog = (currentUser: User | null) => {
     });
 
     return () => unsubscribe();
-  }, [currentUser, currentLimit, authReady]);
+  }, [currentUser?.uid, currentLimit, authReady]);
 
 
   const loadMore = useCallback(() => {

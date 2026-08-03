@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { db, auth } from '../firebase';
+import { db } from '../firebase';
 import { collection, query, orderBy, onSnapshot, limit, where, getDocs } from 'firebase/firestore';
 import { InventoryItem } from '../inventoryTypes';
 import { User } from '../utils/types';
 import { setVersionedDocOffline, updateVersionedDocOffline } from '../core/versionControl';
 import { localDocStore } from '../core/offline/localDocStore';
 import { useUserContext } from '../contexts/UserContext';
+import { globalSearchEngine, inventorySearchPlugin } from '../core/search';
+
 import { hasPermission } from '../utils/permissions';
 
 import { logger } from '../utils/logger';
@@ -23,11 +25,11 @@ export const useInventory = (currentUser: User | null) => {
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    const canViewRequests = authReady && currentUser && (
+    const canViewRequests = authReady && currentUser?.uid && (
       currentUser.role === 'admin' || 
       hasPermission(currentUser, 'inventario', 'solicitudes')
     );
-    if (!canViewRequests || !authReady || !currentUser) return;
+    if (!canViewRequests || !authReady || !currentUser?.uid) return;
     // Fetch material_reports for dynamic reserved stock calculation
     const q = query(collection(db, "material_reports"), where("status", "in", ["Pendiente", "Aprobada"]));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -44,7 +46,7 @@ export const useInventory = (currentUser: User | null) => {
     return () => {
         unsubscribe();
     };
-  }, [currentUser, authReady]);
+  }, [currentUser?.uid, currentUser?.role, authReady]);
 
   const getReservedByItem = useCallback((itemId: string) => {
     const safeRequests = Array.isArray(materialRequests) ? materialRequests : [];
@@ -84,27 +86,13 @@ export const useInventory = (currentUser: User | null) => {
   }, [items, getReservedByItem]);
 
   useEffect(() => {
-    console.log('[DIAG useInventory] useEffect ejecutado.',
-      'authReady:', authReady,
-      'currentUser?.uid:', currentUser?.uid,
-      'timestamp:', Date.now());
-
-    const canViewInventory = authReady && currentUser && (
+    const canViewInventory = authReady && currentUser?.uid && (
       currentUser.role === 'admin' || 
       hasPermission(currentUser, 'inventario', 'general')
     );
 
-    // Additional Diagnostic Logs
-    console.log("[INVENTORY] authReady", authReady);
-    console.log("[INVENTORY] auth.currentUser", auth.currentUser);
-    console.log("[INVENTORY] currentUser", currentUser);
-    console.log("[INVENTORY] canViewInventory", canViewInventory);
-
     // Guard: Prevent queries if Auth is not completely ready and authenticated
-    if (!authReady || !currentUser || !canViewInventory) {
-      console.log('[DIAG useInventory] Guard bloqueó. authReady:',
-        authReady, 'currentUser:', currentUser?.uid);
-      console.warn('[INVENTORY] Firebase Auth aún no restaurado o sin usuario.');
+    if (!authReady || !currentUser?.uid || !canViewInventory) {
       setIsLoading(false);
       return;
     }
@@ -150,8 +138,6 @@ export const useInventory = (currentUser: User | null) => {
     // Carga inicial local para respuesta inmediata
     updateHybridItems([]);
     
-    console.log('[DIAG useInventory] Guard pasó. Creando listener...');
-    
     if (items.length === 0) {
       setIsLoading(true);
     }
@@ -161,14 +147,6 @@ export const useInventory = (currentUser: User | null) => {
     const baseRef = collection(db, inventoryCollectionName);
     const q = query(baseRef, orderBy("description"), limit(currentLimit));
     
-    console.log("[DIAGNOSTIC] Inventory snapshot setup attempt", {
-      authReady,
-      authCurrentUserUid: auth.currentUser?.uid,
-      currentUserContextId: currentUser?.id,
-      navigatorOnLine: navigator.onLine,
-      collection: inventoryCollectionName
-    });
-
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       try {
         const docs = snapshot.docs || [];
@@ -192,6 +170,31 @@ export const useInventory = (currentUser: User | null) => {
 
         const safeItems = Array.isArray(serverItems) ? serverItems : [];
         await updateHybridItems(safeItems);
+
+        // Feed Global Search Engine Incrementally
+        try {
+          snapshot.docChanges().forEach(change => {
+            const data = change.doc.data() || {};
+            const item = {
+              ...data,
+              id: change.doc.id,
+              code: String(data.code || ""),
+              description: String(data.description || "Sin descripción"),
+              price: Number(data.price || 0),
+              stock: Number(data.stock || 0),
+              reserved: Number(data.reserved || 0),
+            } as InventoryItem;
+            
+            if (change.type === 'removed') {
+               globalSearchEngine.removeDocument(`inventory_${item.id}`);
+            } else {
+               globalSearchEngine.upsertDocument(inventorySearchPlugin.mapToSearchableItem(item));
+            }
+          });
+        } catch (searchError) {
+          console.warn("[GlobalSearchEngine] Error alimentando índice inventario:", searchError);
+        }
+
         setHasMore(docs.length === currentLimit);
         setLoadingMore(false);
         setIsLoading(false);

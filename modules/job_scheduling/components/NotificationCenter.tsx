@@ -89,7 +89,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     if (!timestamp) return "ahora";
     
     let date: Date;
-    if (timestamp.toDate) {
+    if (timestamp?.toDate) {
       date = timestamp.toDate();
     } else if (timestamp instanceof Date) {
       date = timestamp;

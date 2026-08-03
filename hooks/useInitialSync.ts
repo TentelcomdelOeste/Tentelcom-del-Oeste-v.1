@@ -127,5 +127,5 @@ export function useInitialSync({ userId, userName, currentUser }: InitialSyncOpt
         clearTimeout(handle);
       }
     };
-  }, [authReady, userId, userName, currentUser]);
+  }, [authReady, userId, userName, currentUser?.uid]);
 }

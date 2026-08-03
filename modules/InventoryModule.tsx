@@ -72,11 +72,20 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
 
 
   // --- AUTO-OPEN AND HIGHLIGHT FROM SEARCH ---
+  const autoOpenedIdRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
-    if (selectedId && selectedKey && items.length > 0) {
-      const target = items.find(i => (i as any)[selectedKey] === selectedId);
-      if (target) {
-        setViewingItem(target);
+    if (selectedId && items.length > 0) {
+      if (autoOpenedIdRef.current !== selectedId) {
+        const target = items.find(i => 
+          (selectedKey && (i as any)[selectedKey] === selectedId) || 
+          i.id === selectedId || 
+          (i as any).code === selectedId
+        );
+        if (target) {
+          autoOpenedIdRef.current = selectedId;
+          setViewingItem(target);
+        }
       }
     }
   }, [selectedId, selectedKey, items]);
@@ -620,7 +629,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
 
           <InventoryDetailModal 
               show={!!viewingItem}
-              onClose={() => setViewingItem(null)}
+              onClose={() => { setViewingItem(null); onClearSelectedId?.(); }}
               item={viewingItem}
               currentUser={currentUser}
           />

@@ -1,6 +1,6 @@
 
 import { db, storage, auth } from '../../firebase';
-import { collection, addDoc, doc, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { Attachment, AttachmentType } from './attachment.types';
 import { v4 as uuidv4 } from 'uuid';

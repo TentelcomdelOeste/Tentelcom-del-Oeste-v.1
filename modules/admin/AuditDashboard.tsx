@@ -4,7 +4,6 @@ import { AuditLog } from '../../types/audit.types';
 import { 
   FiSearch, 
   FiFilter, 
-  FiCalendar, 
   FiUser, 
   FiActivity, 
   FiGlobe, 

@@ -74,7 +74,7 @@ export const useCashflow = (currentUser: User | null, year?: string, month?: str
 
   // 1. Carga Inicial (No longer using loadData, we rely on onSnapshot for real-time updates)
   useEffect(() => {
-    const canView = (authReady && currentUser && (
+    const canView = (authReady && currentUser?.uid && (
         currentUser.role === 'admin' || 
         hasPermission(currentUser, 'finanzas', 'movimientos') ||
         hasPermission(currentUser, 'finanzas', 'analisis')
@@ -167,7 +167,7 @@ export const useCashflow = (currentUser: User | null, year?: string, month?: str
        unsubscribe();
        unsubClosings();
     };
-  }, [currentUser, year, month, authReady]);
+  }, [currentUser?.uid, currentUser?.role, year, month, authReady]);
 
   // Función para cargar más datos (Paginación)
   const loadMore = async () => {

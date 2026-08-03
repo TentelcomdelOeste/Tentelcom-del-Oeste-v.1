@@ -13,7 +13,8 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { getYearFromDateString } from '../utils/dateUtils';
 // Design System
 import { Toolbar, ActionButton, IconButton, ACTION_ICONS, DataTable, TableColumn, SearchInput } from '../design-system';
-import { FiLock, FiList, FiRefreshCw, FiFileText, FiTrash2, FiLoader, FiAlertTriangle } from "react-icons/fi";
+import { FiLock, FiList, FiRefreshCw, FiFileText, FiTrash2, FiLoader, FiAlertTriangle, FiUploadCloud } from "react-icons/fi";
+import { CashflowImportWizard } from './finance/cashflow/import/CashflowImportWizard';
 
 interface CashflowModuleProps {
   currentUser: User;
@@ -50,16 +51,21 @@ const MovimientosFinancieros: React.FC<CashflowModuleProps> = ({ currentUser, se
   const [activeTab, setActiveTab] = useState<'list' | 'closing' | 'fixed-expenses'>('list');
 
   const [showModal, setShowModal] = useState(false);
+  const [showImportWizard, setShowImportWizard] = useState(false);
   const [editingEntry, setEditingEntry] = useState<CashflowEntry | null>(null);
 
   // --- AUTO-OPEN AND HIGHLIGHT FROM SEARCH ---
-  // --- AUTO-OPEN AND HIGHLIGHT FROM SEARCH ---
+  const autoOpenedIdRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
     if (selectedId && entries.length > 0) {
-      const target = entries.find(e => e.id === selectedId);
-      if (target) {
-        setEditingEntry(target);
-        setShowModal(true);
+      if (autoOpenedIdRef.current !== selectedId) {
+        const target = entries.find(e => e.id === selectedId);
+        if (target) {
+          autoOpenedIdRef.current = selectedId;
+          setEditingEntry(target);
+          setShowModal(true);
+        }
       }
     }
   }, [selectedId, entries]);
@@ -388,6 +394,7 @@ const MovimientosFinancieros: React.FC<CashflowModuleProps> = ({ currentUser, se
   const handleModalClose = () => {
     setShowModal(false);
     setEditingEntry(null);
+    onClearSelectedId?.();
   };
 
   const handleModalSubmit = async (data: Omit<CashflowEntry, 'id' | 'createdAt'>) => {
@@ -562,7 +569,20 @@ const MovimientosFinancieros: React.FC<CashflowModuleProps> = ({ currentUser, se
                 </div>
                 
                 {activeTab === 'list' && (
-                    <ActionButton onClick={() => { setEditingEntry(null); setShowModal(true); }} disabled={isCurrentFilterClosed} label={isCurrentFilterClosed ? "Mes Cerrado" : "Nuevo Movimiento"} icon={isCurrentFilterClosed ? <FiLock  /> : undefined} />
+                  <div className="flex gap-2">
+                    <ActionButton 
+                      onClick={() => setShowImportWizard(true)} 
+                      label="Importar Excel" 
+                      variant="secondary" 
+                      icon={<FiUploadCloud />} 
+                    />
+                    <ActionButton 
+                      onClick={() => { setEditingEntry(null); setShowModal(true); }} 
+                      disabled={isCurrentFilterClosed} 
+                      label={isCurrentFilterClosed ? "Mes Cerrado" : "Nuevo Movimiento"} 
+                      icon={isCurrentFilterClosed ? <FiLock  /> : undefined} 
+                    />
+                  </div>
                 )}
             </div>
 
@@ -736,6 +756,19 @@ const MovimientosFinancieros: React.FC<CashflowModuleProps> = ({ currentUser, se
             quotes={quotes} 
             currentUser={currentUser} 
             initialData={editingEntry}
+        />
+
+        <CashflowImportWizard 
+            isOpen={showImportWizard}
+            onClose={() => setShowImportWizard(false)}
+            quotes={quotes}
+            existingEntries={allEntries}
+            isDateClosed={isDateClosed}
+            currentUser={currentUser}
+            onSuccess={() => {
+              setShowImportWizard(false);
+              refresh();
+            }}
         />
         
         {confirmModal.show && createPortal(

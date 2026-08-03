@@ -3,8 +3,6 @@ import { User } from "@/utils/types";
 import { db } from "@/firebase";
 import {
   collection,
-  addDoc,
-  serverTimestamp,
   getDoc,
   doc,
   updateDoc,
@@ -147,15 +145,19 @@ export default function SharedTimeline({
   const [currentCollection, setCurrentCollection] = useState<string>(parentCollection);
 
   useEffect(() => {
-    setCurrentCollection(parentCollection);
+    if (parentCollection && parentCollection !== currentCollection) {
+      setCurrentCollection(parentCollection);
+    }
   }, [parentCollection]);
 
   const [resolvedTimelineId, setResolvedTimelineId] = useState<string | undefined>(timelineId);
   const resolvedTimelineIdRef = useRef(resolvedTimelineId);
 
   useEffect(() => {
-    setResolvedTimelineId(timelineId);
-    resolvedTimelineIdRef.current = timelineId;
+    if (timelineId && timelineId !== resolvedTimelineIdRef.current) {
+      setResolvedTimelineId(timelineId);
+      resolvedTimelineIdRef.current = timelineId;
+    }
   }, [timelineId]);
 
   useEffect(() => {
@@ -404,8 +406,18 @@ export default function SharedTimeline({
   const [logSearchQuery, setLogSearchQuery] = useState("");
   const [logActiveFilter, setLogActiveFilter] = useState("all");
 
+  const lastFetchedParams = useRef<{parentId?: string, timelineId?: string}>({});
+
   useEffect(() => {
     if (!activeParentId && !resolvedTimelineId) return;
+    
+    // Prevent redundant fetches for the same parameters
+    if (lastFetchedParams.current.parentId === activeParentId && 
+        lastFetchedParams.current.timelineId === resolvedTimelineId) {
+      return;
+    }
+
+    lastFetchedParams.current = { parentId: activeParentId, timelineId: resolvedTimelineId };
 
     const fetchAllMetadata = async () => {
       const startTime = performance.now();

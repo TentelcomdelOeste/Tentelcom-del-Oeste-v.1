@@ -20,7 +20,7 @@ export const useShortages = (currentUser: User | null) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!authReady || !currentUser) {
+    if (!authReady || !currentUser?.uid) {
       setIsLoading(false);
       return;
     }
@@ -82,7 +82,7 @@ export const useShortages = (currentUser: User | null) => {
     });
 
     return () => unsubscribe();
-  }, [currentUser, authReady]);
+  }, [currentUser?.uid, authReady]);
 
   const updateShortageStatus = useCallback(async (id: string, status: any) => {
       // En el nuevo modelo, el "estado" del faltante puede guardarse como un campo extra
@@ -117,7 +117,7 @@ export const useShortages = (currentUser: User | null) => {
               // 1. Obtener número de solicitud
               const counterRef = doc(db, "counters", "requestNumber");
               const counterSnap = await transaction.get(counterRef);
-              let lastNumber = counterSnap.exists() ? (counterSnap.data().lastNumber || 0) : 0;
+              const lastNumber = counterSnap.exists() ? (counterSnap.data().lastNumber || 0) : 0;
               const newNumber = lastNumber + 1;
               const finalRequestNumber = `SOL-${String(newNumber).padStart(4, '0')}`;
               transaction.set(counterRef, { lastNumber: newNumber }, { merge: true });

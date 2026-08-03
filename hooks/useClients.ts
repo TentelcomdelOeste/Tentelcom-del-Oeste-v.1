@@ -12,6 +12,7 @@ import { Client, User } from '../types';
 import { setVersionedDocOffline, updateVersionedDocOffline } from '../core/versionControl';
 import { generateNextClientCode, getNextClientCodePreview } from '../services/clientCodeService';
 import { useUserContext } from '../contexts/UserContext';
+import { globalSearchEngine, clientSearchPlugin } from '../core/search';
 
 export const useClients = (currentUser: User | null) => {
   const { authReady } = useUserContext();
@@ -61,6 +62,30 @@ export const useClients = (currentUser: User | null) => {
         setHasMore(docs.length === currentLimit);
         setLoadingMore(false);
         setIsLoading(false);
+
+        // Feed Global Search Engine Incrementally
+        try {
+          snapshot.docChanges().forEach(change => {
+            const data = change.doc.data() as any;
+            const client: Client = {
+                  ...data,
+                  id: change.doc.id,
+                  empresa: String(data.empresa || "Sin Empresa"),
+                  contacto: String(data.contacto || "Sin contacto"),
+                  codigoCliente: String(data.codigoCliente || ""),
+                  isActive: data.isActive ?? true
+            };
+            
+            if (change.type === 'removed' || client.isActive === false) {
+               globalSearchEngine.removeDocument(`client_${client.id}`);
+            } else {
+               globalSearchEngine.upsertDocument(clientSearchPlugin.mapToSearchableItem(client));
+            }
+          });
+        } catch (searchError) {
+          console.warn("[GlobalSearchEngine] Error alimentando índice:", searchError);
+        }
+
       } catch (innerError) {
         console.warn("Error procesando clientes de Firestore:", innerError);
         setIsLoading(false);

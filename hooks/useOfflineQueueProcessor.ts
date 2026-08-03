@@ -6,7 +6,7 @@ import {
   OfflineAction
 } from './useOfflineQueue'
 import {
-  doc, updateDoc, addDoc, setDoc, getDoc,
+  doc, updateDoc, addDoc, setDoc,
   collection, serverTimestamp, Timestamp
 } from 'firebase/firestore'
 import { db } from '../firebase'

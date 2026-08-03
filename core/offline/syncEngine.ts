@@ -2,7 +2,7 @@ import { networkProbe } from './networkProbe';
 import { offlineQueueEngine, PendingMutation } from './offlineQueueEngine';
 import { localDocStore } from './localDocStore';
 import { db } from '../../firebase';
-import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { localDB } from './localDB';
 import { runPdfSyncCycle } from '../pdf/pdfStorageSync';
 

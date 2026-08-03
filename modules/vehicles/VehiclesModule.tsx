@@ -11,11 +11,12 @@ interface VehiclesModuleProps {
     activeView: 'registros' | 'analisis' | 'analisis_detalle' | 'analisis_costos';
     selectedId?: string;
     onSetActiveModule?: (module: string | any) => void;
+    onClearSelectedId?: () => void;
 }
 
 // Module Logic
 
-export const VehiclesModule: React.FC<VehiclesModuleProps> = ({ currentUser, activeView, selectedId, onSetActiveModule }) => {
+export const VehiclesModule: React.FC<VehiclesModuleProps> = ({ currentUser, activeView, selectedId, onSetActiveModule, onClearSelectedId }) => {
     if (!currentUser) {
         return <div className="p-4 text-slate-400 font-bold uppercase tracking-widest text-[10px]">Error: Sesión no válida</div>;
     }
@@ -23,7 +24,7 @@ export const VehiclesModule: React.FC<VehiclesModuleProps> = ({ currentUser, act
     try {
         return (
             <ErrorBoundary>
-                {activeView === 'registros' && <VehicleLogs currentUser={currentUser} selectedId={selectedId} onSetActiveModule={onSetActiveModule} />}
+                {activeView === 'registros' && <VehicleLogs currentUser={currentUser} selectedId={selectedId} onSetActiveModule={onSetActiveModule} onClearSelectedId={onClearSelectedId} />}
                 {activeView === 'analisis' && <VehicleAnalysis currentUser={currentUser} onSetActiveModule={onSetActiveModule} />}
                 {activeView === 'analisis_detalle' && selectedId && (
                     <VehicleAnalysisDetail currentUser={currentUser} unidadId={selectedId} onSetActiveModule={onSetActiveModule} />

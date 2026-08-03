@@ -16,13 +16,13 @@ export function useAuditPermanence(params: {
   const { module, submodule, recordId, recordCode, enabled = true } = params;
 
   useEffect(() => {
-    if (!enabled || !currentUser) return;
+    if (!enabled || !currentUser?.uid) return;
 
     entryTimeRef.current = Date.now();
 
     // Log the actual view action immediately (view_record)
     auditService.logEvent({
-      userId: currentUser.id,
+      userId: currentUser.id || currentUser.uid,
       userName: currentUser.name,
       email: currentUser.email,
       role: currentUser.role,
@@ -38,7 +38,7 @@ export function useAuditPermanence(params: {
       const durationSeconds = Math.floor((Date.now() - entryTimeRef.current) / 1000);
       
       auditService.logEvent({
-        userId: currentUser.id,
+        userId: currentUser.id || currentUser.uid,
         userName: currentUser.name,
         email: currentUser.email,
         role: currentUser.role,
@@ -51,5 +51,5 @@ export function useAuditPermanence(params: {
         recordCode
       });
     };
-  }, [enabled, currentUser, module, submodule, recordId, recordCode, location.pathname]);
+  }, [enabled, currentUser?.uid, currentUser?.name, currentUser?.email, currentUser?.role, module, submodule, recordId, recordCode, location.pathname]);
 }

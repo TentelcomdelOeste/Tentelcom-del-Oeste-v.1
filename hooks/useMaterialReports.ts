@@ -42,7 +42,7 @@ export const useMaterialReports = (currentUser: User | null) => {
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    if (!authReady || !currentUser) {
+    if (!authReady || !currentUser?.uid) {
       setLoading(false);
       return;
     }
@@ -57,7 +57,7 @@ export const useMaterialReports = (currentUser: User | null) => {
       listener(cachedReports, globalLoading);
     }
 
-    if (!currentUser) return;
+    if (!currentUser?.uid) return;
     
     const q = query(collection(db, 'material_reports_log'), orderBy('createdAt', 'desc'));
     const unsubscribeFirestore = onSnapshot(q, (snapshot) => {
@@ -90,7 +90,7 @@ export const useMaterialReports = (currentUser: User | null) => {
         unsubscribeRef.current = null;
       }
     };
-  }, [currentUser, authReady]);
+  }, [currentUser?.uid, authReady]);
 
   const saveReport = useCallback(async (report: Omit<MaterialReport, 'createdAt' | 'user'>, id?: string) => {
     if (!currentUser) throw new Error('No user authenticated');

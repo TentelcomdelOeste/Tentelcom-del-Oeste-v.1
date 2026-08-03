@@ -27,7 +27,7 @@ export const useFixedExpenses = (currentUser: User | null) => {
 
   // Cargar gastos fijos
   useEffect(() => {
-    if (!authReady || !currentUser) {
+    if (!authReady || !currentUser?.uid) {
       setIsLoading(false);
       return;
     }
@@ -51,7 +51,7 @@ export const useFixedExpenses = (currentUser: User | null) => {
     });
 
     return () => unsubscribe();
-  }, [currentUser, authReady]);
+  }, [currentUser?.uid, authReady]);
 
   // Agregar gasto fijo
   const addFixedExpense = useCallback(async (expenseData: Omit<FixedExpense, 'id' | 'createdAt' | 'createdBy'>) => {

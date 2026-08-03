@@ -1,7 +1,7 @@
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db, storage } from '../../firebase';
-import { pdfOfflineQueue, PdfQueueEntry } from './pdfOfflineQueue';
+import { pdfOfflineQueue } from './pdfOfflineQueue';
 import { pdfFileEngine } from './pdfFileEngine';
 import { networkProbe } from '../offline/networkProbe';
 import { getBlob } from '../../services/offlineMediaStore';

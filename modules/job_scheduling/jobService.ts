@@ -3,6 +3,8 @@ import { getAuth } from 'firebase/auth';
 import { collection, doc, query, onSnapshot, Timestamp, runTransaction, getDocs, orderBy, where, getDoc, writeBatch, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { Trabajo, EstadoTrabajo } from "./types";
 import { setVersionedDocOffline, updateVersionedDocOffline } from "../../core/versionControl";
+import { globalSearchEngine, jobSearchPlugin } from '../../core/search';
+
 import { localDocStore } from "../../core/offline/localDocStore";
 import { networkProbe } from "../../core/offline/networkProbe";
 import { SystemEventPayload } from "./types/systemEvents";
@@ -204,6 +206,20 @@ export const getTrabajos = (callback: (trabajos: Trabajo[]) => void) => {
 
   const q = query(collection(db, COLLECTION_NAME));
   return onSnapshot(q, (snapshot) => {
+    
+    try {
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'removed') {
+          globalSearchEngine.removeDocument(`job_${change.doc.id}`);
+        } else {
+          const job = mapDocToTrabajo(change.doc);
+          globalSearchEngine.upsertDocument(jobSearchPlugin.mapToSearchableItem(job));
+        }
+      });
+    } catch (e) {
+       console.warn("[GlobalSearchEngine] Error en jobs:", e);
+    }
+
     const serverTrabajos = snapshot.docs.map(mapDocToTrabajo);
     updateHybridTrabajos(serverTrabajos, callback);
   }, (err) => {

@@ -100,7 +100,7 @@ export const JobForm: React.FC<JobFormProps> = ({
 
   const toISODateString = (date: any) => {
     if (!date) return format(new Date(), 'yyyy-MM-dd');
-    const d = date instanceof Date ? date : (date.toDate ? date.toDate() : new Date(date));
+    const d = date instanceof Date ? date : (date?.toDate ? date.toDate() : new Date(date));
     if (isNaN(d.getTime())) return format(new Date(), 'yyyy-MM-dd');
     // Usar formato local para extraer la fecha nominal y evitar saltos por desfase UTC
     return format(d, 'yyyy-MM-dd');
@@ -130,7 +130,8 @@ export const JobForm: React.FC<JobFormProps> = ({
 
     // Helper para comparar llaves nominales (YYYY-MM-DD local)
     const getNominalKey = (date: any) => {
-      const d = date instanceof Date ? date : (date.toDate ? date.toDate() : new Date(date));
+      if (!date) return '';
+      const d = date instanceof Date ? date : (date?.toDate ? date.toDate() : new Date(date));
       if (!d || isNaN(d.getTime())) return '';
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     };
@@ -336,8 +337,8 @@ export const JobForm: React.FC<JobFormProps> = ({
         bitacorasRelacionadas: trabajo.bitacorasRelacionadas || [],
         bitacoraIds: trabajo.bitacoraIds || []
       });
-      setFechaInicio(format(trabajo.fecha_inicio instanceof Date ? trabajo.fecha_inicio : (trabajo.fecha_inicio as any).toDate?.() || new Date(trabajo.fecha_inicio), 'yyyy-MM-dd'));
-      setFechaFin(format(trabajo.fecha_fin instanceof Date ? trabajo.fecha_fin : (trabajo.fecha_fin as any).toDate?.() || new Date(trabajo.fecha_fin), 'yyyy-MM-dd'));
+      setFechaInicio(format(trabajo.fecha_inicio instanceof Date ? trabajo.fecha_inicio : (trabajo.fecha_inicio as any)?.toDate?.() || new Date(trabajo.fecha_inicio), 'yyyy-MM-dd'));
+      setFechaFin(format(trabajo.fecha_fin instanceof Date ? trabajo.fecha_fin : (trabajo.fecha_fin as any)?.toDate?.() || new Date(trabajo.fecha_fin), 'yyyy-MM-dd'));
     } else if (mode === 'create') {
       setFormData({
         estado: 'programado',
@@ -479,8 +480,8 @@ export const JobForm: React.FC<JobFormProps> = ({
         await createTrabajo(finalData as Omit<Trabajo, "id" | "creado_en" | "actualizado_en">);
       } else if (mode === 'edit' && latestTrabajo) {
         // Detect dates changes
-        const currentFechaInicio = latestTrabajo.fecha_inicio instanceof Date ? latestTrabajo.fecha_inicio : (latestTrabajo.fecha_inicio as any).toDate?.() || new Date(latestTrabajo.fecha_inicio);
-        const currentFechaFin = latestTrabajo.fecha_fin instanceof Date ? latestTrabajo.fecha_fin : (latestTrabajo.fecha_fin as any).toDate?.() || new Date(latestTrabajo.fecha_fin);
+        const currentFechaInicio = latestTrabajo.fecha_inicio instanceof Date ? latestTrabajo.fecha_inicio : (latestTrabajo.fecha_inicio as any)?.toDate?.() || new Date(latestTrabajo.fecha_inicio);
+        const currentFechaFin = latestTrabajo.fecha_fin instanceof Date ? latestTrabajo.fecha_fin : (latestTrabajo.fecha_fin as any)?.toDate?.() || new Date(latestTrabajo.fecha_fin);
         
         const fechasModificadas = 
           finalData.fecha_inicio.getTime() !== currentFechaInicio.getTime() ||

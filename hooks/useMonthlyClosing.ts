@@ -9,7 +9,7 @@ export const useMonthlyClosing = (currentUser: User | null) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser?.uid) {
       setIsLoading(false);
       return;
     }
@@ -29,7 +29,7 @@ export const useMonthlyClosing = (currentUser: User | null) => {
     );
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser?.uid]);
 
   /**
    * Ejecuta el cierre de un mes específico.

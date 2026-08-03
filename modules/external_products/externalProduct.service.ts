@@ -1,6 +1,5 @@
-import { db, storage } from '../../firebase';
+import { db } from '../../firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { ref } from 'firebase/storage';
 import { ExternalProduct, ExternalProductStatus } from './types';
 import { cachedQuery, invalidateCache } from '../../utils/queryCache';
 import { safeUpdate } from '../../core/writeService';

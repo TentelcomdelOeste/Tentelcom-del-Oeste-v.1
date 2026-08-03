@@ -18,7 +18,7 @@ export const usePreAnalysis = (currentUser: User | null) => {
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    if (!authReady || !currentUser) {
+    if (!authReady || !currentUser?.uid) {
       setIsLoading(false);
       return;
     }
@@ -33,7 +33,7 @@ export const usePreAnalysis = (currentUser: User | null) => {
     });
 
     return () => unsubscribe();
-  }, [currentUser, currentLimit, authReady]);
+  }, [currentUser?.uid, currentLimit, authReady]);
 
   const loadMore = useCallback(() => {
     if (!hasMore || loadingMore) return;

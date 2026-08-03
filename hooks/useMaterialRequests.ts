@@ -21,7 +21,7 @@ export const useMaterialRequests = (currentUser: User | null) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const canView = authReady && currentUser && (
+    const canView = authReady && currentUser?.uid && (
       currentUser.role === 'admin' || 
       hasPermission(currentUser, 'inventario', 'solicitudes')
     );
@@ -39,8 +39,8 @@ export const useMaterialRequests = (currentUser: User | null) => {
 
     // 2) Sync with Firestore
     const materialRequestsCollectionName = "material_reports";
-    const canViewAll = currentUser.role === 'admin' || 
-                       currentUser.role === 'supervisor' || 
+    const canViewAll = currentUser?.role === 'admin' || 
+                       currentUser?.role === 'supervisor' || 
                        hasPermission(currentUser, 'inventario', 'solicitudes');
     
     const baseRef = collection(db, materialRequestsCollectionName);
@@ -50,7 +50,7 @@ export const useMaterialRequests = (currentUser: User | null) => {
     } else if (canViewAll) {
         q = query(baseRef, orderBy("createdAt", "desc"), limit(currentLimit));
     } else {
-        q = query(baseRef, where("requestedBy", "==", currentUser.id), orderBy("createdAt", "desc"), limit(currentLimit));
+        q = query(baseRef, where("requestedBy", "==", currentUser?.uid || currentUser?.id), orderBy("createdAt", "desc"), limit(currentLimit));
     }
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -90,7 +90,7 @@ export const useMaterialRequests = (currentUser: User | null) => {
     });
 
     return () => unsubscribe();
-  }, [currentUser, currentLimit, authReady]);
+  }, [currentUser?.uid, currentUser?.role, currentLimit, authReady]);
 
   const loadMore = useCallback(() => {
      if (!hasMore || loadingMore) return;

@@ -1,5 +1,5 @@
 
-import { getFirestore, query, where } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import fs from 'fs';
 import { initializeApp } from 'firebase/app';
 

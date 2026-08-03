@@ -177,10 +177,6 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
         if (!isMounted) return;
 
-        console.log('[AUTH TEST] onAuthStateChanged ejecutado');
-        console.log('[AUTH TEST] user recibido:', firebaseUser);
-        console.log('[AUTH TEST] auth.currentUser:', auth.currentUser);
-
         // Resetear ambos flags al inicio de cada ciclo de auth
         setAuthReady(false);
         authReadyRef.current = false;
@@ -377,22 +373,24 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     return () => unsubscribeProfile();
   }, [currentUser?.id, firebaseAuthUser?.uid]);
 
-  const contextValue = useMemo(() => ({
-    currentUser,
-    isLoggedIn,
-    isAuthLoading,
-    isAuthResolving,
-    loginError,
-    showForcePasswordChangeModal,
-    userPermisos,
-    login,
-    logout,
-    updatePasswordSecurely,
-    setLoginError,
-    authReady,
-    isAuthResolved: authReady,
-    sessionHydrated: authReady
-  }), [
+  const contextValue = useMemo(() => {
+    return ({
+      currentUser,
+      isLoggedIn,
+      isAuthLoading,
+      isAuthResolving,
+      loginError,
+      showForcePasswordChangeModal,
+      userPermisos,
+      login,
+      logout,
+      updatePasswordSecurely,
+      setLoginError,
+      authReady,
+      isAuthResolved: authReady,
+      sessionHydrated: authReady
+    });
+  }, [
     currentUser,
     isLoggedIn,
     isAuthLoading,

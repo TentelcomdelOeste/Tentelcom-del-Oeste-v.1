@@ -136,12 +136,17 @@ export const QuotesModule: React.FC<QuotesModuleProps> = ({ currentUser, selecte
   }, []);
 
   // --- AUTO-OPEN AND HIGHLIGHT FROM SEARCH ---
+  const autoOpenedIdRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
     const safeQuotes = Array.isArray(quotes) ? quotes : [];
     if (selectedId && safeQuotes.length > 0) {
-      const target = safeQuotes.find(q => q.docId === selectedId || q.id.toString() === selectedId);
-      if (target) {
-        handleEdit(target);
+      if (autoOpenedIdRef.current !== selectedId) {
+        const target = safeQuotes.find(q => q.docId === selectedId || q.id?.toString() === selectedId);
+        if (target) {
+          autoOpenedIdRef.current = selectedId;
+          handleEdit(target);
+        }
       }
     }
   }, [selectedId, quotes, handleEdit]);
@@ -476,7 +481,7 @@ export const QuotesModule: React.FC<QuotesModuleProps> = ({ currentUser, selecte
         
         <QuoteModal 
             show={showModal} 
-            onClose={() => { setShowModal(false); setEditingQuote(null); }} 
+            onClose={() => { setShowModal(false); setEditingQuote(null); onClearSelectedId?.(); }} 
             onSave={handleSave} 
             quote={editingQuote} 
             currentUser={currentUser} 

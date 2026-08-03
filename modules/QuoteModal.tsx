@@ -9,7 +9,7 @@ import { triggerFileDownload } from '../utils/fileUtils';
 import useLockBodyScroll from '../hooks/useLockBodyScroll';
 import { useConfirm, ActionButton, IconButton, StatusBadge, ConfirmModal, ConflictModal, DataTable, TableColumn } from '../design-system';
 import { FiCheck, FiTrash2, FiAlertTriangle, FiFileText, FiSearch, FiX, FiBookOpen, FiPlus, FiAlertCircle, FiCheckCircle, FiInfo } from "react-icons/fi";
-import { getNextQuoteIdPreview, guardarCotizacionSeguro } from '../services/quoteService';
+import { guardarCotizacionSeguro } from '../services/quoteService';
 import { useOfflineMutation } from '../hooks/useOfflineMutation';
 
 import { useAuditPermanence } from '../hooks/useAuditPermanence';

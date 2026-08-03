@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy, useContext } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy, useContext } from 'react';
 import { UserContext } from './contexts/UserContextInstance';
 import PublicWebsite from './PublicWebsite';
 import { LOGO_BASE64, LOGO14_BASE64 } from './utils/logoBase64';
@@ -451,23 +451,20 @@ function App() {
   }, [authReady, currentUser]);
 
   useEffect(() => {
-    if (isLoggedIn && currentUser) {
+    if (isLoggedIn && currentUser?.uid) {
       let handle: number;
       if ('requestIdleCallback' in window) {
         handle = (window as any).requestIdleCallback(() => {
-          // If permission is already granted, subscribe silently.
-          // Otherwise, we could request it, but we respect the "when granted" logic.
           if (Notification.permission === 'granted') {
-            subscribeUserToPush(currentUser.id);
+            subscribeUserToPush(currentUser.uid);
           } else if (Notification.permission === 'default') {
-            // Only request if the user is active (we use requestIdleCallback for this)
             requestNotificationPermission();
           }
         }, { timeout: 5000 });
       } else {
         handle = window.setTimeout(() => {
           if (Notification.permission === 'granted') {
-            subscribeUserToPush(currentUser.id);
+            subscribeUserToPush(currentUser.uid);
           } else {
             requestNotificationPermission();
           }
@@ -483,7 +480,7 @@ function App() {
         if (typeof unsubscribe === "function") unsubscribe();
       };
     }
-  }, [isLoggedIn, currentUser]);
+  }, [isLoggedIn, currentUser?.uid]);
 
   useEffect(() => {
     if (!isLoggedIn || !currentUser) return;
@@ -538,7 +535,7 @@ function App() {
   const entryTimeRef = React.useRef<number>(Date.now());
 
   useEffect(() => {
-    if (!currentUser || !isLoggedIn) {
+    if (!currentUser?.uid || !isLoggedIn) {
       lastModuleRef.current = null;
       return;
     }
@@ -579,7 +576,7 @@ function App() {
       lastModuleRef.current = currentModule;
       entryTimeRef.current = Date.now();
     }
-  }, [activeModule.module, currentUser, isLoggedIn, location.pathname]);
+  }, [activeModule.module, currentUser?.uid, isLoggedIn, location.pathname]);
 
   useEffect(() => {
     const handleUnload = () => {
@@ -629,6 +626,8 @@ function App() {
     }
   }, [activeModule.module]);
 
+  const isClearingSelectedIdRef = React.useRef(false);
+
   useEffect(() => {
     const path = location.pathname;
     let moduleFromPath = PATH_TO_MODULE[path];
@@ -648,6 +647,14 @@ function App() {
       moduleFromPath = 'operational_log';
       const parts = path.split('/').filter(Boolean);
       routeSelectedId = parts.length > 1 ? parts[1] : undefined;
+    }
+
+    if (isClearingSelectedIdRef.current) {
+      if (!location.state?.selectedId && !path.startsWith('/analisis-flota/unidad/') && !path.startsWith('/bitacora/')) {
+        isClearingSelectedIdRef.current = false;
+      } else {
+        routeSelectedId = undefined;
+      }
     }
 
     trackEvent('page_visit', { path: path, module: moduleFromPath || 'unknown' });
@@ -678,6 +685,7 @@ function App() {
     otCode?: string;
     state?: any;
   }) => {
+    isClearingSelectedIdRef.current = false;
     const moduleObj = typeof moduleData === 'string' ? { module: moduleData } : moduleData;
     let path = MODULE_PATHS[moduleObj.module] || `/${moduleObj.module.replace(/_/g, '-')}`;
 
@@ -704,15 +712,24 @@ function App() {
     });
   };
 
-  const clearSelectedId = () => {
+  const clearSelectedId = useCallback(() => {
+    isClearingSelectedIdRef.current = true;
     setActiveModuleState(prev => ({
       ...prev,
       selectedId: undefined,
       selectedKey: undefined,
       jobId: undefined,
-      otCode: undefined
+      otCode: undefined,
+      state: undefined
     }));
-  };
+    let targetPath = location.pathname;
+    if (targetPath.startsWith('/analisis-flota/unidad/')) {
+      targetPath = '/analisis-flota';
+    } else if (targetPath.startsWith('/bitacora/')) {
+      targetPath = '/bitacora';
+    }
+    navigate(targetPath, { replace: true, state: {} });
+  }, [location.pathname, navigate]);
 
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1019,7 +1036,7 @@ function App() {
 
                 {activeModule.module === 'job_scheduling' && (
                   checkAccess('job_scheduling')
-                    ? <JobSchedulingModule onSetActiveModule={setActiveModule} currentUser={currentUser} />
+                    ? <JobSchedulingModule onSetActiveModule={setActiveModule} currentUser={currentUser} selectedId={activeModule.selectedId} selectedKey={activeModule.selectedKey} onClearSelectedId={clearSelectedId} />
                     : <div className="flex h-full items-center justify-center"><p className="text-slate-400 font-bold">Acceso Restringido</p></div>
                 )}
 
@@ -1043,7 +1060,7 @@ function App() {
 
                 {activeModule.module === 'vehicles_logs' && (
                   checkAccess('vehicles_logs')
-                    ? <VehiclesModule currentUser={currentUser!} activeView="registros" selectedId={activeModule.selectedId} onSetActiveModule={setActiveModule} />
+                    ? <VehiclesModule currentUser={currentUser!} activeView="registros" selectedId={activeModule.selectedId} onSetActiveModule={setActiveModule} onClearSelectedId={clearSelectedId} />
                     : <div className="flex h-full items-center justify-center"><p className="text-slate-400 font-bold">Acceso Restringido</p></div>
                 )}
 

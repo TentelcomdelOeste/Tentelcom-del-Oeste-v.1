@@ -146,6 +146,9 @@ interface JobSchedulingModuleProps {
     state?: any;
   }) => void;
   currentUser?: any;
+  selectedId?: string;
+  selectedKey?: string;
+  onClearSelectedId?: () => void;
 }
 
 const STATUS_COLORS: Record<string, { bg: string, text: string, border: string }> = {
@@ -156,11 +159,38 @@ const STATUS_COLORS: Record<string, { bg: string, text: string, border: string }
   'reprogramado': { bg: '#fef3c7', text: '#b45309', border: '#fde68a' } // amber-100, amber-700, amber-200
 };
 
-export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({ onSetActiveModule, currentUser }) => {
+export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
+  onSetActiveModule,
+  currentUser,
+  selectedId,
+  selectedKey: _selectedKey,
+  onClearSelectedId
+}) => {
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
   const [jobTypes, setJobTypes] = useState<JobType[]>([]);
   const [vehicleLogs, setVehicleLogs] = useState<VehicleLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const autoOpenedIdRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (selectedId && trabajos.length > 0) {
+      if (autoOpenedIdRef.current !== selectedId) {
+        const target = trabajos.find(t => 
+          t.id === selectedId || 
+          t.id?.toString() === selectedId || 
+          (t as any).otCode === selectedId || 
+          (t as any).ot_code === selectedId
+        );
+        if (target) {
+          autoOpenedIdRef.current = selectedId;
+          setSelectedTrabajo(target);
+          setFormMode('edit');
+          setIsModalOpen(true);
+        }
+      }
+    }
+  }, [selectedId, trabajos]);
   
   const [activeTimelineJobId, setActiveTimelineJobId] = useState<string | null>(null);
   useEffect(() => {
@@ -377,7 +407,8 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({ onSetA
   const events = useMemo(() => {
     // Helper para normalización nominal local
     const getNominalDay = (date: any): Date => {
-      const d = date instanceof Date ? date : (date.toDate ? date.toDate() : new Date(date));
+      if (!date) return new Date();
+      const d = date instanceof Date ? date : (date?.toDate ? date.toDate() : new Date(date));
       if (isNaN(d.getTime())) return new Date();
       return new Date(d.getFullYear(), d.getMonth(), d.getDate());
     };
@@ -1213,7 +1244,12 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({ onSetA
 
       <Modal 
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedTrabajo(null);
+          setContinuarJob(null);
+          onClearSelectedId?.();
+        }}
         title={selectedTrabajo ? 'Editar Trabajo' : 'Nuevo Trabajo'}
         maxWidth="max-w-2xl"
         desktopMaxWidth="max-w-5xl"
@@ -1224,7 +1260,9 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({ onSetA
           mode={formMode}
           onClose={() => {
             setIsModalOpen(false);
+            setSelectedTrabajo(null);
             setContinuarJob(null);
+            onClearSelectedId?.();
           }}
           defaultStart={defaultStart}
           defaultEnd={defaultEnd}

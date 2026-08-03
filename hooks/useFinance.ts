@@ -22,7 +22,7 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
   const confirm = useConfirm();
 
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser?.uid) {
       setIsLoading(false);
       return;
     }
@@ -46,8 +46,8 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
 
     let unsubAbsences = () => {};
     // PERMISO AUSENCIAS: Admin, Supervisor o Permiso 'ausencias'
-    const canViewAllAbsences = isAdmin(currentUser.role) || 
-                               currentUser.role === 'supervisor' || 
+    const canViewAllAbsences = isAdmin(currentUser?.role) || 
+                               currentUser?.role === 'supervisor' || 
                                hasPermission(currentUser, 'finanzas', 'ausencias');
 
     if (canViewAllAbsences) {
@@ -60,8 +60,8 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
     // 3. Suscripción a Colillas (Vía Repositorio)
     const effectiveFilters = filters || { year: new Date().getFullYear().toString() };
     const unsubStubs = financeRepository.subscribeToPayStubs(
-      currentUser.email || '',
-      currentUser.role,
+      currentUser?.email || '',
+      currentUser?.role || 'user',
       effectiveFilters,
       (stubs) => {
         // Mantener lógica de ordenamiento en el cliente
@@ -82,7 +82,7 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
     );
 
     let unsubAdjustments = () => {};
-    if (isAdmin(currentUser.role) || currentUser.role === 'supervisor' || hasPermission(currentUser, 'finanzas', 'comprobantes')) {
+    if (isAdmin(currentUser?.role) || currentUser?.role === 'supervisor' || hasPermission(currentUser, 'finanzas', 'comprobantes')) {
       unsubAdjustments = financeRepository.subscribeToAutomaticAdjustments(
         (adjs) => {
           updateState(prev => ({ ...prev, automaticAdjustments: adjs }));
@@ -101,7 +101,7 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
       unsubStubs();
       unsubAdjustments();
     };
-  }, [currentUser, JSON.stringify(filters)]);
+  }, [currentUser?.uid, currentUser?.role, currentUser?.email, JSON.stringify(filters)]);
 
   const addOrUpdateEmployee = useCallback(async (employeeData: Partial<Omit<Employee, 'id'>>, id?: string): Promise<{ success: boolean; message?: string; }> => {
     try {

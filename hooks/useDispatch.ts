@@ -28,17 +28,10 @@ export const useDispatch = (currentUser: User | null) => {
 
   // 1. Escuchar Solicitudes Aprobadas (Listas para despacho)
   useEffect(() => {
-    console.log('[DIAG useDispatch] useEffect ejecutado.',
-        'authReady:', authReady,
-        'currentUser?.uid:', currentUser?.uid,
-        'timestamp:', Date.now());
-
-    if (!authReady || !currentUser) {
-      console.log('[DIAG useDispatch] Guard bloqueó.');
+    if (!authReady || !currentUser?.uid) {
       setIsLoading(false);
       return;
     }
-    console.log('[DIAG useDispatch] Guard pasó. Creando listener...');
 
     setIsLoading(true);
     // Filtramos solo las que están listas para despachar
@@ -67,7 +60,7 @@ export const useDispatch = (currentUser: User | null) => {
     });
 
     return () => unsubscribe();
-  }, [currentUser, authReady]);
+  }, [currentUser?.uid, authReady]);
 
   // 2. Transacción de Despacho (CORE LOGIC)
   const processDispatch = useCallback(async (
