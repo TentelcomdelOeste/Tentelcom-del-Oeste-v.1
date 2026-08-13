@@ -9,7 +9,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { useLocalCollection } from '../../hooks/useLocalCollection';
 import { localDocStore } from '../../core/offline/localDocStore';
-import { FiArrowLeft, FiCreditCard, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiArrowLeft, FiCreditCard } from 'react-icons/fi';
+import { ActionButtons } from '../../components/ui/ActionButtons';
 import { FuelDetailModal } from './components/FuelDetailModal';
 import { EventSummaryModal } from './components/EventSummaryModal';
 import { VehicleEventModal } from './components/VehicleEventModal';
@@ -19,7 +20,7 @@ import { FuelConsumptionPopover } from './components/FuelConsumptionPopover';
 import { EfficiencyPopover } from './components/EfficiencyPopover';
 import { getVehicleExpenses, deleteVehicleExpense } from './vehicleService';
 import { AnalysisPopoverProvider } from './components/AnalysisPopoverContext';
-import { ActionButton, IconButton, useConfirm } from '../../design-system';
+import { ActionButton, useConfirm } from '../../design-system';
 
 interface VehicleAnalysisDetailProps {
     currentUser: User;
@@ -602,23 +603,13 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-xs font-black text-slate-700">₡{exp.monto.toLocaleString()}</span>
-                                                                    <div className="flex gap-1 opacity-0 group-hover/exp:opacity-100 transition-opacity">
-                                                                        <IconButton
-                                                                            icon={<FiEdit2 />}
-                                                                            onClick={() => {
+                                                                    <div className="opacity-0 group-hover/exp:opacity-100 transition-opacity">
+                                                                        <ActionButtons
+                                                                            onEdit={() => {
                                                                                 setEditingExpense(exp);
                                                                                 setShowExpenseModal(true);
                                                                             }}
-                                                                            variant="ghost"
-                                                                            size="xs"
-                                                                            className="!p-1 text-blue-500"
-                                                                        />
-                                                                        <IconButton
-                                                                            icon={<FiTrash2 />}
-                                                                            onClick={() => handleDeleteExpense(exp)}
-                                                                            variant="ghost"
-                                                                            size="xs"
-                                                                            className="!p-1 text-rose-500"
+                                                                            onDelete={() => handleDeleteExpense(exp)}
                                                                         />
                                                                     </div>
                                                                 </div>

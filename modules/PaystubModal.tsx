@@ -75,7 +75,7 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
 
   const computedOrdinarySalary = Math.round(valHoraOrg * currentOrdinaryHours * 100) / 100;
   const computedExtraSalary = Math.round(valHoraExt * currentExtraHoursCount * 100) / 100;
-  const computedHolidaySalary = Math.round(valHoraOrg * currentHolidayHoursCount * 100) / 100;
+  const computedHolidaySalary = Math.round(valHoraOrg * currentHolidayHoursCount * 2 * 100) / 100;
 
   const employeeOptions = useMemo(() => {
     return employees

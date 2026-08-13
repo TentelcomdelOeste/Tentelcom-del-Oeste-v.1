@@ -32,6 +32,18 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         recordCode: initialData?.unidad,
         enabled: show
     });
+
+    // Lock body scroll when modal is open
+    useEffect(() => {
+        if (show) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [show]);
     const confirm = useConfirm();
     const isEditing = !!initialData;
     const [isLoading, setIsLoading] = useState(false);
@@ -431,11 +443,11 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         try {
             const result = await saveVehicleLog(dataToSave, currentUser, isEditing, initialData, trabajoId);
             onClose(result);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error saving vehicle log:", err);
             await confirm({
-                title: 'Error',
-                description: 'Error al guardar el registro.',
+                title: 'Error al Guardar',
+                description: err?.message || 'Ocurrió un problema inesperado al intentar guardar el registro. Por favor intente de nuevo.',
                 confirmLabel: 'ACEPTAR',
                 variant: 'danger'
             });
@@ -448,17 +460,17 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     return createPortal(
         <div 
-            className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm z-[200] flex justify-center items-start md:items-center p-4 md:p-6 overflow-y-auto custom-scrollbar overscroll-contain"
+            className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm z-[200] flex justify-center items-center p-3 sm:p-4 md:p-6 overflow-hidden"
             style={{ 
                 WebkitOverflowScrolling: 'touch',
-                paddingTop: 'max(1rem, env(safe-area-inset-top))',
-                paddingBottom: 'max(1rem, env(safe-area-inset-bottom))'
+                paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+                paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))'
             }}
         >
-            <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-3xl my-auto animate-in zoom-in-95 relative flex flex-col min-h-min mb-auto md:mb-0">
-                <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-white rounded-t-[32px] flex-none">
+            <div className="bg-white rounded-[24px] sm:rounded-[32px] shadow-2xl w-full max-w-3xl flex flex-col max-h-[90vh] md:max-h-[85vh] overflow-hidden animate-in zoom-in-95 my-auto relative">
+                <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-100 bg-white rounded-t-[24px] sm:rounded-t-[32px] flex-none">
                     <div>
-                        <h2 className="text-xl font-black text-blue-950 uppercase tracking-tight">
+                        <h2 className="text-lg sm:text-xl font-black text-blue-950 uppercase tracking-tight">
                             {isEditing ? 'Editar Registro de Bitácora' : 'Nuevo Registro de Bitácora'}
                         </h2>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Control de Flota Vehicular</p>
@@ -470,7 +482,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     />
                 </div>
 
-                <form onSubmit={handleSubmit} id="vehicle-log-form" className="p-6 flex-1 space-y-6">
+                <form onSubmit={handleSubmit} id="vehicle-log-form" className="p-4 sm:p-6 flex-1 overflow-y-auto custom-scrollbar space-y-6 min-h-0">
                     {/* INFORMACIÓN GENERAL */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                         <h3 className="text-xs font-black text-blue-800 uppercase mb-3">Información General</h3>
@@ -828,7 +840,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                 </form>
 
                 {/* ACCIONES (FOOTER) */}
-                <div className="flex gap-3 p-6 border-t border-slate-100 bg-slate-50 rounded-b-[32px] flex-none">
+                <div className="flex gap-3 p-4 sm:p-6 border-t border-slate-100 bg-slate-50 rounded-b-[24px] sm:rounded-b-[32px] flex-none">
                     <ActionButton
                         type="button"
                         variant="secondary"

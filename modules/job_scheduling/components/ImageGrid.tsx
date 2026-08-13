@@ -107,23 +107,86 @@ export const ImageGridComponent = ({
   }, [allProjectImageUrls, commentImagesUrls, item.id, item, setFullscreenImage]);
 
   const touchStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const longPressTimerRef = React.useRef<any>(null);
+  const isLongPressRef = React.useRef<boolean>(false);
+  const lastTouchTimeRef = React.useRef<number>(0);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+  const handleImageTouchStart = useCallback((e: React.TouchEvent, url: string, originalIdx: number) => {
+    e.stopPropagation();
     const touch = e.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    isLongPressRef.current = false;
+
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(55); } catch (err) { console.error(err); }
+      }
+      setReplyMediaTarget({ url, comment: item, index: originalIdx });
+      setActiveMenuComment(item);
+    }, 600);
+  }, [item, setReplyMediaTarget, setActiveMenuComment]);
+
+  const handleImageTouchMove = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
+    if (!touchStartRef.current) return;
+    const touch = e.touches[0];
+    const diffX = Math.abs(touch.clientX - touchStartRef.current.x);
+    const diffY = Math.abs(touch.clientY - touchStartRef.current.y);
+    if (diffX > 10 || diffY > 10) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }
   }, []);
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent, url: string) => {
+  const handleImageTouchEnd = useCallback((e: React.TouchEvent, url: string) => {
+    e.stopPropagation();
+    lastTouchTimeRef.current = Date.now();
+
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+
+    if (isLongPressRef.current) {
+      isLongPressRef.current = false;
+      touchStartRef.current = null;
+      return;
+    }
+
     if (!touchStartRef.current) return;
     const touch = e.changedTouches[0];
     const diffX = Math.abs(touch.clientX - touchStartRef.current.x);
     const diffY = Math.abs(touch.clientY - touchStartRef.current.y);
-    // Touch-tap detection: if pixel movement is less than 8px, it's an intentional click
+
     if (diffX < 8 && diffY < 8) {
-      e.stopPropagation();
       handleImageClick(url);
     }
     touchStartRef.current = null;
+  }, [handleImageClick]);
+
+  const handleImageTouchCancel = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    isLongPressRef.current = false;
+    touchStartRef.current = null;
+  }, []);
+
+  const handleImageClickWrapper = useCallback((e: React.MouseEvent, url: string) => {
+    e.stopPropagation();
+    if (Date.now() - lastTouchTimeRef.current < 500) {
+      return;
+    }
+    handleImageClick(url);
   }, [handleImageClick]);
 
   const [localLoaded, setLocalLoaded] = React.useState<Record<string, boolean>>({});
@@ -160,7 +223,12 @@ export const ImageGridComponent = ({
   }, []);
 
   return (
-    <div className="flex flex-col gap-1.5 w-full p-1">
+    <div
+      className="flex flex-col gap-1.5 w-full p-1"
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+    >
       {totalImagesCount > 0 && (
         <div
           className={`grid gap-1 ${gridColsClass} ${containerHeightClass} w-full rounded-xl overflow-hidden relative group max-w-sm sm:max-w-md`}
@@ -179,11 +247,15 @@ export const ImageGridComponent = ({
               <div
                 key={url}
                 className="relative overflow-hidden bg-slate-100 w-full h-full cursor-pointer group-hover:brightness-95 hover:!brightness-100 transition-all duration-300"
-                onClick={() => handleImageClick(url)}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={(e) => handleTouchEnd(e, url)}
+                onClick={(e) => handleImageClickWrapper(e, url)}
+                onDoubleClick={(e) => e.stopPropagation()}
+                onTouchStart={(e) => handleImageTouchStart(e, url, originalIdx)}
+                onTouchMove={handleImageTouchMove}
+                onTouchEnd={(e) => handleImageTouchEnd(e, url)}
+                onTouchCancel={handleImageTouchCancel}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   setReplyMediaTarget({ url, comment: item, index: originalIdx });
                   setActiveMenuComment(item);
                 }}

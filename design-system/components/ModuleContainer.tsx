@@ -14,7 +14,6 @@ export const ModuleContainer: React.FC<ModuleContainerProps> = ({ children }) =>
     <div className={`
       w-full 
       bg-white
-      overflow-hidden
       rounded-xl 
       shadow-sm 
       p-4 md:px-4 md:py-8

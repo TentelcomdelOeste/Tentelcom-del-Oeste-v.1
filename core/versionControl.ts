@@ -152,16 +152,17 @@ export const setVersionedDocOffline = async (
 export const updateVersionedDocOffline = async (
   collectionName: string,
   docId: string,
-  data: any
+  data: any,
+  fallbackBaseData?: any
 ) => {
   try {
     const existing = await localDocStore.getLocalDoc(collectionName, docId);
     let nextVersion = 1;
-    let mergedData = { ...data };
-    if (existing && existing.data) {
-      nextVersion = (existing.data.version || 1) + 1;
-      mergedData = { ...existing.data, ...data };
+    const base = existing && existing.data ? existing.data : (fallbackBaseData || {});
+    if (base.version) {
+      nextVersion = (base.version || 1) + 1;
     }
+    const mergedData = { ...base, ...data };
 
     const enrichedData = {
       ...mergedData,
@@ -199,6 +200,60 @@ export const updateVersionedDocOffline = async (
     return enrichedData;
   } catch (error) {
     console.error("Error en updateVersionedDocOffline:", error);
+    throw error;
+  }
+};
+export const addAuditEntryOffline = async (
+  collectionOrPath: string,
+  parentIdOrData: any,
+  historyData?: any
+) => {
+  try {
+    let targetCollection: string;
+    let data: any;
+
+    if (historyData !== undefined) {
+      targetCollection = `${collectionOrPath}/${parentIdOrData}/audit_history`;
+      data = historyData;
+    } else {
+      targetCollection = collectionOrPath;
+      data = parentIdOrData;
+    }
+
+    const historyId = data.id || crypto.randomUUID();
+    const enrichedData = {
+      ...data,
+      id: historyId,
+      createdAt: data.createdAt || new Date().toISOString(),
+      timestamp: data.timestamp || data.eventTimestamp || new Date().toISOString(),
+      version: 1
+    };
+
+    // 1. Guardar de forma inmediata en localDocStore (IndexedDB / SQLite) para disponibilidad offline
+    await localDocStore.saveLocalDoc(targetCollection, historyId, enrichedData, true);
+
+    // 2. Encolar mutación para el motor de sincronización offline
+    await offlineQueueEngine.enqueueMutation(targetCollection, historyId, 'create', enrichedData);
+
+    // 3. Intento de escritura REAL e INMEDIATA en Firestore si hay conexión
+    if (networkProbe.isOnline()) {
+      const { setDoc, doc } = await import('firebase/firestore');
+      const { db } = await import('../firebase');
+      
+      const parts = targetCollection.split('/');
+      if (parts.length % 2 === 1) {
+        await setDoc(doc(db, targetCollection, historyId), enrichedData);
+      } else {
+        const parentPath = parts.slice(0, -1).join('/');
+        const subName = parts[parts.length - 1];
+        await setDoc(doc(db, parentPath, subName, historyId), enrichedData);
+      }
+      console.log(`[VersionControl] Audit entry ${historyId} added in Firestore at ${targetCollection}`);
+    }
+
+    return enrichedData;
+  } catch (error) {
+    console.error("Error en addAuditEntryOffline:", error);
     throw error;
   }
 };

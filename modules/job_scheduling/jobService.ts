@@ -6,7 +6,6 @@ import { setVersionedDocOffline, updateVersionedDocOffline } from "../../core/ve
 import { globalSearchEngine, jobSearchPlugin } from '../../core/search';
 
 import { localDocStore } from "../../core/offline/localDocStore";
-import { networkProbe } from "../../core/offline/networkProbe";
 import { SystemEventPayload } from "./types/systemEvents";
 import { eventBus } from "../core/eventBus";
 import { createSystemEventPayload } from "./utils/systemEventNormalizer";
@@ -84,6 +83,33 @@ export const forkTimeline = async (oldTimelineId: string): Promise<string> => {
   return newTimelineId;
 };
 
+export const recordBitacoraUnlinkedEvent = async (timelineId: string, bitacoraId: string, otCode: string) => {
+  try {
+    const bitacoraSnap = await getDoc(doc(db, "bitacora_vehiculos", bitacoraId));
+    let unidad = "Unidad";
+    if (bitacoraSnap.exists()) {
+        unidad = bitacoraSnap.data().unidad || "Unidad";
+    }
+    
+    await createSystemEvent(timelineId, "bitacora_desvinculada", {
+        otCode,
+        unidad,
+        bitacoraId, // Added for navigation
+        fechaHora: new Intl.DateTimeFormat("es-CR", { 
+            day: "numeric", 
+            month: "short", 
+            year: "numeric",
+            hour: "numeric", 
+            minute: "2-digit"
+        }).format(new Date()).replace(',', ''),
+        descripcion: `La bitácora ${unidad} fue desvinculada del trabajo ${otCode}.\n\nLa sesión operacional continúa de forma independiente.`
+    });
+  } catch (err) {
+    console.error("Error creating bitacora_desvinculada event:", err);
+  }
+};
+
+
 export const migrateTimeline = async (oldTimelineId: string, newTimelineId: string) => {
   if (oldTimelineId === newTimelineId) return;
   
@@ -98,7 +124,7 @@ export const migrateTimeline = async (oldTimelineId: string, newTimelineId: stri
   
   snapshot.docs.forEach(docSnap => {
     const newDocRef = doc(newEventsRef, docSnap.id);
-    batch.set(newDocRef, docSnap.data());
+    batch.set(newDocRef, docSnap.data(), { merge: true }); // Prevent overwriting existing identical events during migration
   });
   
   await batch.commit();
@@ -307,32 +333,6 @@ export const recordBitacoraLinkedEvent = async (resolvedTimelineId: string, bita
   }
 };
 
-export const recordBitacoraUnlinkedEvent = async (timelineId: string, bitacoraId: string, otCode: string) => {
-  try {
-    const bitacoraSnap = await getDoc(doc(db, "bitacora_vehiculos", bitacoraId));
-    let unidad = "Unidad";
-    if (bitacoraSnap.exists()) {
-        unidad = bitacoraSnap.data().unidad || "Unidad";
-    }
-    
-    await createSystemEvent(timelineId, "bitacora_desvinculada", {
-        otCode,
-        unidad,
-        bitacoraId, // Added for navigation
-        fechaHora: new Intl.DateTimeFormat("es-CR", { 
-            day: "numeric", 
-            month: "short", 
-            year: "numeric",
-            hour: "numeric", 
-            minute: "2-digit"
-        }).format(new Date()).replace(',', ''),
-        descripcion: `La bitácora ${unidad} fue desvinculada del trabajo ${otCode}.\n\nLa sesión operacional continúa de forma independiente.`
-    });
-  } catch (err) {
-    console.error("Error creating bitacora_desvinculada event:", err);
-  }
-};
-
 export const generateOTCode = async (parentId?: string) => {
   if (parentId) {
     // 1. LÓGICA PARA SUBTRABAJOS (HIJOS)
@@ -450,11 +450,36 @@ export const createTrabajo = async (trabajo: Omit<Trabajo, "id" | "creado_en" | 
     });
   }
 
+  if (trabajo.bitacorasRelacionadas && trabajo.bitacorasRelacionadas.length > 0) {
+    data.bitacoraIds = trabajo.bitacorasRelacionadas.map((b: any) => b.bitacoraId);
+  }
+
   await setVersionedDocOffline(COLLECTION_NAME, id, {
     ...data,
     creado_en: new Date().toISOString(),
     actualizado_en: new Date().toISOString()
   });
+
+  if (data.bitacoraIds && data.bitacoraIds.length > 0) {
+    data.bitacoraIds.forEach(async (bitacoraId: string) => {
+      try {
+        const bitacoraSnap = await getDoc(doc(db, "bitacora_vehiculos", bitacoraId));
+        if (bitacoraSnap.exists()) {
+           const bitacoraTimelineId = bitacoraSnap.data().timelineId;
+           if (bitacoraTimelineId && bitacoraTimelineId !== id) {
+               await migrateTimeline(bitacoraTimelineId, id);
+           }
+        }
+        await updateDoc(doc(db, "bitacora_vehiculos", bitacoraId), {
+          trabajoId: id,
+          timelineId: id
+        });
+        await recordBitacoraLinkedEvent(id, bitacoraId, data.otCode || '');
+      } catch (e) {
+        console.error("Error linking bitacora on create", e);
+      }
+    });
+  }
 
   // Auditoría (no bloqueante para evitar que el botón quede en "Guardando...")
   setTimeout(() => {
@@ -465,197 +490,161 @@ export const createTrabajo = async (trabajo: Omit<Trabajo, "id" | "creado_en" | 
       route: '/cronograma',
       recordId: id,
       recordCode: data.titulo
-    }).catch(err => console.error("Error en auditoría (create):", err));
-  }, 0);
+    });
+  }, 100);
 
   return id;
 };
 
-export const updateTrabajo = async (
-  id: string, 
-  trabajo: Partial<Trabajo>, 
-  _clientTimestamp?: Date | null,
-  _onConflict?: () => void
-): Promise<void> => {
-  const updateData = sanitizeData(trabajo);
-  
-  if (trabajo.estado) {
-    updateData.enEspera = trabajo.estado === 'en_espera';
-    updateData.pendingTimelineSync = true;
+export const updateTrabajo = async (id: string, updates: Partial<Trabajo>, _expectedLastUpdateDate?: any) => {
+  const data = sanitizeData(updates);
+  data.actualizado_en = new Date().toISOString();
+
+  // Obtener estado anterior para ver si hay cambios en las bitácoras vinculadas
+  let previousBitacoraIds: string[] = [];
+  try {
+    const docSnap = await getDoc(doc(db, COLLECTION_NAME, id));
+    if (docSnap.exists()) {
+      previousBitacoraIds = docSnap.data().bitacoraIds || [];
+    }
+  } catch (err) {
+    console.warn("Could not load previous job state for bitacora analysis:", err);
   }
 
-  if (trabajo.bitacorasRelacionadas !== undefined) {
-    updateData.bitacoraIds = trabajo.bitacorasRelacionadas.map(b => b.bitacoraId);
-    updateData.pendingTimelineSync = true;
+  // Las bitácoras nuevas en esta actualización
+  const currentBitacoraIds: string[] = updates.bitacorasRelacionadas?.map((b: any) => b.bitacoraId) || updates.bitacoraIds || [];
+  data.bitacoraIds = currentBitacoraIds;
+
+  // Determinar bitácoras agregadas y eliminadas
+  const addedBitacoras = currentBitacoraIds.filter(bid => !previousBitacoraIds.includes(bid));
+  const removedBitacoras = previousBitacoraIds.filter(bid => !currentBitacoraIds.includes(bid));
+
+  // Actualizar documento principal usando control de versiones offline
+  await updateVersionedDocOffline(COLLECTION_NAME, id, data);
+
+  // Procesar bitácoras añadidas (Vinculación y Consolidación de Timelines)
+  for (const bitacoraId of addedBitacoras) {
+    try {
+      const bitacoraSnap = await getDoc(doc(db, "bitacora_vehiculos", bitacoraId));
+      if (bitacoraSnap.exists()) {
+         const bitacoraTimelineId = bitacoraSnap.data().timelineId;
+         // Si la bitácora tiene un timeline diferente al del trabajo, unificamos
+         if (bitacoraTimelineId && bitacoraTimelineId !== id) {
+             await migrateTimeline(bitacoraTimelineId, id);
+         }
+      }
+      await updateDoc(doc(db, "bitacora_vehiculos", bitacoraId), {
+        trabajoId: id,
+        timelineId: id
+      });
+      await recordBitacoraLinkedEvent(id, bitacoraId, updates.otCode || '');
+    } catch (e) {
+      console.error("Error linking bitacora on update", e);
+    }
   }
 
-  await updateVersionedDocOffline(COLLECTION_NAME, id, {
-    ...updateData,
-    actualizado_en: new Date().toISOString()
-  });
+  // Procesar bitácoras removidas (Desvinculación de Bitácoras)
+  for (const bitacoraId of removedBitacoras) {
+    try {
+      await updateDoc(doc(db, "bitacora_vehiculos", bitacoraId), {
+        trabajoId: null,
+        timelineId: bitacoraId // Vuelve a su timeline independiente
+      });
+      await recordBitacoraUnlinkedEvent(id, bitacoraId, updates.otCode || '');
+    } catch (e) {
+      console.error("Error unlinking bitacora on update", e);
+    }
+  }
 
-  // Auditoría (no bloqueante para evitar que el botón quede en "Guardando...")
+  // Registrar auditoría
   setTimeout(() => {
     auditService.logEvent({
-      action: 'update_record',
+      action: 'edit_record',
       module: 'Programación de Trabajos',
       submodule: 'Trabajo',
       route: '/cronograma',
       recordId: id,
-      recordCode: updateData.titulo
-    }).catch(err => console.error("Error en auditoría (update):", err));
-  }, 0);
-};
-
-export const evaluarContinuacionActiva = async (trabajoPadreId: string) => {
-  // En modo offline-first, esto se delega a la sincronización remota o 
-  // se intenta leer de la base híbrida
-  if (!networkProbe.isOnline()) {
-     console.log("[jobService] evaluating subjobs offline skipped for now");
-     return;
-  }
-
-  const q = query(
-    collection(db, COLLECTION_NAME),
-    where("parentId", "==", trabajoPadreId)
-  );
-  const snapshot = await getDocs(q);
-  const subTrabajos = snapshot.docs.map(mapDocToTrabajo);
-  
-  const tieneActiva = subTrabajos.some(
-    st => st.estado !== 'finalizado' && st.estado !== 'cancelado'
-  );
-  
-  await updateTrabajo(trabajoPadreId, { tieneContinuacionActiva: tieneActiva });
-};
-
-export const getTrabajo = async (id: string): Promise<Trabajo | null> => {
-  // Lectura híbrida para un solo documento
-  const local = await localDocStore.getLocalDoc(COLLECTION_NAME, id);
-  if (local && local.isDirty) {
-    return mapDataToTrabajo(id, local.data);
-  }
-
-  const docRef = doc(db, COLLECTION_NAME, id);
-  const docSnap = await getDoc(docRef);
-  
-  if (docSnap.exists()) {
-    return mapDocToTrabajo(docSnap);
-  }
-
-  if (local) {
-     return mapDataToTrabajo(id, local.data);
-  }
-
-  return null;
-};
-
-export const reprogramarTrabajo = async (id: string, nuevaFechaInicio: Date, nuevaFechaFin: Date) => {
-  return await updateTrabajo(id, {
-    fecha_inicio: nuevaFechaInicio,
-    fecha_fin: nuevaFechaFin,
-    reprogramado: true,
-    fecha_reprogramacion: new Date(),
-  });
+      recordCode: updates.titulo || ''
+    });
+  }, 100);
 };
 
 export const deleteTrabajo = async (trabajo: Trabajo) => {
+  const id = trabajo.id;
+
+  // 1. Validar integridad de reportes de materiales
   try {
-    if (networkProbe.isOnline()) {
-      const q = query(
-        collection(db, "material_reports_log"),
-        where("jobId", "==", trabajo.id)
-      );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        return {
-          blocked: true,
-          title: "No se puede eliminar el trabajo",
-          message: "Este trabajo tiene reportes de materiales asociados."
-        };
-      }
+    const q = query(collection(db, "material_reports_log"), where("jobId", "==", id));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      return { blocked: true };
     }
+  } catch (err) {
+    console.error("Error checking material reports on delete:", err);
+  }
 
-    // Soft delete offline
-    await updateVersionedDocOffline(COLLECTION_NAME, trabajo.id, { 
-      deleted: true,
-      actualizado_en: new Date().toISOString()
+  // 2. Desvincular todas las bitácoras asociadas antes de borrar el trabajo
+  const bitacoraIds = trabajo.bitacoraIds || [];
+  for (const bitacoraId of bitacoraIds) {
+    try {
+      await updateDoc(doc(db, "bitacora_vehiculos", bitacoraId), {
+        trabajoId: null,
+        timelineId: bitacoraId // Vuelve a su timeline independiente
+      });
+      await recordBitacoraUnlinkedEvent(id, bitacoraId, trabajo.otCode || '');
+    } catch (e) {
+      console.error("Error unlinking bitacora on job deletion:", e);
+    }
+  }
+
+  // 3. Realizar el borrado lógico del trabajo
+  await updateVersionedDocOffline(COLLECTION_NAME, id, {
+    deleted: true,
+    actualizado_en: new Date().toISOString()
+  });
+
+  // Registrar auditoría
+  setTimeout(() => {
+    auditService.logEvent({
+      action: 'delete_record',
+      module: 'Programación de Trabajos',
+      submodule: 'Trabajo',
+      route: '/cronograma',
+      recordId: id,
+      recordCode: trabajo.titulo || ''
     });
+  }, 100);
 
-    // Auditoría (no bloqueante para evitar que el botón quede en "Guardando...")
-    setTimeout(() => {
-      auditService.logEvent({
-        action: 'delete_record',
-        module: 'Programación de Trabajos',
-        submodule: 'Trabajo',
-        route: '/cronograma',
-        recordId: trabajo.id,
-        recordCode: trabajo.titulo
-      }).catch(err => console.error("Error en auditoría (delete):", err));
-    }, 0);
+  return { blocked: false };
+};
 
-    return { blocked: false };
+export const obtenerGrupoTrabajo = async (jobId: string): Promise<Trabajo[]> => {
+  if (!jobId) return [];
+  try {
+    const jobSnap = await getDoc(doc(db, COLLECTION_NAME, jobId));
+    if (!jobSnap.exists()) return [];
 
-  } catch (error) {
-    console.error("Error al eliminar trabajo:", error);
-    throw error;
+    const jobData = jobSnap.data();
+    const rootId = jobData.parentId || jobId;
+
+    // Obtener el trabajo raíz
+    const rootSnap = await getDoc(doc(db, COLLECTION_NAME, rootId));
+    const rootJob = rootSnap.exists() ? mapDataToTrabajo(rootId, rootSnap.data()) : null;
+
+    // Obtener los subtrabajos
+    const q = query(collection(db, COLLECTION_NAME), where("parentId", "==", rootId));
+    const querySnap = await getDocs(q);
+    const subJobs = querySnap.docs.map(d => mapDataToTrabajo(d.id, d.data()));
+
+    const group = [];
+    if (rootJob) group.push(rootJob);
+    group.push(...subJobs);
+
+    // Filtrar eliminados
+    return group.filter(j => !j.deleted);
+  } catch (err) {
+    console.error("Error fetching job group:", err);
+    return [];
   }
 };
 
-export const crearContinuacionTrabajo = async (
-  trabajoPadreId: string,
-  nuevaFechaInicio: Date,
-  nuevaFechaFin: Date
-) => {
-  const padre = await getTrabajo(trabajoPadreId);
-  if (!padre) throw new Error("Trabajo padre no encontrado");
-
-  // Crear nuevo documento (subtrabajo) - CORRECCIÓN 1
-  const subTrabajoData = {
-    tipo_trabajo: padre.tipo_trabajo,
-    descripcion: padre.descripcion,
-    fecha_inicio: nuevaFechaInicio,
-    fecha_fin: nuevaFechaFin,
-    hora_inicio: "",           // CORRECCIÓN 1: No heredar
-    hora_fin: "",              // CORRECCIÓN 1: No heredar
-    cuadrilla: [],             // CORRECCIÓN 1: No heredar
-    unidades: [],              // CORRECCIÓN 1: No heredar
-    ubicacion: padre.ubicacion,
-    observaciones: padre.observaciones,
-    estado: 'programado' as EstadoTrabajo,
-    progreso: 0,
-    parentId: trabajoPadreId,
-    esSubTrabajo: true,
-  };
-
-  await createTrabajo(subTrabajoData);
-
-  // Actualizar trabajo padre - Sale de espera inmediatamente al continuar
-  await updateTrabajo(trabajoPadreId, {
-    estado: 'continuado',
-    enEspera: false,
-    tieneContinuacionActiva: true,
-  });
-  
-  // CORRECCIÓN 2: Trigger evaluación
-  await evaluarContinuacionActiva(trabajoPadreId);
-};
-
-export const obtenerGrupoTrabajo = async (trabajoId: string): Promise<Trabajo[]> => {
-  const trabajo = await getTrabajo(trabajoId);
-  if (!trabajo) return [];
-  
-  const rootId = trabajo.parentId ?? trabajo.id;
-  
-  // Obtener trabajo padre o el mismo si es root
-  const parent = rootId === trabajo.id ? trabajo : await getTrabajo(rootId);
-  
-  // Obtener subtrabajos
-  const q = query(collection(db, COLLECTION_NAME), where("parentId", "==", rootId));
-  const snapshot = await getDocs(q);
-  const subTrabajos = snapshot.docs.map(mapDocToTrabajo);
-  
-  const grupo = parent ? [parent, ...subTrabajos] : subTrabajos;
-  
-  return grupo.sort((a,b) => a.fecha_inicio.getTime() - b.fecha_inicio.getTime());
-};

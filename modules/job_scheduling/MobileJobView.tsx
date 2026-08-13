@@ -9,7 +9,7 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { generateConsolidatedMaterialReportPDF } from '@/utils/materialReportPdf';
 import { obtenerGrupoTrabajo, updateTrabajo } from './jobService';
 import { useAuth } from '@/hooks/useAuth';
-import { isAdmin, hasPermission } from '@/utils/permissions';
+import { isAdmin } from '@/utils/permissions';
 import { FiPauseCircle } from 'react-icons/fi';
 import { ViewJobModal } from './ViewJobModal';
 
@@ -236,7 +236,7 @@ const JobItem = React.memo(({
           
           {/* Botones de accion */}
           <div className="flex gap-1 justify-end border-t border-slate-50 pt-1.5">
-            {(isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog || hasPermission(currentUser, 'trabajos')) && (
+            {(isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog) && (
               <IconButton 
                 icon={<ClipboardList size={12} />} 
                 onClick={(e) => {

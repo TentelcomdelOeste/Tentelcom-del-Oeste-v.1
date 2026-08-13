@@ -55,7 +55,8 @@ export const ReplyPreviewComponent = ({
     >
       <div className="min-w-0 flex-1">
         <span
-          className={`font-black uppercase text-[8px] tracking-wider block ${
+          title={repliedMsg.usuarioNombre || "Mensaje original"}
+          className={`font-black uppercase text-[8px] tracking-wider block truncate whitespace-nowrap w-full ${
             isMe ? "text-blue-200" : "text-blue-600"
           }`}
         >

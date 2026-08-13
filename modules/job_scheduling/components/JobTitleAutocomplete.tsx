@@ -159,7 +159,7 @@ export const JobTitleAutocomplete: React.FC<Props> = ({ value, onChange }) => {
   // Smart sorting & filtering
   const sortedAndFilteredOptions = useMemo(() => {
     let filtered = titles;
-    if (searchTerm && searchTerm !== value) {
+    if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = titles.filter(t => t.tituloNormalizado.includes(term));
     }

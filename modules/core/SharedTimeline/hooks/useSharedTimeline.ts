@@ -105,15 +105,24 @@ export function useLogTimeline(
         pinnedQuery,
         (snapshot) => {
           if (!mounted) return;
-          const pinnedList: TimelineEvent[] = [];
-          snapshot.forEach((doc) => {
-            if (!doc.data({ serverTimestamps: 'estimate' }).eliminado) {
-              pinnedList.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) } as TimelineEvent);
-            }
-          });
           setPinnedComments(prev => {
-             const merged = [...prev.filter(p => !pinnedList.find(i => i.id === p.id)), ...pinnedList];
-             return merged;
+            let updated = [...prev];
+            snapshot.docChanges().forEach((change) => {
+              const docId = change.doc.id;
+              if (change.type === "removed") {
+                updated = updated.filter(p => p.id !== docId);
+              } else {
+                const data = change.doc.data({ serverTimestamps: 'estimate' });
+                if (data.eliminado) {
+                  updated = updated.filter(p => p.id !== docId);
+                } else {
+                  const item = { id: docId, ...data } as TimelineEvent;
+                  updated = updated.filter(p => p.id !== docId);
+                  updated.push(item);
+                }
+              }
+            });
+            return updated;
           });
         },
         (error) => console.error("[LogTimeline] Error listening to pinned messages:", error)
@@ -261,7 +270,7 @@ export function useLogTimeline(
       const existing = map.get(eventId);
       // We use isDirty or !existing to ensure local changes are visible during sync
       if (!existing || ld.isDirty) {
-        map.set(eventId, { ...data, id: eventId } as TimelineEvent);
+        map.set(eventId, { ...(existing || {}), ...data, id: eventId } as TimelineEvent);
         const optId = (data as any).optimisticId || (data as any).clientGeneratedId;
         if (optId) reconciliationMap.set(optId, eventId);
       }

@@ -6,6 +6,11 @@ import { collection, getDocs } from 'firebase/firestore';
 let cachedEmployees: { id: string, name: string, status?: string, isArchived?: boolean }[] | null = null;
 let employeesPromise: Promise<{ id: string, name: string, status?: string, isArchived?: boolean }[]> | null = null;
 
+export const clearEmployeesCache = () => {
+  cachedEmployees = null;
+  employeesPromise = null;
+};
+
 export const useEmployees = () => {
   const [employees, setEmployees] = useState<{ id: string, name: string, status?: string, isArchived?: boolean }[]>(cachedEmployees || []);
   const [loading, setLoading] = useState(!cachedEmployees);

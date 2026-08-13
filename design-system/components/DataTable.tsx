@@ -134,9 +134,9 @@ export const DataTable = React.memo(function DataTable<T>({
     <div className="w-full">
       {/* Vista de Escritorio: Tabla Estilizada (Card-like) */}
       <div className="hidden md:block">
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-visible shadow-sm flex flex-col">
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col">
           {/* Header */}
-          <div className={`bg-slate-50 border-b border-slate-200 flex items-stretch px-4 sticky top-0 z-20`}>
+          <div className="bg-slate-50 border-b border-slate-200 flex items-stretch px-4 sticky top-0 z-30 rounded-t-2xl relative shadow-xs isolate before:content-[''] before:absolute before:-top-6 before:-left-px before:-right-px before:h-6 before:bg-slate-50 before:z-30 before:pointer-events-none">
               {columns.map((col, idx) => (
                   <div 
                       key={idx} 
@@ -144,7 +144,7 @@ export const DataTable = React.memo(function DataTable<T>({
                         ${UI_TOKENS.TYPOGRAPHY.label} 
                         ${getAlignClass(col.align)} 
                         ${col.className || ''} 
-                        h-12 flex items-center text-slate-500 px-3 text-[10px] font-black uppercase tracking-widest
+                        h-12 flex items-center text-slate-500 px-3 text-[10px] font-black uppercase tracking-widest bg-slate-50
                         ${idx < columns.length - 1 ? 'border-r border-slate-200/70' : ''}
                       `}
                       style={{ 
@@ -160,7 +160,7 @@ export const DataTable = React.memo(function DataTable<T>({
           </div>
 
           {/* Body */}
-          <div className="flex-1">
+          <div className="flex-1 relative z-0 rounded-b-2xl overflow-hidden">
               {isLoading ? (
                   <div className="p-12 text-center text-slate-400">
                       <FiLoader className="inline-block mr-2 animate-spin" /> Cargando datos...

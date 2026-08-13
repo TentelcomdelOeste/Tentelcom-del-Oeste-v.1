@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { User } from "../../utils/types";
-import { Virtuoso } from "react-virtuoso";
 import {
   ActionButton,
   SearchInput,
@@ -470,7 +469,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
   const getRowClassName = (log: VehicleLog) => {
     const isIncomplete = !log.horaLlegada || !log.kmLlegada;
     if (isIncomplete) {
-      return "border-l-[5px] border-l-[#FFA500] bg-orange-50/20 animate-pulso-naranja outline outline-1 outline-orange-500/20";
+      return "border-l-[5px] border-l-[#FFA500] bg-orange-50/20 animate-pulso-naranja ring-1 ring-inset ring-orange-500/20";
     }
     return "";
   };
@@ -650,7 +649,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
                 setIsModalOpen(true);
               }}
               onDelete={() => handleDelete(l)}
-              onTimeline={(isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog || hasPermission(currentUser, 'bitacoraVehiculos', 'registros')) ? () => {
+              onTimeline={(isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog) ? () => {
                 setSelectedLog(l);
                 setIsTimelineOpen(true);
               } : undefined}
@@ -778,36 +777,32 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
             </div>
           ) : (
             <>
-              <div className="md:hidden h-[600px] w-full">
-                <Virtuoso
-                  data={sortedLogs}
-                  itemContent={(index, log) => (
-                    <div className="py-2 px-2">
-                      <VehicleLogCard
-                        log={log}
-                        expenses={expenses.filter(e => e.bitacoraId === log.id)}
-                        onEdit={() => {
-                          setSelectedLog(log);
-                          setIsModalOpen(true);
-                        }}
-                        onDelete={() => handleDelete(log)}
-                        onPdf={() => generateVehicleLogPDF(log)}
-                        onTimeline={
-                          (isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog || hasPermission(currentUser, 'bitacoraVehiculos', 'registros'))
-                            ? () => {
-                                setSelectedLog(log);
-                                setIsTimelineOpen(true);
-                              }
-                            : undefined
-                        }
-                        onCostAnalysis={() => {
-                          const unidad = log.unidad || extraerUnidad(log.unidadId);
-                          onSetActiveModule?.({ module: 'analisis_costos', selectedId: unidad });
-                        }}
-                      />
-                    </div>
-                  )}
-                />
+              <div className="md:hidden space-y-3 pb-10">
+                {sortedLogs.map((log) => (
+                  <VehicleLogCard
+                    key={log.id}
+                    log={log}
+                    expenses={expenses.filter(e => e.bitacoraId === log.id)}
+                    onEdit={() => {
+                      setSelectedLog(log);
+                      setIsModalOpen(true);
+                    }}
+                    onDelete={() => handleDelete(log)}
+                    onPdf={() => generateVehicleLogPDF(log)}
+                    onTimeline={
+                      (isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog)
+                        ? () => {
+                            setSelectedLog(log);
+                            setIsTimelineOpen(true);
+                          }
+                        : undefined
+                    }
+                    onCostAnalysis={() => {
+                      const unidad = log.unidad || extraerUnidad(log.unidadId);
+                      onSetActiveModule?.({ module: 'analisis_costos', selectedId: unidad });
+                    }}
+                  />
+                ))}
               </div>
 
               <div className="hidden md:block">

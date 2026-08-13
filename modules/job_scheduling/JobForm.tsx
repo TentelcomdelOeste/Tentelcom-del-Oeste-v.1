@@ -346,16 +346,17 @@ export const JobForm: React.FC<JobFormProps> = ({
         descripcion: '',
         cuadrilla: [],
         unidades: [],
-        hora_inicio: '06:00',
-        hora_fin: '16:00',
+        hora_inicio: defaultStart ? format(defaultStart, 'HH:mm') : '06:00',
+        hora_fin: defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00',
         bitacorasRelacionadas: [],
         bitacoraIds: []
       });
-      const today = format(new Date(), 'yyyy-MM-dd');
-      setFechaInicio(today);
-      setFechaFin(today);
+      const startStr = toISODateString(defaultStart || new Date());
+      const endStr = toISODateString(defaultEnd || new Date());
+      setFechaInicio(startStr);
+      setFechaFin(endStr);
     }
-  }, [trabajo, mode]);
+  }, [trabajo, mode, defaultStart, defaultEnd]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

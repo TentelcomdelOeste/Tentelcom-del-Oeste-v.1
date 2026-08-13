@@ -288,7 +288,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
           const fullUser: User = {
             id: firebaseUser.uid,
             uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
+            email: userData.email || firebaseUser.email || '',
             name: userData.name || firebaseUser.displayName || '',
             role: userData.role || 'empleado',
             active: isActiveUser,

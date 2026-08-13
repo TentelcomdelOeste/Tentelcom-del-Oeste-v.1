@@ -101,10 +101,10 @@ const TimelineItemComponent = ({
       className={`flex w-full transition-all duration-300 relative touch-pan-y select-none ${
         isMe ? "justify-end" : "justify-start"
       } ${highlightedMessageId === c.id ? "scale-[1.02] z-10" : "scale-100"}`}
-      onTouchStart={handleTouchStartLocal}
-      onTouchMove={handleTouchMoveLocal}
-      onTouchEnd={handleTouchEndLocal}
-      onDoubleClick={handleDoubleClickLocal}
+      onTouchStart={c.eliminado ? undefined : handleTouchStartLocal}
+      onTouchMove={c.eliminado ? undefined : handleTouchMoveLocal}
+      onTouchEnd={c.eliminado ? undefined : handleTouchEndLocal}
+      onDoubleClick={c.eliminado ? undefined : handleDoubleClickLocal}
       style={
         swipingMessage?.id === c.id
           ? { transform: `translateX(${swipingMessage.offset}px)` }
@@ -116,28 +116,33 @@ const TimelineItemComponent = ({
           isMe ? "items-end" : "items-start"
         }`}
       >
-        <div className="flex items-center gap-1.5 px-1">
-          <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
-            {isMe ? "Tú" : c.usuarioNombre}
+        <div className="flex items-center gap-1.5 px-1 max-w-full min-w-0 overflow-hidden">
+          <span
+            title={isMe ? "Tú" : c.usuarioNombre || "Usuario"}
+            className="text-[9px] font-black uppercase text-slate-400 tracking-wider truncate whitespace-nowrap min-w-0 inline-block"
+          >
+            {isMe ? "Tú" : c.usuarioNombre || "Usuario"}
           </span>
-          <ActionButton
-            onClick={handleOptionsClick}
-            variant="ghost"
-            className="!opacity-0 group-hover/bubble:!opacity-100 focus:!opacity-100 !text-[8px] !font-black !tracking-wider !text-blue-500 hover:!text-blue-700 !uppercase !ml-1.5 !transition-opacity !p-0 !min-h-0 !h-auto"
-            label={
-              <span className="flex items-center gap-0.5">
-                <FiMoreVertical className="w-2.5 h-2.5" /> Opciones
-              </span>
-            }
-          />
-          <span className="text-[8px] font-bold text-slate-300 tracking-tight">
+          {!c.eliminado && (
+            <ActionButton
+              onClick={handleOptionsClick}
+              variant="ghost"
+              className="!opacity-0 group-hover/bubble:!opacity-100 focus:!opacity-100 !text-[8px] !font-black !tracking-wider !text-blue-500 hover:!text-blue-700 !uppercase !ml-1.5 !transition-opacity !p-0 !min-h-0 !h-auto shrink-0"
+              label={
+                <span className="flex items-center gap-0.5">
+                  <FiMoreVertical className="w-2.5 h-2.5" /> Opciones
+                </span>
+              }
+            />
+          )}
+          <span className="text-[8px] font-bold text-slate-300 tracking-tight whitespace-nowrap shrink-0">
             • {isOptimistic ? "Hace un momento" : formatTime(c.timestamp)}
-            {c.editado && (
-              <span className="text-amber-500 font-bold ml-1.5">
+            {c.editado && !c.eliminado && (
+              <span className="text-amber-500 font-bold ml-1.5 whitespace-nowrap">
                 • Editado{c.editedAt ? ` • ${formatTime(c.editedAt)}` : ""}
               </span>
             )}
-            {c.pinned && " • Pinned 📌"}
+            {c.pinned && !c.eliminado && <span className="whitespace-nowrap"> • Pinned 📌</span>}
           </span>
         </div>
 

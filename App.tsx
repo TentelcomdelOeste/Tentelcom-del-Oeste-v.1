@@ -23,7 +23,7 @@ import { MODULES_CONFIG } from './utils/permissionsConfig';
 import { trackEvent } from './services/analyticsService';
 import { AuthGuard } from './auth/AuthGuard';
 import { NetworkStatusIndicator } from './components/NetworkStatusIndicator';
-import { FiArrowLeft, FiFileText, FiHome, FiBox, FiGlobe, FiMenu, FiLogOut, FiEye, FiEyeOff, FiChevronDown, FiTruck } from "react-icons/fi";
+import { FiArrowLeft, FiFileText, FiHome, FiBox, FiGlobe, FiMenu, FiLogOut, FiEye, FiEyeOff, FiChevronDown, FiTruck, FiUser, FiX } from "react-icons/fi";
 import { GlobalSearch } from './components/GlobalSearch';
 import { ActionButton, IconButton } from './design-system';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -405,6 +405,30 @@ const SidebarContent = ({
   </div>
 );
 
+const getUserDisplayName = (user?: User | null) => {
+  if (!user) return 'Usuario';
+  if (user.name && user.name.trim()) return user.name.trim();
+  if (user.email) return user.email.split('@')[0];
+  return 'Usuario';
+};
+
+const getUserInitials = (user?: User | null) => {
+  if (!user) return 'US';
+  const name = user.name?.trim();
+  if (name) {
+    const parts = name.split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (user.email) {
+    const prefix = user.email.split('@')[0];
+    return prefix.slice(0, 2).toUpperCase();
+  }
+  return 'US';
+};
+
 // ─────────────────────────────────────────────
 // APP COMPONENT
 // ─────────────────────────────────────────────
@@ -522,6 +546,7 @@ function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showMobileUserMenu, setShowMobileUserMenu] = useState(false);
   const [activeModule, setActiveModuleState] = useState<{
     module: string;
     selectedId?: string;
@@ -991,25 +1016,127 @@ function App() {
                 />
               </div>
             </div>
-            <div className="flex justify-start pl-5 px-2">
+            <div className="flex justify-start items-center pl-1 md:pl-5 px-1 min-w-0">
               <div className="hidden md:flex w-full max-w-[360px]">
                 {currentUser && <GlobalSearch currentUser={currentUser} setActiveModule={setActiveModule} />}
               </div>
+
+              {/* MÓVIL: Identificación de Usuario */}
+              {currentUser && (() => {
+                const photoUrl = (currentUser as any)?.photoURL || (currentUser as any)?.avatar || (currentUser as any)?.photo || null;
+                const displayName = getUserDisplayName(currentUser);
+                const initials = getUserInitials(currentUser);
+                return (
+                  <div className="flex md:hidden items-center min-w-0">
+                    <button
+                      onClick={() => setShowMobileUserMenu(!showMobileUserMenu)}
+                      className="flex items-center gap-1.5 min-w-0 max-w-[170px] xs:max-w-[210px] sm:max-w-[280px] bg-blue-950/40 hover:bg-blue-800/80 active:bg-blue-800 px-2 py-1 rounded-xl border border-blue-700/50 cursor-pointer transition-all select-none text-left"
+                      title={displayName}
+                    >
+                      {photoUrl ? (
+                        <img
+                          src={photoUrl}
+                          alt={displayName}
+                          className="w-7 h-7 rounded-full object-cover border border-blue-400/40 flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-blue-800 text-blue-100 font-extrabold flex items-center justify-center text-[10px] tracking-tight border border-blue-600/60 flex-shrink-0 shadow-xs uppercase">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0 leading-tight">
+                        <span className="text-[11px] font-bold text-white truncate whitespace-nowrap">
+                          {displayName}
+                        </span>
+                        {currentUser.role && (
+                          <span className="text-[8px] font-semibold text-blue-200/90 uppercase tracking-wider truncate">
+                            {currentUser.role}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-[6px] md:gap-[10px] justify-end min-w-0 md:min-w-[220px]">
               {currentUser && <SyncStatusIndicator />}
               {currentUser && <NotificationCenter setActiveModule={setActiveModule} />}
-              <span className="hidden sm:inline-block text-[11px] text-slate-300 font-bold whitespace-nowrap truncate text-right max-w-[100px] md:max-w-[200px]">
+              <span className="hidden md:inline-block text-[11px] text-slate-300 font-bold whitespace-nowrap truncate text-right max-w-[100px] md:max-w-[200px]">
                 {currentUser?.email?.split('@')[0]}
               </span>
               <IconButton
                 icon={<FiLogOut className="text-xs md:text-sm" />}
                 onClick={handleLogout}
-                className="w-8 h-8 rounded-lg bg-blue-800 flex items-center justify-center hover:bg-blue-700 transition-all text-blue-200 hover:text-white flex-shrink-0"
+                className="hidden md:flex w-8 h-8 rounded-lg bg-blue-800 items-center justify-center hover:bg-blue-700 transition-all text-blue-200 hover:text-white flex-shrink-0"
                 title="Cerrar Sesión"
               />
             </div>
           </header>
+
+          {/* Popover / Menú de perfil de usuario en versión móvil */}
+          {showMobileUserMenu && currentUser && (() => {
+            const photoUrl = (currentUser as any)?.photoURL || (currentUser as any)?.avatar || (currentUser as any)?.photo || null;
+            const displayName = getUserDisplayName(currentUser);
+            const initials = getUserInitials(currentUser);
+            return (
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-xs md:hidden"
+                  onClick={() => setShowMobileUserMenu(false)}
+                />
+                <div className="fixed top-16 left-3 right-3 z-50 md:hidden bg-white rounded-2xl p-4 shadow-2xl border border-slate-200/90 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {photoUrl ? (
+                        <img
+                          src={photoUrl}
+                          alt={displayName}
+                          className="w-10 h-10 rounded-full object-cover border border-blue-200 flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-blue-900 text-white font-extrabold flex items-center justify-center text-xs tracking-tight flex-shrink-0 shadow-xs uppercase">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-black text-slate-900 truncate">
+                          {displayName}
+                        </span>
+                        <span className="text-xs text-slate-500 truncate font-medium">
+                          {currentUser.email}
+                        </span>
+                        {currentUser.role && (
+                          <span className="inline-block self-start mt-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-extrabold uppercase rounded-md tracking-wider">
+                            {currentUser.role}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowMobileUserMenu(false)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"
+                    >
+                      <FiX className="text-lg" />
+                    </button>
+                  </div>
+
+                  <div className="pt-3 flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setShowMobileUserMenu(false);
+                        handleLogout();
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs rounded-xl border border-red-200/80 transition-colors active:scale-98"
+                    >
+                      <FiLogOut className="text-sm" />
+                      Cerrar Sesión
+                    </button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           {/* ── MÓDULOS: solo se montan cuando authReady=true ── */}
           <main className="flex-1 overflow-y-auto relative bg-slate-50 px-2 py-6 md:px-5 custom-scrollbar">

@@ -161,7 +161,7 @@ export const JobTypeSelect: React.FC<Props> = ({ value, onChange, placeholder = 
   // Smart suggestions filtering and sorting
   const sortedAndFilteredOptions = useMemo(() => {
     let filtered = jobTypes;
-    if (searchTerm && searchTerm !== value) {
+    if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = jobTypes.filter(type => type.name.toLowerCase().includes(term));
     }

@@ -105,7 +105,9 @@ export const OperationalLogInput: React.FC<OperationalLogInputProps> = ({
               </div>
             )}
             <div className="flex flex-col min-w-0">
-              <span className="font-extrabold text-blue-600 text-[10px] uppercase tracking-wider">Respondiendo a {replyingTo.usuarioNombre}</span>
+              <span title={`Respondiendo a ${replyingTo.usuarioNombre}`} className="font-extrabold text-blue-600 text-[10px] uppercase tracking-wider truncate whitespace-nowrap block max-w-[200px] sm:max-w-[300px]">
+                Respondiendo a {replyingTo.usuarioNombre}
+              </span>
               <p className="text-slate-500 truncate text-[11px] font-bold">
                 {replyingTo.tipo === 'imagen'
                   ? (replyingTo.mensaje || "Evidencia fotográfica")

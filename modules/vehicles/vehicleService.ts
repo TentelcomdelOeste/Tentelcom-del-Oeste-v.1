@@ -231,12 +231,8 @@ export const saveVehicleLog = async (
         });
 
         localLogs.forEach(l => {
-            const localEntry = localDocs.find(d => d.docId === l.id);
-            if (localEntry?.isDirty || !logMap.has(l.id)) {
-                // If it's in local but has a delete mutation or is deleted, skip it
-                if (!deleteMutations.has(l.id) && !l.isDeleted) {
-                    logMap.set(l.id, l);
-                }
+            if (!deleteMutations.has(l.id) && !l.isDeleted) {
+                logMap.set(l.id, l);
             }
         });
 
@@ -251,10 +247,19 @@ export const saveVehicleLog = async (
                 return timeB.localeCompare(timeA);
             });
 
-            // Consideramos bitácora activa cualquiera que no tenga kmLlegada (o kmFinal) y no esté borrada
-            const activeLog = logs.find(l => !l.kmLlegada && !l.isDeleted);
-            if (activeLog && activeLog.id !== initialData?.id) {
-                throw new Error(`BLOQUEO: La unidad ${vUnidad} ya tiene una bitácora activa sin finalizar.`);
+            // Consideramos bitácora activa cualquiera que no tenga kmLlegada (o kmFinal), 
+            // no esté borrada y el estado NO sea 'Finalizada'
+            const activeLog = logs.find(l => 
+                !l.kmLlegada && 
+                !l.isDeleted && 
+                l.estado !== 'Finalizada' &&
+                l.id !== initialData?.id
+            );
+            
+            if (activeLog) {
+                const conductor = activeLog.conductorName || 'otro conductor';
+                const fecha = activeLog.fecha || 'sin fecha';
+                throw new Error(`BLOQUEO: La unidad ${vUnidad} ya tiene una bitácora activa sin finalizar (Conductor: ${conductor}, Fecha: ${fecha}).`);
             }
         }
     }

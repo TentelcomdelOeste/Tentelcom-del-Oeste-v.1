@@ -6,6 +6,7 @@ import { financeRepository } from '../repositories/financeRepository';
 import { useConfirm } from '../design-system';
 import { serverTimestamp } from 'firebase/firestore';
 import { logWorkHistoryEvent, logAdminEvent } from '../modules/finance/payroll/services/useEmployeeHistory';
+import { clearEmployeesCache } from './useEmployees';
 
 export interface FinanceFilters {
   year?: string;
@@ -110,15 +111,31 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
       if (id) {
         // Actualización
         const dataToUpdate = { ...firestoreData };
-        delete dataToUpdate.username;
-        delete dataToUpdate.email; // No permitir cambio de email en update simple
+        if (typeof dataToUpdate.email === 'string') {
+          dataToUpdate.email = dataToUpdate.email.trim();
+        }
+        if (typeof dataToUpdate.username === 'string') {
+          dataToUpdate.username = dataToUpdate.username.trim();
+        }
         
         const oldData = data.employees.find(e => e.id === id);
         await financeRepository.updateEmployee(id, dataToUpdate);
+        clearEmployeesCache();
 
         if (oldData && currentUser) {
             const adminName = currentUser.name || currentUser.username || currentUser.email || 'Admin';
             const adminUid = currentUser.id;
+
+            // Registro de cambio de email
+            if (dataToUpdate.email && oldData.email !== dataToUpdate.email) {
+                logAdminEvent(id, {
+                    adminName,
+                    adminUid,
+                    action: 'Actualizó correo electrónico',
+                    oldValue: oldData.email || '',
+                    newValue: dataToUpdate.email
+                }).catch(e => console.error(e));
+            }
 
             // Diferencia salarial
             const newBaseSalary = Number(dataToUpdate.baseSalary);
@@ -176,6 +193,7 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
         // Delegar la lógica compleja de creación de Auth al repositorio
         const result = await financeRepository.createEmployeeWithAuth(firestoreData, password);
         if (!result.success) return result;
+        clearEmployeesCache();
       }
       return { success: true };
     } catch (err: any) {
@@ -212,6 +230,7 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
       archivedAt: new Date().toISOString(),
       archivedBy: currentUser.id,
     });
+    clearEmployeesCache();
   }, [currentUser]);
 
   const reactivateEmployee = useCallback(async (id: string) => {
@@ -222,6 +241,7 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
       archivedAt: null as any, // Cast necesario si el tipo es estricto
       archivedBy: null as any,
     });
+    clearEmployeesCache();
   }, []);
 
   const deleteEmployee = useCallback(async (id: string) => {
@@ -236,6 +256,7 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
     }
     try {
         await financeRepository.deleteEmployee(id);
+        clearEmployeesCache();
     } catch (error: any) {
         console.error("Error deleting employee:", error);
         await confirm({

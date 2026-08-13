@@ -6,7 +6,7 @@ import { FiClock, FiUser, FiTruck, FiBox, FiChevronDown, FiUsers, FiCalendar } f
 import { ClipboardList } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '@/hooks/useAuth';
-import { isAdmin, hasPermission } from '@/utils/permissions';
+import { isAdmin } from '@/utils/permissions';
 import { IconButton } from '@/design-system';
 
 interface OperativoViewProps {
@@ -138,7 +138,7 @@ const JobCard = React.memo(({ job, onSelect, onSetActiveModule }: { job: Trabajo
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {(isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog || hasPermission(currentUser, 'trabajos')) && (
+          {(isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog) && (
             <div className="mr-2">
               <IconButton 
                 icon={<ClipboardList size={11} />} 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { User } from "@/utils/types";
 import { db } from "@/firebase";
 import {
@@ -12,7 +12,7 @@ import {
   getDocs,
   limit,
 } from "firebase/firestore";
-import { setVersionedDocOffline, updateVersionedDocOffline } from "@/core/versionControl";
+import { setVersionedDocOffline, updateVersionedDocOffline, addAuditEntryOffline } from "@/core/versionControl";
 import { networkProbe } from "@/core/offline/networkProbe";
 import {
   FiArrowLeft,
@@ -35,6 +35,8 @@ import {
   FiCalendar,
   FiLink,
   FiDownload,
+  FiMaximize2,
+  FiMinimize2,
 } from "react-icons/fi";
 import { IconButton, StatusBadge, ActionButton } from "@/design-system";
 import { OperationalLogInput } from "./components/TimelineInput";
@@ -48,6 +50,7 @@ import {
 import { useLocation } from "react-router-dom";
 import { TimelineEvent } from "@/modules/job_scheduling/types";
 import { useLogTimeline } from "./hooks/useSharedTimeline";
+import { useAuditHistory, AuditSnapshot } from "./hooks/useAuditHistory";
 import { useOptimisticComments } from "./hooks/useOptimisticComments";
 import { useLogUploader } from "./hooks/useTimelineUploader";
 import { useSwipeMessageAction } from "@/modules/job_scheduling/hooks/useSwipeMessageAction";
@@ -97,6 +100,8 @@ export interface SharedTimelineProps {
   onBack: () => void;
   onSetActiveModule?: (module: any) => void; // Added for navigation
   currentUser?: User;
+  isExpanded?: boolean;
+  onExpandToggle?: () => void;
   metadata?: {
     title?: string;
     subtitle?: string;
@@ -114,6 +119,8 @@ export default function SharedTimeline({
   onBack,
   onSetActiveModule, // Added for navigation
   currentUser,
+  isExpanded,
+  onExpandToggle,
   metadata,
 }: SharedTimelineProps) {
   useEffect(() => {
@@ -211,6 +218,31 @@ export default function SharedTimeline({
   const [showTechnicalLog, setShowTechnicalLog] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
 
+  // Dynamic layout measurement refs & state for Historial section
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
+  const headerContainerRef = useRef<HTMLDivElement>(null);
+  const pinnedBarRef = useRef<HTMLDivElement>(null);
+  const historialToggleBtnRef = useRef<HTMLButtonElement>(null);
+  const historialControlsRef = useRef<HTMLDivElement>(null);
+  const inputContainerRef = useRef<HTMLDivElement>(null);
+
+  const [historialMaxHeight, setHistorialMaxHeight] = useState<number>(320);
+
+  const updateHistorialHeight = useCallback(() => {
+    if (!timelineContainerRef.current) return;
+
+    const containerHeight = timelineContainerRef.current.clientHeight;
+    const headerHeight = headerContainerRef.current ? headerContainerRef.current.getBoundingClientRect().height : 0;
+    const pinnedHeight = pinnedBarRef.current ? pinnedBarRef.current.getBoundingClientRect().height : 0;
+    const inputHeight = inputContainerRef.current ? inputContainerRef.current.getBoundingClientRect().height : 65;
+    const toggleBtnHeight = historialToggleBtnRef.current ? historialToggleBtnRef.current.getBoundingClientRect().height : 28;
+    const controlsHeight = historialControlsRef.current ? historialControlsRef.current.getBoundingClientRect().height : 100;
+
+    const availableHeight = containerHeight - headerHeight - pinnedHeight - toggleBtnHeight - controlsHeight - inputHeight - 16;
+    const clamped = Math.max(100, Math.min(availableHeight, 480));
+    setHistorialMaxHeight(clamped);
+  }, []);
+
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<{
@@ -272,6 +304,18 @@ export default function SharedTimeline({
     isLoadingMore,
     loadMore,
   } = useLogTimeline(activeParentId, optimisticComments, scrollRef, currentCollection, resolvedTimelineId);
+
+  const auditCollectionPath = useMemo(() => {
+    if (resolvedTimelineId) {
+      return `operational_timelines/${resolvedTimelineId}/audit_history`;
+    }
+    if (activeParentId && currentCollection) {
+      return `${currentCollection}/${activeParentId}/audit_history`;
+    }
+    return null;
+  }, [resolvedTimelineId, activeParentId, currentCollection]);
+
+  const rawAuditEntries = useAuditHistory(auditCollectionPath);
 
   // EFFECT: Self-healing for events missing timestamps (Fixes "ghost" events in legacy records)
   useEffect(() => {
@@ -409,19 +453,21 @@ export default function SharedTimeline({
   const lastFetchedParams = useRef<{parentId?: string, timelineId?: string}>({});
 
   useEffect(() => {
-    if (!activeParentId && !resolvedTimelineId) return;
+    if (!activeParentId && !resolvedTimelineIdRef.current) return;
     
     // Prevent redundant fetches for the same parameters
     if (lastFetchedParams.current.parentId === activeParentId && 
-        lastFetchedParams.current.timelineId === resolvedTimelineId) {
+        lastFetchedParams.current.timelineId === resolvedTimelineIdRef.current && lastFetchedParams.current.collection === currentCollection) {
       return;
     }
 
-    lastFetchedParams.current = { parentId: activeParentId, timelineId: resolvedTimelineId };
+    lastFetchedParams.current = { parentId: activeParentId, timelineId: resolvedTimelineIdRef.current, collection: currentCollection };
 
     const fetchAllMetadata = async () => {
+      const currentTimelineId = resolvedTimelineIdRef.current;
       const startTime = performance.now();
-      console.log("[TRACE][SharedTimeline] fetchAllMetadata STARTED", { activeParentId, resolvedTimelineId });
+      console.log("[TRACE][SharedTimeline] fetchAllMetadata STARTED", { activeParentId, currentTimelineId });
+      
       try {
         let newContext: OperationalContext = {
           jobTitle: metadataRef.current?.title || "Bitácora Sin Título",
@@ -432,209 +478,71 @@ export default function SharedTimeline({
           details: null,
           linkedLog: null,
           trabajoId: trabajoId || null,
-          isLoading: false
+          isLoading: true
         };
+        
+        let finalTimelineId = currentTimelineId || activeParentId || "";
 
-        const fetchPromises: Promise<any>[] = [];
-
-        // 1. Fetch Timeline-Only Metadata
-        if (resolvedTimelineId && !activeParentId) {
-          fetchPromises.push(getDoc(doc(db, "operational_timelines", resolvedTimelineId)).then(snap => ({ type: 'timeline', snap })));
-        }
-
-        // 2. Fetch Job Metadata
-        if (trabajoId) {
-          fetchPromises.push(getDoc(doc(db, "trabajos", trabajoId)).then(snap => ({ type: 'job', snap, requestedId: trabajoId })));
-        }
-
-        // 3. Fetch Vehicle Log Metadata or direct Job
-        if (activeParentId) {
-          if (currentCollection === "bitacora_vehiculos") {
-            fetchPromises.push(getDoc(doc(db, "bitacora_vehiculos", activeParentId)).then(snap => ({ type: 'vehicle_log', snap, requestedId: activeParentId })));
-          } else {
-            // Under "trabajos" or undetermined, fetch from "trabajos" AND probe "bitacora_vehiculos" as a failsafe!
-            if (activeParentId !== trabajoId) {
-              fetchPromises.push(getDoc(doc(db, "trabajos", activeParentId)).then(snap => ({ type: 'job_direct', snap, requestedId: activeParentId })));
-            }
-            fetchPromises.push(getDoc(doc(db, "bitacora_vehiculos", activeParentId)).then(snap => ({ type: 'vehicle_log_probe', snap, requestedId: activeParentId })));
-          }
-        }
-
-        // Failsafe 4: If we have a trabajoId but no bitacora yet, search for it
-        if (trabajoId) {
-           const bitRef = collection(db, "bitacora_vehiculos");
-           const q = query(bitRef, where("trabajoId", "==", trabajoId), limit(1));
-           fetchPromises.push(getDocs(q).then(snap => ({ type: 'vehicle_log_query', snap })));
-        }
-
-        const results = await Promise.all(fetchPromises);
-        console.log(`[TRACE][SharedTimeline] Parallel fetch COMPLETED in ${Math.round(performance.now() - startTime)}ms`);
-
-        let resolvedJobData: any = null;
-        let vehicleLogData: any = null;
-        let timelineData: any = null;
-
-        // Offline fallback processor
-        const processWithOfflineFallback = async (res: any, collectionName: string) => {
-            if (res.snap.exists && res.snap.exists()) return res.snap.data();
-            if (res.requestedId) {
-                 try {
-                     const { localDocStore } = await import('@/core/offline/localDocStore');
-                     const offlineDoc = await localDocStore.getLocalDoc(collectionName, res.requestedId);
-                     if (offlineDoc && offlineDoc.data) {
-                         console.log(`[TRACE][SharedTimeline] fallback to offline ${collectionName} SUCCESS`);
-                         return offlineDoc.data;
-                     }
-                 } catch(e) { }
-            }
-            return null;
-        };
-
-        for (const res of results) {
-          if (res.type === 'timeline' && res.snap.exists()) timelineData = res.snap.data();
-          if (res.type === 'job' || res.type === 'job_direct') {
-              const data = await processWithOfflineFallback(res, 'trabajos');
-              if (data) resolvedJobData = data;
-          }
-          if (res.type === 'vehicle_log') {
-              const data = await processWithOfflineFallback(res, 'bitacora_vehiculos');
-              if (data) vehicleLogData = data;
-          }
-          if (res.type === 'vehicle_log_probe') {
-             const data = await processWithOfflineFallback(res, 'bitacora_vehiculos');
-             if (data) {
-                 vehicleLogData = data;
-                 if (!trabajoId && currentCollection !== "bitacora_vehiculos") {
-                    setCurrentCollection("bitacora_vehiculos");
-                 }
-             }
-          }
-          if (res.type === 'vehicle_log_query') {
-             if (!res.snap.empty && !vehicleLogData) {
-                vehicleLogData = res.snap.docs[0].data();
-             }
-          }
-        }
-
-        // Offline fallback query for vehicle_log BY trabajoId
-        if (!vehicleLogData && trabajoId) {
-             try {
-                 const { localDocStore } = await import('@/core/offline/localDocStore');
-                 const offlineDocs = await localDocStore.getLocalCollection('bitacora_vehiculos');
-                 const match = offlineDocs.find(d => d.data && d.data.trabajoId === trabajoId);
-                 if (match) {
-                     console.log("[TRACE][SharedTimeline] fallback to offline bitacora_vehiculos BY trabajoId SUCCESS");
-                     vehicleLogData = match.data;
-                 }
-             } catch(e) {}
-        }
-
-        // 1. Resolution for Timeline-Only
-        if (timelineData) {
-          const tlMeta = timelineData.metadata || {};
-          newContext = {
-            ...newContext,
-            details: timelineData,
-            jobTitle: tlMeta.title || tlMeta.unidad || "Canal de Comunicación",
-            jobStatus: tlMeta.status || "en_proceso",
-            jobLocation: tlMeta.subtitle || tlMeta.destino || "Ubicación de Campo",
-            vehicleName: tlMeta.unidad || ""
-          };
-        }
-
-        // 2. Resolution for Vehicle Log
-        if (vehicleLogData) {
-          const logData = vehicleLogData;
+        if (activeParentId && currentCollection) {
+          const docRef = doc(db, currentCollection, activeParentId);
+          const docSnap = await getDoc(docRef);
           
-          // Identify all potential timelines
-          const jobTimelineId = resolvedJobData?.timelineId;
-          const bitacoraTimelineId = logData?.timelineId;
-          const finalTimelineId = jobTimelineId || bitacoraTimelineId;
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            finalTimelineId = data.timelineId || data.id || finalTimelineId;
 
-          if (finalTimelineId && finalTimelineId !== resolvedTimelineId) {
-            console.log(`[TRACE][SharedTimeline] Switching timelineId: ${resolvedTimelineId} -> ${finalTimelineId}`, { source: jobTimelineId ? 'job' : 'bitacora' });
-            setResolvedTimelineId(finalTimelineId);
-            // Async sync (don't await)
-            if (finalTimelineId === jobTimelineId && bitacoraTimelineId !== jobTimelineId) {
-               updateDoc(doc(db, "bitacora_vehiculos", (logData.id || activeParentId)), { timelineId: finalTimelineId });
-            } else if (finalTimelineId === bitacoraTimelineId && (!jobTimelineId || jobTimelineId !== bitacoraTimelineId)) {
-               // Fixed: If jobTimelineId is missing OR different, we back-fill it
-               if (trabajoId) {
-                 updateDoc(doc(db, "trabajos", trabajoId as string), { timelineId: finalTimelineId });
-               }
+            if (currentCollection === 'trabajos') {
+              newContext = {
+                ...newContext,
+                details: data,
+                jobTitle: data.titulo || data.tipo_trabajo || "Trabajo sin título",
+                jobStatus: data.estado || "programado",
+                jobLocation: data.ubicacion || "",
+                jobOt: data.otCode || ""
+              };
+            } else if (currentCollection === 'bitacora_vehiculos') {
+              const resolvedDriverName = (() => {
+                if (!data.conductorName || data.conductorName.includes("@") || data.conductorName === data.conductorId) {
+                  const emp = employees?.find(e => e?.id === data.conductorId);
+                  return emp ? (emp.name || emp.username || "Sin nombre") : (data.conductorName || "Sin nombre");
+                }
+                return data.conductorName;
+              })();
+              
+              const vehicleUnit = data.unidad || data.unidadName || "Vehículo sin unidad";
+              const vehiclePlaca = data.placa || "";
+              const defaultSubtitle = `${vehiclePlaca ? vehiclePlaca + " - " : ""}${resolvedDriverName}`;
+
+              newContext = {
+                ...newContext,
+                details: data,
+                jobTitle: metadataRef.current?.title || `Bitácora de Salida: ${vehicleUnit}`,
+                jobStatus: data.horaLlegada ? "FINALIZADA" : "EN RUTA",
+                jobLocation: metadataRef.current?.subtitle || defaultSubtitle || data.destino || "Sin destino",
+                vehicleName: data.unidadName || data.unidadId || "",
+                trabajoId: data.trabajoId || null
+              };
             }
           }
-
-          let foundTrabajoId = logData.trabajoId || null;
-          let foundJobData = resolvedJobData;
-
-          if (!foundJobData && foundTrabajoId) {
-             const jobSnap = await getDoc(doc(db, "trabajos", foundTrabajoId));
-             if (jobSnap.exists()) foundJobData = jobSnap.data();
-          }
-
-          if (!foundJobData) {
-             const trabajosCol = collection(db, "trabajos");
-             const q = query(trabajosCol, or(where("registroBitacoraId", "==", activeParentId), where("bitacoraIds", "array-contains", activeParentId)));
-             const qSnap = await getDocs(q);
-             if (!qSnap.empty) {
-               foundTrabajoId = qSnap.docs[0].id;
-               foundJobData = qSnap.docs[0].data();
-             }
-          }
-
-          const resolvedDriverName = (() => {
-            if (!logData.conductorName || logData.conductorName.includes("@") || logData.conductorName === logData.conductorId) {
-              const emp = employees?.find(e => e?.id === logData.conductorId);
-              return emp ? (emp.name || emp.username || "Sin nombre") : (logData.conductorName || "Sin nombre");
+        } else if (currentTimelineId) {
+            const tlRef = doc(db, "operational_timelines", currentTimelineId);
+            const tlSnap = await getDoc(tlRef);
+            if (tlSnap.exists()) {
+                const tlMeta = tlSnap.data().metadata || {};
+                newContext = {
+                    ...newContext,
+                    details: tlSnap.data(),
+                    jobTitle: tlMeta.title || tlMeta.unidad || "Canal de Comunicación",
+                    jobStatus: tlMeta.status || "en_proceso",
+                    jobLocation: tlMeta.subtitle || tlMeta.destino || "Ubicación de Campo",
+                    vehicleName: tlMeta.unidad || ""
+                };
             }
-            return logData.conductorName;
-          })();
-          const vehicleUnit = logData.unidad || logData.unidadName || "Vehículo sin unidad";
-          const vehiclePlaca = logData.placa || "";
-
-          const vehicleLogTitle = metadataRef.current?.title || `Bitácora de Salida: ${vehicleUnit}`;
-          const defaultSubtitle = `${vehiclePlaca ? vehiclePlaca + " - " : ""}${resolvedDriverName}`;
-          const vehicleLogSubtitle = metadataRef.current?.subtitle || defaultSubtitle;
-
-          newContext.jobTitle = vehicleLogTitle;
-          newContext.jobLocation = vehicleLogSubtitle || logData.destino || "Sin destino";
-          newContext.jobStatus = logData.horaLlegada ? "finalizado" : "en_proceso";
-
-          if (foundTrabajoId && foundJobData) {
-            newContext.trabajoId = foundTrabajoId;
-            resolvedJobData = foundJobData;
-            newContext.linkedLog = logData;
-            newContext.vehicleName = logData.unidadName || logData.unidadId || "";
-          } else if (!trabajoId || activeParentId === trabajoId || currentCollection === "bitacora_vehiculos") {
-            newContext = {
-              ...newContext,
-              details: logData,
-              jobTitle: vehicleLogTitle,
-              jobStatus: logData.horaRegreso || logData.horaLlegada ? "FINALIZADA" : "EN RUTA",
-              jobLocation: vehicleLogSubtitle || logData.destino || "Sin destino",
-              vehicleName: logData.unidadName || logData.unidadId || ""
-            };
-          } else {
-            newContext.linkedLog = logData;
-            newContext.vehicleName = logData.unidadName || logData.unidadId || "";
-          }
         }
 
-        // 3. Final Title Resolution
-        if (resolvedJobData) {
-            if (resolvedJobData.timelineId && resolvedJobData.timelineId !== resolvedTimelineId) {
-              setResolvedTimelineId(resolvedJobData.timelineId);
-            }
-            const isVehicleLog = currentCollection === "bitacora_vehiculos";
-            newContext = {
-                ...newContext,
-                details: resolvedJobData,
-                jobTitle: isVehicleLog && newContext.jobTitle ? newContext.jobTitle : (resolvedJobData.titulo || resolvedJobData.tipo_trabajo || "Trabajo sin título"),
-                jobStatus: resolvedJobData.estado || newContext.jobStatus,
-                jobLocation: isVehicleLog && newContext.jobLocation ? newContext.jobLocation : (resolvedJobData.ubicacion || ""),
-                jobOt: resolvedJobData.otCode || ""
-            };
+        if (finalTimelineId && finalTimelineId !== resolvedTimelineIdRef.current) {
+          console.log(`[TRACE][SharedTimeline] Resolved timelineId to: ${finalTimelineId}`);
+          setResolvedTimelineId(finalTimelineId);
         }
 
         setContext(prev => ({ ...prev, ...newContext, isLoading: false }));
@@ -645,7 +553,7 @@ export default function SharedTimeline({
       }
     };
     fetchAllMetadata();
-  }, [activeParentId, trabajoId, currentCollection, resolvedTimelineId]);
+  }, [activeParentId, trabajoId, currentCollection]);
 
   const handleSendLocation = () => {
     setShowAttachMenu(false);
@@ -694,6 +602,22 @@ export default function SharedTimeline({
             usuarioNombre: currentUser?.name || currentUser?.email,
             optimisticId: optimisticId,
           });
+
+          if (auditCollectionPath) {
+            await addAuditEntryOffline(auditCollectionPath, {
+              id: crypto.randomUUID(),
+              messageId: optimisticId,
+              mensaje: "Compartió ubicación",
+              usuarioId: currentUser?.id,
+              usuarioNombre: currentUser?.name || currentUser?.email,
+              createdAt: new Date().toISOString(),
+              timestamp: new Date().toISOString(),
+              tipoEvento: "Creación",
+              accion: "compartió ubicación",
+              accionUsuario: currentUser?.name || currentUser?.email || "Usuario",
+              tipo: "ubicacion",
+            });
+          }
         } catch (e) {
           setGpsError("Error al enviar la ubicación al servidor.");
         } finally {
@@ -747,7 +671,7 @@ export default function SharedTimeline({
         pinned: !isPinned,
         pinnedBy: !isPinned ? (currentUser?.name || currentUser?.email || "Usuario") : null,
         pinnedAt: !isPinned ? new Date().toISOString() : null,
-      });
+      }, comment);
       setActiveMenuComment(null);
     } catch (err) {
       console.error("Error toggling pin:", err);
@@ -775,13 +699,33 @@ export default function SharedTimeline({
         ? `operational_timelines/${resolvedTimelineId}/events`
         : `${currentCollection}/${activeParentId}/timeline`;
       
+      const contentToDelete = comment.mensaje || (comment.tipo === "imagen" || comment.tipo === "foto" ? "Evidencia fotográfica" : comment.tipo === "archivo" ? "Archivo adjunto" : "Mensaje");
+
+      // Registrar auditoría de eliminación como snapshot independiente e inmutable
+      if (auditCollectionPath) {
+        await addAuditEntryOffline(auditCollectionPath, {
+          id: crypto.randomUUID(),
+          messageId: comment.id,
+          mensaje: "Este mensaje fue eliminado.",
+          contenidoOriginal: contentToDelete,
+          usuarioId: comment.usuarioId,
+          usuarioNombre: comment.usuarioNombre || "Usuario",
+          createdAt: comment.createdAt || comment.timestamp,
+          timestamp: new Date().toISOString(),
+          tipoEvento: "Eliminación",
+          accion: "eliminó un mensaje",
+          accionUsuario: currentUser?.name || currentUser?.email || "Usuario",
+          tipo: comment.tipo || "comentario",
+        });
+      }
+      
       await updateVersionedDocOffline(path, comment.id, {
         eliminado: true,
         mensaje: "Este mensaje fue eliminado.",
         fileUrls: [],
         fileNames: [],
         fileSizes: [],
-      });
+      }, comment);
       setActiveMenuComment(null);
     } catch (err) {
       console.error("Error deleting message:", err);
@@ -815,13 +759,33 @@ export default function SharedTimeline({
         // Also detect mentions on edit
         const mentions = detectMentionsInText(newMessage, employees);
         
+        // Registrar auditoría de edición como snapshot independiente
+        if (auditCollectionPath) {
+          await addAuditEntryOffline(auditCollectionPath, {
+            id: crypto.randomUUID(),
+            messageId: editingComment.id,
+            mensaje: newMessage.trim(),
+            contenidoAnterior: editingComment.mensaje || (editingComment.tipo === "imagen" || editingComment.tipo === "foto" ? "Evidencia fotográfica" : "Archivo adjunto"),
+            contenidoNuevo: newMessage.trim(),
+            usuarioId: editingComment.usuarioId,
+            usuarioNombre: editingComment.usuarioNombre || "Usuario",
+            createdAt: editingComment.createdAt || editingComment.timestamp,
+            timestamp: new Date().toISOString(),
+            tipoEvento: "Edición",
+            accion: "editó un mensaje",
+            accionUsuario: currentUser.name || currentUser.email || "Usuario",
+            tipo: editingComment.tipo || "comentario",
+          });
+        }
+
         await updateVersionedDocOffline(path, editingComment.id, {
           mensaje: newMessage.trim(),
           mentions: mentions,
           editado: true,
           editedAt: new Date().toISOString(),
           editedBy: currentUser.name || currentUser.email || "Usuario",
-        });
+        }, editingComment);
+
         setNewMessage("");
         setEditingComment(null);
       } catch (error) {
@@ -876,6 +840,22 @@ export default function SharedTimeline({
 
       // 2. Persistir localmente y encolar mutación
       await setVersionedDocOffline(path, eventId, payload);
+
+      if (auditCollectionPath) {
+        await addAuditEntryOffline(auditCollectionPath, {
+          id: crypto.randomUUID(),
+          messageId: eventId,
+          mensaje: newMessage.trim(),
+          usuarioId: currentUser.id,
+          usuarioNombre: currentUser.name || currentUser.email,
+          createdAt: payload.createdAt,
+          timestamp: payload.timestamp,
+          tipoEvento: "Creación",
+          accion: "envió un mensaje",
+          accionUsuario: currentUser.name || currentUser.email || "Usuario",
+          tipo: "comentario",
+        });
+      }
       
       // 3. Notificaciones (si hay red)
       if (navigator.onLine) {
@@ -1038,30 +1018,59 @@ const getDynamicTitleSize = (title: string) => {
     return "text-sm sm:text-base md:text-lg lg:text-xl font-black leading-tight";
   };
 
-  const filteredLogs = mergedComments.filter((c: TimelineEvent) => {
+  const allHistoryLogs = useMemo(() => {
+    const auditMessageIds = new Set(rawAuditEntries.map((e) => e.messageId).filter(Boolean));
+
+    const syntheticEntries: AuditSnapshot[] = [];
+    mergedComments.forEach((c) => {
+      if (c && c.id && !auditMessageIds.has(c.id)) {
+        let actionText = "envió un mensaje";
+        if (c.tipo === "sistema" || c.tipo === "system_event") actionText = c.mensaje || "realizó una acción del sistema";
+        else if (c.tipo === "imagen" || c.tipo === "foto") actionText = "adjuntó evidencia fotográfica";
+        else if (c.tipo === "archivo") actionText = "adjuntó un archivo";
+        else if (c.tipo === "ubicacion") actionText = "compartió ubicación";
+
+        syntheticEntries.push({
+          id: `synthetic-creation-${c.id}`,
+          messageId: c.id,
+          mensaje: c.mensaje || (c.tipo === "imagen" || c.tipo === "foto" ? "Evidencia fotográfica" : c.tipo === "archivo" ? "Archivo adjunto" : "Mensaje"),
+          usuarioId: c.usuarioId,
+          usuarioNombre: c.usuarioNombre || "Usuario",
+          createdAt: c.createdAt || c.timestamp,
+          timestamp: c.createdAt || c.timestamp || new Date().toISOString(),
+          tipoEvento: "Creación",
+          accion: actionText,
+          accionUsuario: c.usuarioNombre || "Usuario",
+          tipo: c.tipo || "comentario",
+          fileUrls: c.fileUrls || [],
+          fileNames: c.fileNames || [],
+          fileSizes: c.fileSizes || [],
+        });
+      }
+    });
+
+    const combined = [...rawAuditEntries, ...syntheticEntries];
+    combined.sort((a, b) => new Date(a.timestamp || a.createdAt || 0).getTime() - new Date(b.timestamp || b.createdAt || 0).getTime());
+    return combined;
+  }, [rawAuditEntries, mergedComments]);
+
+  const filteredLogs = allHistoryLogs.filter((c: AuditSnapshot) => {
     const safeFileUrls = Array.isArray(c.fileUrls) ? c.fileUrls : [];
     const safeFileNames = Array.isArray(c.fileNames) ? c.fileNames : [];
     const hasImages = safeFileUrls.some((url: string, idx: number) => isImageFile(safeFileNames[idx], url));
     const isImageComment = c.tipo === "imagen" || c.tipo === "foto" || !!hasImages;
     const isFileComment = c.tipo === "archivo" && !isImageComment;
 
-    let actionText = "";
-    if (c.tipo === "sistema") actionText = c.mensaje || "realizó una acción del sistema";
-    else if (c.tipo === "comentario") {
-      if (c.eliminado) actionText = "eliminó un comentario";
-      else if (c.editado) actionText = "editó un comentario";
-      else actionText = "envió un mensaje";
-    } else if (isImageComment) actionText = "adjuntó evidencia fotográfica";
-    else if (isFileComment) actionText = "adjuntó un archivo";
-    else actionText = "realizó una actividad";
+    const actionUser = c.accionUsuario || c.usuarioNombre || "Usuario";
+    const actionText = c.accion || (c.tipoEvento === "Edición" ? "editó un comentario" : c.tipoEvento === "Eliminación" ? "eliminó un comentario" : "envió un mensaje");
 
-    const searchable = `${c.usuarioNombre} ${c.mensaje || ""} ${actionText}`.toLowerCase();
+    const searchable = `${actionUser} ${c.mensaje || ""} ${actionText}`.toLowerCase();
     const query = logSearchQuery.toLowerCase().trim();
     if (query && !searchable.includes(query)) return false;
 
-    if (logActiveFilter === "messages" && (c.tipo !== "comentario" || c.eliminado || c.editado)) return false;
-    if (logActiveFilter === "edits" && !c.editado) return false;
-    if (logActiveFilter === "deletions" && !c.eliminado) return false;
+    if (logActiveFilter === "messages" && (c.tipoEvento === "Edición" || c.tipoEvento === "Eliminación" || c.tipo !== "comentario")) return false;
+    if (logActiveFilter === "edits" && c.tipoEvento !== "Edición") return false;
+    if (logActiveFilter === "deletions" && c.tipoEvento !== "Eliminación") return false;
     if (logActiveFilter === "photos" && !isImageComment) return false;
     if (logActiveFilter === "files" && !isFileComment) return false;
     return true;
@@ -1209,8 +1218,30 @@ const getDynamicTitleSize = (title: string) => {
     lastScrollY.current = scrollTop;
   };
 
+  useLayoutEffect(() => {
+    if (!showTechnicalLog) return;
+
+    updateHistorialHeight();
+
+    const observer = new ResizeObserver(() => {
+      updateHistorialHeight();
+    });
+
+    if (timelineContainerRef.current) observer.observe(timelineContainerRef.current);
+    if (headerContainerRef.current) observer.observe(headerContainerRef.current);
+    if (inputContainerRef.current) observer.observe(inputContainerRef.current);
+    if (historialControlsRef.current) observer.observe(historialControlsRef.current);
+
+    window.addEventListener("resize", updateHistorialHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateHistorialHeight);
+    };
+  }, [showTechnicalLog, headerCollapsed, updateHistorialHeight]);
+
   return (
-    <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
+    <div ref={timelineContainerRef} className="flex flex-col h-full bg-slate-50 overflow-hidden relative">
       {!activeParentId ? (
         <div className="flex h-full flex-col items-center justify-center p-8 text-center bg-slate-50">
           <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-200 max-w-xs w-full">
@@ -1236,23 +1267,31 @@ const getDynamicTitleSize = (title: string) => {
         </div>
       ) : (
         <>
-          <AnimatePresence mode="wait">
-            {!headerCollapsed ? (
-          <motion.div 
-            key="full-header"
-            initial={false}
-            animate={{ y: 0, opacity: 1, height: "auto" }}
-            exit={{ y: -80, opacity: 0, height: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="bg-white px-3 md:px-5 py-1 flex flex-col border-b border-slate-200 sticky top-0 z-30 flex-none shadow-sm overflow-hidden"
-          >
+          <div ref={headerContainerRef} className="w-full shrink-0 z-30">
+            <AnimatePresence mode="wait">
+              {!headerCollapsed ? (
+                <motion.div 
+                  key="full-header"
+                  initial={false}
+                  animate={{ y: 0, opacity: 1, height: "auto" }}
+                  exit={{ y: -80, opacity: 0, height: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  className="bg-white px-3 md:px-5 py-1 flex flex-col border-b border-slate-200 sticky top-0 z-30 flex-none shadow-sm overflow-hidden"
+                >
             <div className="flex items-center gap-2">
+          {onExpandToggle && (
+            <IconButton
+              icon={isExpanded ? <FiMinimize2 size={16} /> : <FiMaximize2 size={16} />}
+              onClick={onExpandToggle}
+              variant="primary"
+              title={isExpanded ? "Volver a Trabajos" : "Expandir Bitácora"}
+            />
+          )}
           <IconButton
-            icon={<FiArrowLeft className="w-3.5 h-3.5" />}
+            icon={<FiArrowLeft size={16} />}
             onClick={onBack}
-            variant="secondary"
+            variant="neutral"
             title="Volver a Programación"
-            className="!w-6 !h-6 !p-0 shrink-0 flex items-center justify-center !bg-slate-50 hover:!bg-slate-100 border border-slate-200"
           />
           <div 
             onClick={() => setShowProjectInfo(true)}
@@ -1331,15 +1370,14 @@ const getDynamicTitleSize = (title: string) => {
           </motion.div>
         )}
       </AnimatePresence>
-
-
+    </div>
 
       {latestPinned && (() => {
         const safeFileUrls = Array.isArray(latestPinned.fileUrls) ? latestPinned.fileUrls : [];
         const safeFileNames = Array.isArray(latestPinned.fileNames) ? latestPinned.fileNames : [];
         const pinnedThumbUrl = safeFileUrls.find((url, idx) => isImageFile(safeFileNames[idx], url));
         return (
-          <div className="sticky top-0 z-10 -mx-1 px-1 bg-slate-50/95 backdrop-blur-md py-1 border-b border-slate-200/50 mb-1 flex justify-between items-center gap-1.5">
+          <div ref={pinnedBarRef} className="sticky top-0 z-10 -mx-1 px-1 bg-slate-50/95 backdrop-blur-md py-1 border-b border-slate-200/50 mb-1 flex justify-between items-center gap-1.5">
             <div 
               onClick={() => scrollToMessage(latestPinned.id)}
               className="flex-1 flex items-center justify-between bg-white hover:bg-slate-50 active:bg-slate-100 py-1 px-2 rounded-lg border border-slate-200/80 shadow-xs cursor-pointer select-none transition-all duration-300 min-w-0 gap-1.5"
@@ -1396,53 +1434,7 @@ const getDynamicTitleSize = (title: string) => {
                 </p>
             </div>
 
-            {/* HERRAMIENTA DE RECUPERACIÓN */}
-            {(isAdmin(currentUser?.role) && resolvedTimelineId && currentCollection === "bitacora_vehiculos") && (
-               <button
-                 className="w-full bg-slate-900 text-white rounded-xl py-3 px-4 font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-colors shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"
-                 onClick={async (e) => {
-                   e.preventDefault();
-                   try {
-                     const { createSystemEvent } = await import('@/modules/job_scheduling/jobService');
-                     const { setDoc } = await import('firebase/firestore');
-                     const docRef = doc(db, 'bitacora_vehiculos', activeParentId);
-                     const snap = await getDoc(docRef);
-                     if (snap.exists()) {
-                       const data = snap.data();
-                       const createdAt = data.createdAt?.toDate?.() || new Date();
-                       await setDoc(doc(db, "operational_timelines", resolvedTimelineId), {
-                          id: resolvedTimelineId,
-                          creado_en: createdAt.toISOString(),
-                          metadata: {
-                              title: `Bitácora de Salida: ${data.unidadName || ""}`,
-                              subtitle: `${data.conductorName || ""}`,
-                              status: data.kmLlegada ? "finalizado" : "en_proceso",
-                              vehiculoId: data.vehiculoId || null,
-                              createdAt: createdAt.toISOString()
-                          }
-                       }, { merge: true });
-                       
-                       await createSystemEvent(resolvedTimelineId, "bitacora_iniciada", {
-                           conductor: data.conductorName || currentUser?.name || 'Sistema',
-                           unidad: data.unidadName || "No especificada",
-                           destino: data.destino || "No especificado",
-                           kmSalida: data.kmSalida || 0,
-                           combustibleInicial: data.combustible || 'Full',
-                           descripcion: `[EVENTOS RECUPERADOS] Se inició una nueva sesión operacional para la unidad.`
-                       }, createdAt, `recuperado_${resolvedTimelineId}`);
-                       alert("¡Eventos iniciales recuperados! Espere unos segundos y los verá en la línea de tiempo.");
-                     } else {
-                       alert("El documento de origen de la bitácora no fue encontrado.");
-                     }
-                   } catch(err: any) {
-                     alert("Error al recuperar: " + err.message);
-                   }
-                 }}
-               >
-                 Recuperar Evento Inicial
-               </button>
-            )}
-
+            {/* HERRAMIENTA DE RECUPERACIÓN ELIMINADA POR REGLAS DE ARQUITECTURA */}
           </div>
         </div>
       ) : (
@@ -1475,6 +1467,7 @@ const getDynamicTitleSize = (title: string) => {
 
         <div className="w-full max-w-3xl mx-auto mt-0 mb-0">
           <button
+            ref={historialToggleBtnRef}
             onClick={() => setShowTechnicalLog(!showTechnicalLog)}
             className="flex items-center justify-between w-full p-1.5 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors border border-slate-200 group border-b-0 rounded-b-none"
           >
@@ -1486,7 +1479,7 @@ const getDynamicTitleSize = (title: string) => {
 
           {showTechnicalLog && (
             <div className="bg-white border-x border-t border-slate-200 overflow-hidden shadow-sm flex flex-col">
-              <div className="p-4 border-b border-slate-100 flex flex-col gap-3 bg-slate-50/50">
+              <div ref={historialControlsRef} className="p-4 border-b border-slate-100 flex flex-col gap-3 bg-slate-50/50">
                 <div className="flex items-center gap-2 bg-white rounded-lg p-2 border border-slate-200 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
                   <FiSearch className="text-slate-400 ml-1" />
                   <input
@@ -1525,48 +1518,72 @@ const getDynamicTitleSize = (title: string) => {
               {filteredLogs?.length === 0 ? (
                 <div className="px-6 py-10 text-center text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 flex flex-col items-center gap-2">
                   <FiSearch size={24} className="opacity-20 mb-1" />
-                  {mergedComments?.length === 0 ? "No hay registros de actividad" : "No se encontraron resultados"}
+                  {allHistoryLogs?.length === 0 ? "No hay registros de actividad" : "No se encontraron resultados"}
                 </div>
               ) : (
-                <div className="flex flex-col divide-y divide-slate-100 max-h-96 overflow-y-auto custom-scrollbar">
+                <div 
+                  style={{ maxHeight: `${historialMaxHeight}px` }}
+                  className="flex flex-col divide-y divide-slate-100 overflow-y-auto custom-scrollbar pb-6"
+                >
                   {filteredLogs.map((c, index) => {
-                    const safeFileUrls = Array.isArray(c.fileUrls) ? c.fileUrls : [];
-                    const safeFileNames = Array.isArray(c.fileNames) ? c.fileNames : [];
-                    const hasImages = safeFileUrls.some((url: string, idx: number) => isImageFile(safeFileNames[idx], url));
-                    const isImageComment = c.tipo === "imagen" || c.tipo === "foto" || !!hasImages;
-                    const isFileComment = c.tipo === "archivo" && !isImageComment;
-
-                    let actionText = "";
-                    if (c.tipo === "sistema") actionText = c.mensaje || "realizó una acción del sistema";
-                    else if (c.tipo === "comentario") {
-                      if (c.eliminado) actionText = "eliminó un comentario";
-                      else if (c.editado) actionText = "editó un comentario";
-                      else actionText = "envió un mensaje";
-                    } else if (isImageComment) actionText = "adjuntó evidencia fotográfica";
-                    else if (isFileComment) actionText = "adjuntó un archivo";
-                    else actionText = "realizó una actividad";
+                    const actionUser = c.accionUsuario || c.usuarioNombre || "Usuario";
+                    const isDeletion = c.tipoEvento === "Eliminación" || c.accion?.includes("eliminó");
+                    const isEdit = c.tipoEvento === "Edición" || c.accion?.includes("editó");
+                    const actionText = c.accion || (isEdit ? "editó un mensaje" : isDeletion ? "eliminó un mensaje" : "envió un mensaje");
 
                     return (
-                      <button
+                      <div
                         key={`log-${c.id}-${index}`}
-                        onClick={() => scrollToMessage(c.id)}
-                        className="w-full text-left flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 md:px-5 md:py-4 hover:bg-slate-50 transition-colors gap-2 sm:gap-4 group focus:outline-none focus:bg-slate-50 relative"
+                        onClick={() => (c.messageId || c.id) && scrollToMessage(c.messageId || c.id)}
+                        className="w-full text-left flex flex-col sm:flex-row sm:items-start justify-between px-4 py-3 md:px-5 md:py-4 hover:bg-slate-50 transition-colors gap-2 sm:gap-4 group focus:outline-none focus:bg-slate-50 relative cursor-pointer"
+                        role="button"
+                        tabIndex={0}
                       >
-                        <div className="flex flex-col gap-0.5 min-w-0">
-                          <div className="flex items-center gap-3">
-                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover:bg-blue-400 focus:bg-blue-400 transition-colors flex-shrink-0" />
-                            <span className="text-[11px] md:text-xs font-bold text-slate-700 uppercase tracking-wide truncate">
-                              {c.usuarioNombre} <span className="font-medium text-slate-500 normal-case ml-1">{actionText}</span>
-                            </span>
+                        <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 max-w-full overflow-hidden">
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${isDeletion ? "bg-red-500" : isEdit ? "bg-amber-500" : "bg-blue-500"}`} />
+                            <div className="flex items-center gap-1.5 min-w-0 max-w-full truncate">
+                              <span
+                                title={actionUser}
+                                className="text-[11px] md:text-xs font-black text-slate-800 uppercase tracking-wide truncate whitespace-nowrap max-w-[140px] sm:max-w-[240px] shrink-0"
+                              >
+                                {actionUser}
+                              </span>
+                              <span className="text-[11px] md:text-xs font-semibold text-slate-500 normal-case whitespace-nowrap truncate">
+                                {isDeletion ? "eliminó un mensaje" : isEdit ? "editó un mensaje" : actionText}
+                              </span>
+                            </div>
                           </div>
-                          {c.mensaje && c.tipo !== "sistema" && c.mensaje !== actionText && (
-                            <p className="text-[11px] font-medium text-slate-500 pl-4.5 border-l-2 border-slate-200 ml-[2px] pl-2 mt-1 truncate max-w-full">&quot;{c.mensaje}&quot;</p>
+
+                          {isDeletion ? (
+                            <div className="ml-4 pl-2.5 border-l-2 border-red-300 text-[11px] text-slate-700 bg-red-50/40 p-1.5 rounded-r-lg">
+                              <span className="text-[10px] uppercase font-bold text-red-600 block mb-0.5">Contenido eliminado:</span>
+                              <p className="italic font-normal text-slate-800 break-words">&quot;{c.contenidoOriginal || c.mensaje || "Sin contenido"}&quot;</p>
+                            </div>
+                          ) : isEdit ? (
+                            <div className="ml-4 pl-2.5 border-l-2 border-amber-300 text-[11px] text-slate-700 bg-amber-50/30 p-1.5 rounded-r-lg flex flex-col gap-1">
+                              <div>
+                                <span className="text-[10px] uppercase font-bold text-amber-600 block mb-0.5">Antes:</span>
+                                <p className="italic font-normal text-slate-500 line-through break-words">&quot;{c.contenidoAnterior || "Sin contenido previo"}&quot;</p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase font-bold text-emerald-600 block mb-0.5">Después:</span>
+                                <p className="font-semibold text-slate-800 break-words">&quot;{c.contenidoNuevo || c.mensaje}&quot;</p>
+                              </div>
+                            </div>
+                          ) : (
+                            c.mensaje && c.tipo !== "sistema" && (
+                              <div className="ml-4 pl-2.5 border-l-2 border-blue-200 text-[11px] font-medium text-slate-700 my-0.5">
+                                <p className="break-words">&quot;{c.mensaje}&quot;</p>
+                              </div>
+                            )
                           )}
                         </div>
-                        <div className="flex items-center pl-4 sm:pl-0 shrink-0">
+
+                        <div className="flex items-center pl-4 sm:pl-0 shrink-0 self-start mt-0.5">
                           <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">{formatTime(c.timestamp)}</span>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -1575,29 +1592,31 @@ const getDynamicTitleSize = (title: string) => {
           )}
         </div>
 
-      <OperationalLogInput
-        newMessage={newMessage}
-        setNewMessage={setNewMessage}
-        pendingAttachment={pendingAttachment}
-        setPendingAttachment={setPendingAttachment}
-        showAttachMenu={showAttachMenu}
-        setShowAttachMenu={setShowAttachMenu}
-        replyingTo={replyingTo}
-        setReplyingTo={setReplyingTo}
-        isUploading={isUploading}
-        onSend={handleSend}
-        onCameraChange={handleCameraChange}
-        onFileChange={handleFileChange}
-        onSendLocation={handleSendLocation}
-        handleCancelAttachment={handleCancelAttachment}
-        cameraRef={cameraRef}
-        galleryRef={galleryRef}
-        fileRef={fileRef}
-        attachMenuRef={attachMenuRef}
-        isGettingLocation={isGettingLocation}
-        gpsError={gpsError}
-        setGpsError={setGpsError}
-      />
+      <div ref={inputContainerRef} className="w-full shrink-0">
+        <OperationalLogInput
+          newMessage={newMessage}
+          setNewMessage={setNewMessage}
+          pendingAttachment={pendingAttachment}
+          setPendingAttachment={setPendingAttachment}
+          showAttachMenu={showAttachMenu}
+          setShowAttachMenu={setShowAttachMenu}
+          replyingTo={replyingTo}
+          setReplyingTo={setReplyingTo}
+          isUploading={isUploading}
+          onSend={handleSend}
+          onCameraChange={handleCameraChange}
+          onFileChange={handleFileChange}
+          onSendLocation={handleSendLocation}
+          handleCancelAttachment={handleCancelAttachment}
+          cameraRef={cameraRef}
+          galleryRef={galleryRef}
+          fileRef={fileRef}
+          attachMenuRef={attachMenuRef}
+          isGettingLocation={isGettingLocation}
+          gpsError={gpsError}
+          setGpsError={setGpsError}
+        />
+      </div>
 
       {/* PORTALS & MODALS SECTION */}
       <ModalPortal>
@@ -1619,7 +1638,7 @@ const getDynamicTitleSize = (title: string) => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="bg-slate-50/80 px-6 py-5 border-b border-slate-100 text-left">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 block mb-1.5">{activeMenuComment.usuarioNombre}</span>
+                  <span title={activeMenuComment.usuarioNombre} className="text-[10px] font-black uppercase tracking-widest text-blue-600 block mb-1.5 truncate whitespace-nowrap">{activeMenuComment.usuarioNombre}</span>
                   <p className="text-xs text-slate-500 font-bold line-clamp-2 leading-relaxed italic">
                     &quot;{activeMenuComment.eliminado ? "Mensaje eliminado" : activeMenuComment.mensaje || (activeMenuComment.tipo === "imagen" || activeMenuComment.tipo === "foto" ? "Evidencia fotográfica" : "Archivo adjunto")}&quot;
                   </p>
@@ -2039,7 +2058,13 @@ const getDynamicTitleSize = (title: string) => {
                     className="flex-1 bg-white/5 border border-white/10 rounded-2xl text-sm font-black text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500 py-4 px-6 transition-all"
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendInlineReply(); } }}
                   />
-                  <button type="button" onClick={handleSendInlineReply} disabled={!inlineReplyMessage.trim()} className="h-[56px] w-[56px] bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center rounded-2xl transition-all disabled:opacity-30 disabled:scale-95 shadow-lg flex-shrink-0"><FiSend className="w-5 h-5 ml-0.5" /></button>
+                  <IconButton
+                    icon={<FiSend className="w-5 h-5 ml-0.5" />}
+                    onClick={handleSendInlineReply}
+                    disabled={!inlineReplyMessage.trim()}
+                    variant="primary"
+                    className="!h-[56px] !w-[56px] !rounded-2xl flex-shrink-0"
+                  />
                 </div>
               </div>
             </motion.div>

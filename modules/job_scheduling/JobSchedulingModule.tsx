@@ -193,6 +193,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
   }, [selectedId, trabajos]);
   
   const [activeTimelineJobId, setActiveTimelineJobId] = useState<string | null>(null);
+  const [isLogExpanded, setIsLogExpanded] = useState(false);
   useEffect(() => {
     console.log("[TRACE][JobSchedulingModule] RENDER");
   });
@@ -681,28 +682,15 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
     return events.filter(e => isSameDay(new Date(e.start), date)).length;
   };
 
-  const CustomHeader = ({ date, label }: any) => {
+  const CustomHeader = ({ date }: any) => {
     const dayNameShort = format(date, 'EEEEE', { locale: es });
     const dayNameFull = format(date, 'EEEE', { locale: es });
-    const dayNumber = format(date, 'd', { locale: es });
     
-    // For month view, we just want the day name
-    if (label.length > 3 && !label.includes(' ')) {
-      return (
-        <div className="py-3 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-          {label}
-        </div>
-      );
-    }
-
     return (
-      <div className="flex flex-col items-center py-1 md:py-2 px-1 min-w-0">
-        <span className="text-[10px] md:text-[10px] uppercase font-black text-slate-400 tracking-widest mb-0.5 md:mb-1 truncate w-full text-center">
+      <div className="flex flex-col items-center py-0 px-1 min-w-0">
+        <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest truncate w-full text-center">
           <span className="md:hidden">{dayNameShort}</span>
           <span className="hidden md:inline">{dayNameFull}</span>
-        </span>
-        <span className="text-sm md:text-lg font-black text-blue-950 leading-none">
-          {dayNumber}
         </span>
       </div>
     );
@@ -734,7 +722,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
 
         /* Vista MES */
         .rbc-month-view .rbc-date-cell {
-          padding: 4px 6px 2px 6px !important;
+          padding: 0px 4px !important;
           z-index: 2;
           position: relative;
         }
@@ -754,11 +742,11 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
           font-size: 9px !important;
           padding: 1px 4px !important;
           margin-top: 1px !important;
-          border-radius: 4px !important;
+          border-radius: 3px !important;
           z-index: 1 !important;
-          height: 18px !important;
-          min-height: 18px !important;
-          line-height: 16px !important;
+          height: 16px !important;
+          min-height: 16px !important;
+          line-height: 14px !important;
           overflow: hidden !important;
           text-overflow: ellipsis !important;
           white-space: nowrap !important;
@@ -772,11 +760,11 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
           line-height: 14px !important;
         }
         .rbc-month-view .rbc-row-segment {
-          min-height: 18px;
+          min-height: 16px;
         }
         .rbc-month-row {
-          min-height: 95px;
-          border-bottom: 2px solid #e2e8f0; /* Separador sutil */
+          min-height: 94px;
+          border-bottom: 1px solid #e2e8f0; /* Separador sutil */
         }
         .rbc-show-more {
           font-size: 9px !important;
@@ -785,7 +773,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
           text-transform: uppercase !important;
           padding-left: 45%; /* Centered display for more label */
           padding-left: 4px !important;
-          margin-top: 1px !important;
+          margin-top: 0px !important;
           background: transparent !important;
         }
 
@@ -798,7 +786,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
           position: relative;
           z-index: 3;
           background: white;
-          min-height: 40px;
+          min-height: 22px;
           height: auto;
           overflow: visible;
         }
@@ -807,7 +795,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
           flex-direction: column;
           justify-content: center;
           align-items: center;
-          padding: 4px 0;
+          padding: 0px 0 !important;
           line-height: normal;
           overflow: visible;
         }
@@ -882,7 +870,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
                 const isSaturated = count >= 3;
                 const formattedLabel = label.padStart(2, '0');
                 return (
-                  <div className="flex items-center justify-between w-full select-none p-1">
+                  <div className="flex items-center justify-between w-full select-none px-1 py-0">
                     <button 
                       type="button"
                       onClick={(e) => {
@@ -993,13 +981,14 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
   };
 
   return (
-    <div className="-mx-2 md:-mx-4 -mt-6 md:-mt-8 bg-slate-50 min-h-screen p-4">
+    <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Programación de Trabajos" subtitle="Gestión operativa y asignación de cuadrillas">
         
         <div className={(!isMobile && activeTimelineJobId) ? "grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch" : "w-full"}>
           
           {/* Panel Izquierdo / Contenido Principal */}
-          <div className={(!isMobile && activeTimelineJobId) ? "md:col-span-6 lg:col-span-7 xl:col-span-8 flex flex-col h-[calc(100vh-160px)] min-h-[500px] overflow-y-auto pr-2 custom-scrollbar" : "w-full"}>
+          {(!isLogExpanded || isMobile || !mountedJobId || isDayDetailOpen) && (
+          <div className={(!isMobile && mountedJobId && !isDayDetailOpen) ? "md:col-span-6 lg:col-span-7 xl:col-span-8 flex flex-col h-[calc(100vh-160px)] min-h-[500px] overflow-y-auto pr-2 custom-scrollbar" : "w-full"}>
             <ModuleToolbar>
               <div className="flex flex-col w-full gap-2 md:gap-2.5 p-0.5">
                 {/* Desktop layout: Unified Toolbar Row */}
@@ -1221,18 +1210,21 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
               </>
             )}
           </div>
+          )}
 
           {/* Panel Derecho / Split-View Timeline - SOLO si el modal de detalle de día no está tapando la vista */}
           {!isMobile && mountedJobId && !isDayDetailOpen && (
-            <div className="md:col-span-6 lg:col-span-5 xl:col-span-4 border border-slate-200 bg-white flex flex-col h-[calc(100vh-160px)] min-h-[500px] overflow-hidden shadow-md rounded-2xl animate-in slide-in-from-right duration-300 relative">
+            <div className={`${isLogExpanded ? "md:col-span-12" : "md:col-span-6 lg:col-span-5 xl:col-span-4"} border border-slate-200 bg-white flex flex-col h-[calc(100vh-160px)] min-h-[500px] overflow-hidden shadow-md rounded-2xl animate-in fade-in duration-300 relative`}>
               <div className="absolute inset-0 flex flex-col">
                 <OperationalLogView 
                   key={mountedJobId}
                   trabajoId={mountedJobId} 
                   parentId={activeTimelineState?.parentId || mountedJobId}
                   parentCollection={activeTimelineState?.parentCollection || "trabajos"}
-                  onBack={() => setActiveTimelineJobId(null)} 
+                  onBack={() => { setActiveTimelineJobId(null); setIsLogExpanded(false); }} 
                   currentUser={currentUser} 
+                  isExpanded={isLogExpanded}
+                  onExpandToggle={() => setIsLogExpanded(!isLogExpanded)}
                 />
               </div>
             </div>
@@ -1255,7 +1247,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
         desktopMaxWidth="max-w-5xl"
       >
         <JobForm
-          key={selectedTrabajo?.id || (continuarJob?.id ? `cont-${continuarJob.id}` : 'new')}
+          key={selectedTrabajo?.id || (continuarJob?.id ? `cont-${continuarJob.id}` : `new-${defaultStart?.getTime() || 'initial'}`)}
           trabajo={selectedTrabajo}
           mode={formMode}
           onClose={() => {
@@ -1277,6 +1269,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
         onClose={() => {
           setIsDayDetailOpen(false);
           setActiveTimelineJobId(null);
+          setIsLogExpanded(false);
         }}
         title={
           <div className="flex items-center justify-between gap-4 w-full mr-4">
@@ -1321,6 +1314,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
         ) : null}
       >
         <div className={(!isMobile && activeTimelineJobId) ? "flex h-[85vh] min-h-[600px] overflow-hidden" : "p-0 -mt-4 lg:-mt-6"}>
+          {!isLogExpanded && (
           <div className={(!isMobile && activeTimelineJobId) ? "flex-1 border-r border-slate-100 overflow-y-auto custom-scrollbar bg-white p-8" : ""}>
             <MobileJobView 
               trabajos={dayDetailJobs} 
@@ -1342,17 +1336,20 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
               }}
             />
           </div>
+          )}
 
           {!isMobile && activeTimelineJobId && (
-            <div className="w-[350px] md:w-[380px] shrink-0 bg-white flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+            <div className={isLogExpanded ? "flex-1 bg-white flex flex-col overflow-hidden animate-in fade-in duration-300" : "w-[350px] md:w-[380px] shrink-0 bg-white flex flex-col overflow-hidden animate-in slide-in-from-right duration-300"}>
               <div className="flex-1 overflow-hidden relative">
                 <OperationalLogView 
                   key={activeTimelineJobId}
                   parentId={activeTimelineState?.parentId || activeTimelineJobId}
                   parentCollection={activeTimelineCollection}
                   initialState={activeTimelineState}
-                  onBack={() => setActiveTimelineJobId(null)}
+                  onBack={() => { setActiveTimelineJobId(null); setIsLogExpanded(false); }}
                   currentUser={currentUser}
+                  isExpanded={isLogExpanded}
+                  onExpandToggle={() => setIsLogExpanded(!isLogExpanded)}
                 />
               </div>
             </div>
