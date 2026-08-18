@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { User } from '../../utils/types';
 import { VehicleLog, VehicleRecharge, VehicleExpense } from '../../types/vehicle.types';
 import { db } from '../../firebase';
-import { collection, query, getDocs, orderBy, where, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, where, onSnapshot, deleteDoc, doc, getDocsFromServer, limit } from 'firebase/firestore';
 import { localDocStore } from '../../core/offline/localDocStore';
 
 import { VEHICLES } from '../job_scheduling/JobForm';
@@ -176,6 +176,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         let active = true;
 
         const fetchLastMileage = async () => {
+            let localLastKm: number | null = null;
+            let localLastLog: any = null;
+
             try {
                 const logs = await localDocStore.getLocalCollection('bitacora_vehiculos');
                 if (!active) return;
@@ -203,17 +206,78 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         return timeB.localeCompare(timeA);
                     });
 
-                    const lastLog = validLogs[0];
-                    const lastKm = lastLog.data.kmLlegada;
+                    localLastLog = validLogs[0];
+                    localLastKm = Number(localLastLog.data.kmLlegada);
 
-                    setFormData(prev => ({ ...prev, kmSalida: lastKm }));
-                    setLastKnownKmLlegada(lastKm);
+                    setFormData(prev => ({ ...prev, kmSalida: localLastKm }));
+                    setLastKnownKmLlegada(localLastKm);
                 } else {
                     setFormData(prev => ({ ...prev, kmSalida: '' }));
                     setLastKnownKmLlegada(null);
                 }
             } catch (err) {
-                console.error("Error in autocomplete mileage effect:", err);
+                console.error("Error in autocomplete mileage effect (local):", err);
+            }
+
+            // Fallback optimista silencioso en background a Firestore
+            const suggestedKm = localLastKm !== null ? localLastKm : '';
+            try {
+                const remoteQuery = query(
+                    collection(db, 'bitacora_vehiculos'),
+                    where('unidad', '==', unitName),
+                    orderBy('fecha', 'desc'),
+                    limit(1)
+                );
+
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    setTimeout(() => reject(new Error('Timeout remote km query')), 2500);
+                });
+
+                const firestorePromise = getDocsFromServer(remoteQuery);
+
+                const snap = await Promise.race([firestorePromise, timeoutPromise]);
+                if (!active) return;
+
+                if (snap && snap.docs && snap.docs.length > 0) {
+                    const remoteDoc = snap.docs[0].data();
+                    const remoteKm = remoteDoc.kmLlegada !== undefined && remoteDoc.kmLlegada !== null ? Number(remoteDoc.kmLlegada) : 0;
+                    
+                    if (remoteKm > 0) {
+                        const isRemoteNewer = () => {
+                            if (!localLastLog) return true;
+                            
+                            const rUpdate = remoteDoc.updatedAt || '';
+                            const lUpdate = localLastLog.data?.updatedAt || '';
+                            if (rUpdate && lUpdate) {
+                                return rUpdate.localeCompare(lUpdate) > 0;
+                            }
+                            
+                            const rFecha = remoteDoc.fecha || '';
+                            const lFecha = localLastLog.data?.fecha || '';
+                            if (rFecha !== lFecha) {
+                                return rFecha.localeCompare(lFecha) > 0;
+                            }
+                            
+                            const rTime = remoteDoc.horaLlegada || remoteDoc.horaSalida || '';
+                            const lTime = localLastLog.data?.horaLlegada || localLastLog.data?.horaSalida || '';
+                            return rTime.localeCompare(lTime) > 0;
+                        };
+
+                        if (isRemoteNewer()) {
+                            setFormData(prev => {
+                                const currentKm = prev.kmSalida !== undefined && prev.kmSalida !== null ? prev.kmSalida : '';
+                                if (currentKm === suggestedKm) {
+                                    return { ...prev, kmSalida: remoteKm };
+                                }
+                                return prev;
+                            });
+                            setLastKnownKmLlegada(remoteKm);
+                        }
+                    }
+                }
+            } catch (remoteErr) {
+                // Silencioso por directivas de background query
+                console.debug("Silent mileage remote query background fail/timeout:", remoteErr);
             }
         };
 
