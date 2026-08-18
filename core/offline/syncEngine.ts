@@ -16,16 +16,19 @@ export class SyncEngine {
     private syncStartTime: number = 0;
     private autoSyncInterval: NodeJS.Timeout | null = null;
     private isAuthenticated: boolean = false;
+    private networkUnsubscribe: (() => void) | null = null;
 
     public setAuthStatus(ready: boolean, user: any | null): void {
         this.currentUserId = user?.uid || null;
         const wasAuthenticated = this.isAuthenticated;
         this.isAuthenticated = ready && !!user;
         
-        // Si acabamos de autenticarnos, disparar sync inmediatamente
         if (!wasAuthenticated && this.isAuthenticated) {
-            console.log("SyncEngine: Autenticación exitosa detectada. Disparando sync inmediato.");
+            console.log("SyncEngine: Autenticación exitosa detectada. Disparando sync inmediato e iniciando auto-sync.");
             this.runSyncCycle();
+            this.startAutoSync();
+        } else if (wasAuthenticated && !this.isAuthenticated) {
+            this.stopAutoSync();
         }
     }
     
@@ -190,13 +193,13 @@ export class SyncEngine {
         }
     }
 
-    // Inicializa el sistema de auto-sync (Aún NO ACTIVO globalmente en app productiva)
+    // Inicializa el sistema de auto-sync
     public startAutoSync(intervalMs: number = 30000): void {
         if (this.autoSyncInterval) {
             clearInterval(this.autoSyncInterval);
         }
 
-        console.log(`SyncEngine: AutoSync iniciado cada ${intervalMs}ms (Sandboxed)`);
+        console.log(`SyncEngine: AutoSync iniciado cada ${intervalMs}ms`);
 
         this.autoSyncInterval = setInterval(() => {
             if (!this.isSyncing) {
@@ -205,18 +208,24 @@ export class SyncEngine {
         }, intervalMs);
 
         // Suscribirse a cambios de red para sincronización inmediata al reconectar
-        networkProbe.subscribe((isOnline) => {
-            if (isOnline && !this.isSyncing) {
-                console.log("SyncEngine: Reconexión detectada. Disparando ciclo de sincronización inmediato.");
-                this.runSyncCycle();
-            }
-        });
+        if (!this.networkUnsubscribe) {
+            this.networkUnsubscribe = networkProbe.subscribe((isOnline) => {
+                if (isOnline && !this.isSyncing) {
+                    console.log("SyncEngine: Reconexión detectada. Disparando ciclo de sincronización inmediato.");
+                    this.runSyncCycle();
+                }
+            });
+        }
     }
 
     public stopAutoSync(): void {
         if (this.autoSyncInterval) {
             clearInterval(this.autoSyncInterval);
             this.autoSyncInterval = null;
+        }
+        if (this.networkUnsubscribe) {
+            this.networkUnsubscribe();
+            this.networkUnsubscribe = null;
         }
         console.log("SyncEngine: AutoSync detenido.");
     }

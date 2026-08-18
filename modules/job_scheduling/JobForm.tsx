@@ -79,14 +79,16 @@ export const JobForm: React.FC<JobFormProps> = ({
         tipo_trabajo: trabajo.tipo_trabajo ? toUpperCase(trabajo.tipo_trabajo) : '',
         ubicacion: trabajo.ubicacion ? toTitleCase(trabajo.ubicacion) : '',
         bitacorasRelacionadas: trabajo.bitacorasRelacionadas || (trabajo.registroBitacoraId ? [{ bitacoraId: trabajo.registroBitacoraId, fecha: 'legacy' }] : []),
+        hora_inicio: trabajo.hora_inicio || (defaultStart ? format(defaultStart, 'HH:mm') : '06:00'),
+        hora_fin: trabajo.hora_fin || (defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00'),
     } : {
       titulo: parentData?.titulo ? toUpperCase(parentData.titulo) : '',
       tipo_trabajo: parentData?.tipo_trabajo ? toUpperCase(parentData.tipo_trabajo) : '',
       descripcion: parentData?.descripcion || '',
       fecha_inicio: defaultStart || new Date(),
       fecha_fin: defaultEnd || new Date(),
-      hora_inicio: mode === 'create' ? '06:00' : (defaultStart ? format(defaultStart, 'HH:mm') : '06:00'),
-      hora_fin: mode === 'create' ? '16:00' : (defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00'),
+      hora_inicio: mode === 'create' ? '06:00' : (parentData?.hora_inicio || (defaultStart ? format(defaultStart, 'HH:mm') : '06:00')),
+      hora_fin: mode === 'create' ? '16:00' : (parentData?.hora_fin || (defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00')),
       cuadrilla: [],
       unidades: [],
       ubicacion: parentData?.ubicacion ? toTitleCase(parentData.ubicacion) : '',
@@ -335,7 +337,9 @@ export const JobForm: React.FC<JobFormProps> = ({
       setFormData({
         ...trabajo,
         bitacorasRelacionadas: trabajo.bitacorasRelacionadas || [],
-        bitacoraIds: trabajo.bitacoraIds || []
+        bitacoraIds: trabajo.bitacoraIds || [],
+        hora_inicio: trabajo.hora_inicio || (defaultStart ? format(defaultStart, 'HH:mm') : '06:00'),
+        hora_fin: trabajo.hora_fin || (defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00'),
       });
       setFechaInicio(format(trabajo.fecha_inicio instanceof Date ? trabajo.fecha_inicio : (trabajo.fecha_inicio as any)?.toDate?.() || new Date(trabajo.fecha_inicio), 'yyyy-MM-dd'));
       setFechaFin(format(trabajo.fecha_fin instanceof Date ? trabajo.fecha_fin : (trabajo.fecha_fin as any)?.toDate?.() || new Date(trabajo.fecha_fin), 'yyyy-MM-dd'));
@@ -346,8 +350,8 @@ export const JobForm: React.FC<JobFormProps> = ({
         descripcion: '',
         cuadrilla: [],
         unidades: [],
-        hora_inicio: defaultStart ? format(defaultStart, 'HH:mm') : '06:00',
-        hora_fin: defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00',
+        hora_inicio: '06:00',
+        hora_fin: '16:00',
         bitacorasRelacionadas: [],
         bitacoraIds: []
       });

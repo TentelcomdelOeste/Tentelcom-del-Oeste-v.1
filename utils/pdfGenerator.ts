@@ -10,7 +10,7 @@ import { AutomaticAdjustment } from '../modules/finance/automatic_adjustments/au
 import { numeroALetras } from './numberToWords';
 import { formatCurrency } from './formatCurrency';
 import { LOGO_BASE64, LOGO14_BASE64 } from './logoBase64';
-import { normalizeOrigin } from '@/utils/originUtils';
+import { normalizeOrigin } from './originUtils';
 import { triggerFileDownload } from './fileUtils';
 
 export const monthNames = [
@@ -448,9 +448,9 @@ export const generatePaystubPDF = async (entry: PayStub, employee: Employee): Pr
   const extrasHorasCount = (entry as any).extraHoursCount !== undefined ? (entry as any).extraHoursCount : 0;
   const extrasMonto = entry.extraHours || 0;
   let extrasHorasStr = extrasHorasCount > 0 ? extrasHorasCount.toString().replace('.', ',') : "0";
-  
+  const dynamicValHoraExt = (extrasHorasCount > 0 && extrasMonto > 0) ? (extrasMonto / extrasHorasCount) : valHoraExt;
   if (extrasHorasCount === 0 && extrasMonto > 0) {
-      const rawH = valHoraExt > 0 ? (extrasMonto / valHoraExt) : 0;
+      const rawH = dynamicValHoraExt > 0 ? (extrasMonto / dynamicValHoraExt) : 0;
       const roundedH = Math.round(rawH * 10) / 10;
       extrasHorasStr = roundedH.toString().replace('.', ',');
   }
@@ -458,9 +458,9 @@ export const generatePaystubPDF = async (entry: PayStub, employee: Employee): Pr
   const holidayHoursCount = (entry as any).holidayHoursCount !== undefined ? (entry as any).holidayHoursCount : 0;
   const feriadosMonto = (entry as any).holidays || 0;
   let feriadosHorasStr = holidayHoursCount > 0 ? holidayHoursCount.toString().replace('.', ',') : "0";
-
+  const valHoraFeriado = (holidayHoursCount > 0 && feriadosMonto > 0) ? (feriadosMonto / holidayHoursCount) : valHoraOrg;
   if (holidayHoursCount === 0 && feriadosMonto > 0) {
-      const rawH = valHoraOrg > 0 ? (feriadosMonto / valHoraOrg) : 0;
+      const rawH = valHoraFeriado > 0 ? (feriadosMonto / valHoraFeriado) : 0;
       const roundedH = Math.round(rawH * 10) / 10;
       feriadosHorasStr = roundedH.toString().replace('.', ',');
   }
@@ -475,8 +475,8 @@ export const generatePaystubPDF = async (entry: PayStub, employee: Employee): Pr
 
   const incomeItems = [
     {c: "Salario Ordinario", h: ordHoursStr, v: currency(valHoraOrg), t: currency(baseSal)},
-    ...(extrasMonto > 0 ? [{c: "Salario Extra", h: extrasHorasStr, v: currency(valHoraExt), t: currency(extrasMonto)}] : []),
-    ...(feriadosMonto > 0 ? [{c: "Feriados", h: feriadosHorasStr, v: currency(valHoraOrg), t: currency(feriadosMonto)}] : []),
+    ...(extrasMonto > 0 ? [{c: "Salario Extra", h: extrasHorasStr, v: currency(dynamicValHoraExt), t: currency(extrasMonto)}] : []),
+    ...(feriadosMonto > 0 ? [{c: "Feriados", h: feriadosHorasStr, v: currency(valHoraFeriado), t: currency(feriadosMonto)}] : []),
     ...(bonosMonto > 0 ? [{c: "Bonos", h: "-", v: "-", t: currency(bonosMonto)}] : []),
     ...(viaticosMonto > 0 ? [{c: "Viáticos", h: "-", v: "-", t: currency(viaticosMonto)}] : []),
     ...(disponibilidadMonto > 0 ? [{c: "Disponibilidad", h: "-", v: "-", t: currency(disponibilidadMonto)}] : []),
@@ -1408,8 +1408,6 @@ export const generateShortagePDF = async (shortage: Shortage) => {
   const blob = docPdf.output('blob');
   triggerFileDownload(blob, fileName);
 };
-
-import { normalizeOrigin } from './originUtils';
 
 export const generateAutomaticAdjustmentPDF = async (adjustment: AutomaticAdjustment, history: any[]) => {
   const doc = new jsPDF('p', 'pt', 'letter');

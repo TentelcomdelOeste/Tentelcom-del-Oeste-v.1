@@ -844,6 +844,7 @@ export const FinanceModule: React.FC<FinanceModuleProps> = ({
             payStubs={payStubs} 
             payStubToEdit={editingPayStub}
             automaticAdjustments={automaticAdjustments || []}
+            updateEmployee={addOrUpdateEmployee}
         />
         
         <ConfirmModal 

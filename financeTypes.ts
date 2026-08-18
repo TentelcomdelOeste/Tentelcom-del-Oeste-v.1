@@ -75,6 +75,24 @@ export interface Employee {
   archivedBy?: string;
   permissions?: ModulePermissions;
   hireDate?: string;
+  salaryConfiguration?: SalaryConfiguration;
+}
+
+export interface SalaryConfiguration {
+  salaryDivisor: number;
+  ordinaryHours: number;
+  ordinaryMultiplier: number;
+  extraHours: number;
+  extraMultiplier: number;
+  holidayHours: number;
+  holidayMultiplier: number;
+  ccssType?: 'percentage' | 'fixed';
+  ccssPercentage?: number;
+  ccssDivideByTwo?: boolean;
+  isManualValHoraBase?: boolean;
+  manualValHoraBase?: number;
+  isManualValHoraOrg?: boolean;
+  manualValHoraOrg?: number;
 }
 
 export interface AbsenceRecord {

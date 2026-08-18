@@ -26,10 +26,11 @@ interface PaystubModalProps {
   payStubs: PayStub[];
   payStubToEdit?: PayStub | null;
   automaticAdjustments?: AutomaticAdjustment[];
+  updateEmployee?: (data: Partial<Employee>, id?: string) => Promise<{ success: boolean; message?: string; }>;
 }
 
 export const PaystubModal: React.FC<PaystubModalProps> = ({ 
-    show, onClose, onSubmit, employees, currentUser, payStubs, payStubToEdit, automaticAdjustments = []
+    show, onClose, onSubmit, employees, currentUser, payStubs, payStubToEdit, automaticAdjustments = [], updateEmployee
 }) => {
   useLockBodyScroll(show);
 
@@ -53,6 +54,45 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configOrdinaryHours, setConfigOrdinaryHours] = useState('150');
+  const [configSalaryDivisor, setConfigSalaryDivisor] = useState('300');
+  const [configOrdinaryMultiplier, setConfigOrdinaryMultiplier] = useState('1');
+  const [configExtraMultiplier, setConfigExtraMultiplier] = useState('1.5');
+  const [configHolidayMultiplier, setConfigHolidayMultiplier] = useState('2');
+  const [configExtraValueStr, setConfigExtraValueStr] = useState('');
+  const [configHolidayValueStr, setConfigHolidayValueStr] = useState('');
+  const [configBaseSalary, setConfigBaseSalary] = useState('');
+  const [configReportadoCCSS, setConfigReportadoCCSS] = useState('');
+  const [configCcssType, setConfigCcssType] = useState<'percentage' | 'fixed'>('percentage');
+  const [configCcssPercentage, setConfigCcssPercentage] = useState('10.83');
+  const [configCcssFixedAmount, setConfigCcssFixedAmount] = useState('');
+  const [configCcssDivideByTwo, setConfigCcssDivideByTwo] = useState(true);
+
+  // Manual overrides for Valor Hora Base and Valor Hora Ordinaria
+  const [isManualValHoraBase, setIsManualValHoraBase] = useState(false);
+  const [manualValHoraBaseNum, setManualValHoraBaseNum] = useState<number | null>(null);
+  const [configValHoraBaseStr, setConfigValHoraBaseStr] = useState('');
+  const [prevValHoraBaseStr, setPrevValHoraBaseStr] = useState('');
+  const [showValHoraBaseConfirm1, setShowValHoraBaseConfirm1] = useState(false);
+  const [showValHoraBaseConfirm2, setShowValHoraBaseConfirm2] = useState(false);
+  const [pendingValHoraBase, setPendingValHoraBase] = useState<number | null>(null);
+
+  const [isManualValHoraOrg, setIsManualValHoraOrg] = useState(false);
+  const [manualValHoraOrgNum, setManualValHoraOrgNum] = useState<number | null>(null);
+  const [configValHoraOrgStr, setConfigValHoraOrgStr] = useState('');
+  const [prevValHoraOrgStr, setPrevValHoraOrgStr] = useState('');
+  const [showValHoraOrgConfirm1, setShowValHoraOrgConfirm1] = useState(false);
+  const [showValHoraOrgConfirm2, setShowValHoraOrgConfirm2] = useState(false);
+  const [pendingValHoraOrg, setPendingValHoraOrg] = useState<number | null>(null);
+  
+  const [showSalaryConfirmModal1, setShowSalaryConfirmModal1] = useState(false);
+  const [showSalaryConfirmModal2, setShowSalaryConfirmModal2] = useState(false);
+  const [showCcssConfirmModal, setShowCcssConfirmModal] = useState(false);
+  const [showBulkConfirmModal1, setShowBulkConfirmModal1] = useState(false);
+  const [showBulkConfirmModal2, setShowBulkConfirmModal2] = useState(false);
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
   const isAdminRole = currentUser.role === 'admin';
@@ -60,13 +100,370 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
   // Compute calculated amounts dynamically
   const selectedEmployee = useMemo(() => employees.find(e => e.id === employeeId), [employees, employeeId]);
   
-  const valHoraOrg = selectedEmployee ? (selectedEmployee.baseSalary || 0) / 300 : 0;
-  const valHoraExt = valHoraOrg * 1.5;
+  const salaryConfig = useMemo(() => {
+    return selectedEmployee?.salaryConfiguration || {
+      salaryDivisor: 300,
+      ordinaryHours: 150,
+      ordinaryMultiplier: 1,
+      extraHours: 0,
+      extraMultiplier: 1.5,
+      holidayHours: 0,
+      holidayMultiplier: 2
+    };
+  }, [selectedEmployee]);
+
+
+  const parsedConfigBaseSalary = parseFloat(configBaseSalary) || 0;
+  const autoValHoraBase = parsedConfigBaseSalary / (parseFloat(configSalaryDivisor) || 300);
+  const configValHoraBase = (isManualValHoraBase && manualValHoraBaseNum !== null)
+    ? manualValHoraBaseNum
+    : autoValHoraBase;
+
+  const autoValHoraOrg = configValHoraBase * (parseFloat(configOrdinaryMultiplier) || 1);
+  const configValHoraOrg = (isManualValHoraOrg && manualValHoraOrgNum !== null)
+    ? manualValHoraOrgNum
+    : autoValHoraOrg;
+
+  const configValHoraExt = configValHoraBase * (parseFloat(configExtraMultiplier) || 1.5);
+  const configValHoraFeriado = configValHoraBase * (parseFloat(configHolidayMultiplier) || 2);
+
+  const parsedReportado = parseFloat(configReportadoCCSS) || 0;
+  const parsedPercentage = parseFloat(configCcssPercentage) || 0;
+  const parsedFixed = parseFloat(configCcssFixedAmount) || 0;
+
+  const calculatedCcssMonthly = configCcssType === 'percentage' 
+    ? (parsedReportado * parsedPercentage / 100) 
+    : parsedFixed;
+  
+  const calculatedCcssFortnightly = configCcssDivideByTwo 
+    ? calculatedCcssMonthly / 2 
+    : calculatedCcssMonthly;
+
+  const handleOpenConfigModal = () => {
+    if (selectedEmployee) {
+      const config = selectedEmployee.salaryConfiguration || {};
+      setConfigOrdinaryHours((config.ordinaryHours ?? 150).toString());
+      setConfigSalaryDivisor((config.salaryDivisor ?? 300).toString());
+      setConfigOrdinaryMultiplier((config.ordinaryMultiplier ?? 1).toString());
+      setConfigExtraMultiplier((config.extraMultiplier ?? 1.5).toString());
+      setConfigHolidayMultiplier((config.holidayMultiplier ?? 2).toString());
+      
+      const baseSal = selectedEmployee.baseSalary || 0;
+      const divisor = config.salaryDivisor || 300;
+      const autoBase = baseSal / divisor;
+
+      const hasManualBase = Boolean(config.isManualValHoraBase && typeof config.manualValHoraBase === 'number');
+      const activeBase = hasManualBase ? config.manualValHoraBase! : autoBase;
+      setIsManualValHoraBase(hasManualBase);
+      setManualValHoraBaseNum(hasManualBase ? config.manualValHoraBase! : null);
+      setConfigValHoraBaseStr(activeBase.toFixed(2));
+      setPrevValHoraBaseStr(activeBase.toFixed(2));
+
+      const autoOrg = activeBase * (config.ordinaryMultiplier ?? 1);
+      const hasManualOrg = Boolean(config.isManualValHoraOrg && typeof config.manualValHoraOrg === 'number');
+      const activeOrg = hasManualOrg ? config.manualValHoraOrg! : autoOrg;
+      setIsManualValHoraOrg(hasManualOrg);
+      setManualValHoraOrgNum(hasManualOrg ? config.manualValHoraOrg! : null);
+      setConfigValHoraOrgStr(activeOrg.toFixed(2));
+      setPrevValHoraOrgStr(activeOrg.toFixed(2));
+
+      setConfigExtraValueStr((activeBase * (config.extraMultiplier ?? 1.5)).toFixed(2));
+      setConfigHolidayValueStr((activeBase * (config.holidayMultiplier ?? 2)).toFixed(2));
+      
+      setConfigBaseSalary(baseSal.toString());
+      setConfigReportadoCCSS((selectedEmployee.reportadoCCSS || baseSal).toString());
+      setConfigCcssType(config.ccssType || 'percentage');
+      setConfigCcssPercentage((config.ccssPercentage ?? 10.83).toString());
+      setConfigCcssFixedAmount((selectedEmployee.ccssDeduction || 0).toString());
+      setConfigCcssDivideByTwo(config.ccssDivideByTwo ?? true);
+    }
+    setShowConfigModal(true);
+  };
+
+  const handleConfigExtraMultiplierChange = (val: string) => {
+    setConfigExtraMultiplier(val);
+    const m = parseFloat(val) || 0;
+    setConfigExtraValueStr((configValHoraBase * m).toFixed(2));
+  };
+  
+  const handleConfigExtraValueChange = (val: string) => {
+    setConfigExtraValueStr(val);
+    const v = parseFloat(val) || 0;
+    if (configValHoraBase > 0) {
+      setConfigExtraMultiplier((v / configValHoraBase).toString());
+    }
+  };
+
+  const handleConfigHolidayMultiplierChange = (val: string) => {
+    setConfigHolidayMultiplier(val);
+    const m = parseFloat(val) || 0;
+    setConfigHolidayValueStr((configValHoraBase * m).toFixed(2));
+  };
+  
+  const handleConfigHolidayValueChange = (val: string) => {
+    setConfigHolidayValueStr(val);
+    const v = parseFloat(val) || 0;
+    if (configValHoraBase > 0) {
+      setConfigHolidayMultiplier((v / configValHoraBase).toString());
+    }
+  };
+
+  // Update values if base salary or divisor change when NOT manually overridden
+  useEffect(() => {
+    if (showConfigModal) {
+      if (!isManualValHoraBase) {
+        const str = autoValHoraBase.toFixed(2);
+        setConfigValHoraBaseStr(str);
+        setPrevValHoraBaseStr(str);
+      }
+      if (!isManualValHoraOrg) {
+        const str = autoValHoraOrg.toFixed(2);
+        setConfigValHoraOrgStr(str);
+        setPrevValHoraOrgStr(str);
+      }
+      if (configValHoraBase > 0) {
+        setConfigExtraValueStr((configValHoraBase * (parseFloat(configExtraMultiplier) || 0)).toFixed(2));
+        setConfigHolidayValueStr((configValHoraBase * (parseFloat(configHolidayMultiplier) || 0)).toFixed(2));
+      }
+    }
+  }, [configValHoraBase, showConfigModal, isManualValHoraBase, isManualValHoraOrg, autoValHoraBase, autoValHoraOrg, configExtraMultiplier, configHolidayMultiplier]);
+
+  const handleValHoraBaseBlur = () => {
+    const currentVal = parseFloat(configValHoraBaseStr);
+    const currentActive = isManualValHoraBase && manualValHoraBaseNum !== null
+      ? manualValHoraBaseNum
+      : autoValHoraBase;
+
+    if (!isNaN(currentVal) && Math.abs(currentVal - currentActive) > 0.001) {
+      setPendingValHoraBase(currentVal);
+      setShowValHoraBaseConfirm1(true);
+    } else if (isNaN(currentVal)) {
+      setConfigValHoraBaseStr(currentActive.toFixed(2));
+    }
+  };
+
+  const handleCancelValHoraBaseConfirm = () => {
+    setShowValHoraBaseConfirm1(false);
+    setShowValHoraBaseConfirm2(false);
+    setPendingValHoraBase(null);
+    setConfigValHoraBaseStr(prevValHoraBaseStr);
+  };
+
+  const handleConfirmValHoraBase1 = () => {
+    setShowValHoraBaseConfirm1(false);
+    setShowValHoraBaseConfirm2(true);
+  };
+
+  const handleConfirmValHoraBase2 = () => {
+    if (pendingValHoraBase !== null) {
+      setIsManualValHoraBase(true);
+      setManualValHoraBaseNum(pendingValHoraBase);
+      const str = pendingValHoraBase.toFixed(2);
+      setConfigValHoraBaseStr(str);
+      setPrevValHoraBaseStr(str);
+
+      if (!isManualValHoraOrg) {
+        const newOrg = pendingValHoraBase * (parseFloat(configOrdinaryMultiplier) || 1);
+        setConfigValHoraOrgStr(newOrg.toFixed(2));
+        setPrevValHoraOrgStr(newOrg.toFixed(2));
+      }
+      setConfigExtraValueStr((pendingValHoraBase * (parseFloat(configExtraMultiplier) || 1.5)).toFixed(2));
+      setConfigHolidayValueStr((pendingValHoraBase * (parseFloat(configHolidayMultiplier) || 2)).toFixed(2));
+    }
+    setShowValHoraBaseConfirm2(false);
+    setPendingValHoraBase(null);
+  };
+
+  const handleResetValHoraBase = () => {
+    setIsManualValHoraBase(false);
+    setManualValHoraBaseNum(null);
+    const str = autoValHoraBase.toFixed(2);
+    setConfigValHoraBaseStr(str);
+    setPrevValHoraBaseStr(str);
+  };
+
+  const handleValHoraOrgBlur = () => {
+    const currentVal = parseFloat(configValHoraOrgStr);
+    const currentActive = isManualValHoraOrg && manualValHoraOrgNum !== null
+      ? manualValHoraOrgNum
+      : autoValHoraOrg;
+
+    if (!isNaN(currentVal) && Math.abs(currentVal - currentActive) > 0.001) {
+      setPendingValHoraOrg(currentVal);
+      setShowValHoraOrgConfirm1(true);
+    } else if (isNaN(currentVal)) {
+      setConfigValHoraOrgStr(currentActive.toFixed(2));
+    }
+  };
+
+  const handleCancelValHoraOrgConfirm = () => {
+    setShowValHoraOrgConfirm1(false);
+    setShowValHoraOrgConfirm2(false);
+    setPendingValHoraOrg(null);
+    setConfigValHoraOrgStr(prevValHoraOrgStr);
+  };
+
+  const handleConfirmValHoraOrg1 = () => {
+    setShowValHoraOrgConfirm1(false);
+    setShowValHoraOrgConfirm2(true);
+  };
+
+  const handleConfirmValHoraOrg2 = () => {
+    if (pendingValHoraOrg !== null) {
+      setIsManualValHoraOrg(true);
+      setManualValHoraOrgNum(pendingValHoraOrg);
+      const str = pendingValHoraOrg.toFixed(2);
+      setConfigValHoraOrgStr(str);
+      setPrevValHoraOrgStr(str);
+    }
+    setShowValHoraOrgConfirm2(false);
+    setPendingValHoraOrg(null);
+  };
+
+  const handleResetValHoraOrg = () => {
+    setIsManualValHoraOrg(false);
+    setManualValHoraOrgNum(null);
+    const str = autoValHoraOrg.toFixed(2);
+    setConfigValHoraOrgStr(str);
+    setPrevValHoraOrgStr(str);
+  };
+
+const handleBaseSalaryBlur = () => {
+    if (!selectedEmployee) return;
+    const isSalaryChanged = parsedConfigBaseSalary !== (selectedEmployee.baseSalary || 0);
+    if (isSalaryChanged) {
+      setShowSalaryConfirmModal1(true);
+    }
+  };
+
+  const handleReportadoCCSSBlur = () => {
+    if (!selectedEmployee) return;
+    const isReportadoChanged = parsedReportado !== (selectedEmployee.reportadoCCSS || selectedEmployee.baseSalary || 0);
+    if (isReportadoChanged) {
+      setShowCcssConfirmModal(true);
+    }
+  };
+
+  const executeSaveConfig = async () => {
+    if (!selectedEmployee || !updateEmployee) return;
+    try {
+      await updateEmployee({
+        ccssDeduction: calculatedCcssMonthly,
+        ccssDeductionQuincenal: calculatedCcssFortnightly,
+        salaryConfiguration: {
+          salaryDivisor: parseFloat(configSalaryDivisor) || 300,
+          ordinaryHours: parseFloat(configOrdinaryHours) || 150,
+          ordinaryMultiplier: parseFloat(configOrdinaryMultiplier) || 1,
+          extraHours: parseFloat(extraHoursCount) || 0,
+          extraMultiplier: parseFloat(configExtraMultiplier) || 1.5,
+          holidayHours: parseFloat(holidayHoursCount) || 0,
+          holidayMultiplier: parseFloat(configHolidayMultiplier) || 2,
+          ccssType: configCcssType,
+          ccssPercentage: parsedPercentage,
+          ccssDivideByTwo: configCcssDivideByTwo,
+          isManualValHoraBase: isManualValHoraBase,
+          manualValHoraBase: isManualValHoraBase ? (manualValHoraBaseNum ?? undefined) : undefined,
+          isManualValHoraOrg: isManualValHoraOrg,
+          manualValHoraOrg: isManualValHoraOrg ? (manualValHoraOrgNum ?? undefined) : undefined,
+        }
+      }, selectedEmployee.id);
+      setShowConfigModal(false);
+      setShowSalaryConfirmModal1(false);
+      setShowSalaryConfirmModal2(false);
+      setShowCcssConfirmModal(false);
+      setShowValHoraBaseConfirm1(false);
+      setShowValHoraBaseConfirm2(false);
+      setShowValHoraOrgConfirm1(false);
+      setShowValHoraOrgConfirm2(false);
+    } catch (err) {
+      console.error("Error saving config:", err);
+      alert("Error al guardar la configuración.");
+    }
+  };
+
+  const handleSaveConfig = () => {
+    executeSaveConfig();
+  };
+
+  const executeBulkApplyConfig = async () => {
+    if (!updateEmployee || !employees || employees.length === 0) return;
+    setIsBulkSubmitting(true);
+    try {
+      const newSalaryConfig = {
+        salaryDivisor: parseFloat(configSalaryDivisor) || 300,
+        ordinaryHours: parseFloat(configOrdinaryHours) || 150,
+        ordinaryMultiplier: parseFloat(configOrdinaryMultiplier) || 1,
+        extraHours: parseFloat(extraHoursCount) || 0,
+        extraMultiplier: parseFloat(configExtraMultiplier) || 1.5,
+        holidayHours: parseFloat(holidayHoursCount) || 0,
+        holidayMultiplier: parseFloat(configHolidayMultiplier) || 2,
+        ccssType: configCcssType,
+        ccssPercentage: parsedPercentage,
+        ccssDivideByTwo: configCcssDivideByTwo,
+        isManualValHoraBase: isManualValHoraBase,
+        manualValHoraBase: isManualValHoraBase ? (manualValHoraBaseNum ?? undefined) : undefined,
+        isManualValHoraOrg: isManualValHoraOrg,
+        manualValHoraOrg: isManualValHoraOrg ? (manualValHoraOrgNum ?? undefined) : undefined,
+      };
+
+      let successCount = 0;
+      for (const emp of employees) {
+        if (emp.id) {
+          // Calculate CCSS individually using each employee's own salary data
+          const empReportado = emp.reportadoCCSS || emp.baseSalary || 0;
+          let empCcssDeduction = emp.ccssDeduction || 0;
+
+          if (configCcssType === 'percentage') {
+            empCcssDeduction = (empReportado * parsedPercentage) / 100;
+          }
+
+          const empCcssDeductionQuincenal = configCcssDivideByTwo
+            ? empCcssDeduction / 2
+            : empCcssDeduction;
+
+          const employeeUpdateData = {
+            ccssDeduction: empCcssDeduction,
+            ccssDeductionQuincenal: empCcssDeductionQuincenal,
+            salaryConfiguration: newSalaryConfig,
+          };
+
+          const res = await updateEmployee(employeeUpdateData, emp.id);
+          if (res && res.success !== false) {
+            successCount++;
+          }
+        }
+      }
+
+      setShowBulkConfirmModal2(false);
+      setShowBulkConfirmModal1(false);
+      setShowConfigModal(false);
+      alert(`Configuración aplicada correctamente a ${successCount} colaboradores.`);
+    } catch (err) {
+      console.error("Error al aplicar configuración masiva:", err);
+      alert("Error al aplicar la configuración a todos los colaboradores.");
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const valHoraBase = selectedEmployee
+    ? (salaryConfig.isManualValHoraBase && typeof salaryConfig.manualValHoraBase === 'number'
+        ? salaryConfig.manualValHoraBase
+        : (selectedEmployee.baseSalary || 0) / (salaryConfig.salaryDivisor || 300))
+    : 0;
+
+  const valHoraOrg = selectedEmployee
+    ? (salaryConfig.isManualValHoraOrg && typeof salaryConfig.manualValHoraOrg === 'number'
+        ? salaryConfig.manualValHoraOrg
+        : valHoraBase * (salaryConfig.ordinaryMultiplier || 1))
+    : 0;
+
+  const valHoraExt = valHoraBase * (salaryConfig.extraMultiplier || 1.5);
+  const valHoraFeriado = valHoraBase * (salaryConfig.holidayMultiplier || 2);
 
   const currentOrdinaryHours = ordinaryHours ? parseFloat(ordinaryHours) : 0;
   const currentExtraHoursCount = extraHoursCount ? parseFloat(extraHoursCount) : 0;
   const currentHolidayHoursCount = holidayHoursCount ? parseFloat(holidayHoursCount) : 0;
-
   const currentBonuses = bonuses ? parseFloat(bonuses) : 0;
   const currentAdvancePayment = advancePayment ? parseFloat(advancePayment) : 0;
   const currentLegalEmbargos = legalEmbargos ? parseFloat(legalEmbargos) : 0;
@@ -75,7 +472,16 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
 
   const computedOrdinarySalary = Math.round(valHoraOrg * currentOrdinaryHours * 100) / 100;
   const computedExtraSalary = Math.round(valHoraExt * currentExtraHoursCount * 100) / 100;
-  const computedHolidaySalary = Math.round(valHoraOrg * currentHolidayHoursCount * 2 * 100) / 100;
+  const computedHolidaySalary = Math.round(valHoraFeriado * currentHolidayHoursCount * 100) / 100;
+
+  useEffect(() => {
+    if (show && !payStubToEdit && selectedEmployee) {
+      const config = selectedEmployee.salaryConfiguration;
+      setOrdinaryHours(config?.ordinaryHours?.toString() || '150');
+      setExtraHoursCount(config?.extraHours?.toString() || '0');
+      setHolidayHoursCount(config?.holidayHours?.toString() || '0');
+    }
+  }, [selectedEmployee, payStubToEdit, show]);
 
   const employeeOptions = useMemo(() => {
     return employees
@@ -285,7 +691,8 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
   if (!show) return null;
 
   return createPortal(
-    <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[200] p-4">
+    <>
+      <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[200] p-4">
       <div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh] overflow-hidden">
         <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-[32px] flex-none">
@@ -309,7 +716,7 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                     {/* Colaborador */}
                     <div className="col-span-2">
-                        <Select
+                                                <Select
                             label="Colaborador *"
                             options={employeeOptions}
                             value={employeeId}
@@ -318,6 +725,17 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
                             isSearchable={isAdminRole}
                             disabled={!isAdminRole}
                         />
+                        {selectedEmployee && updateEmployee && isAdminRole && (
+                            <div className="mt-2 flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={handleOpenConfigModal}
+                                    className="text-[11px] flex items-center gap-1 text-slate-500 hover:text-slate-700 font-bold transition-colors uppercase tracking-wide"
+                                >
+                                    <span>⚙️</span> CONFIGURACIÓN DEL CÁLCULO
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Periodo */}
@@ -607,8 +1025,458 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
             confirmLabel="CONFIRMAR"
             variant="danger"
         />
+
       </div>
-    </div>,
+    </div>
+    {showConfigModal && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 sm:p-6 md:p-8 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl lg:max-w-6xl my-auto flex flex-col max-h-[92vh] overflow-hidden border border-slate-100/50">
+            <div className="p-4 sm:px-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-none">
+              <h3 className="font-bold text-slate-800 text-sm md:text-base tracking-wide uppercase">CONFIGURACIÓN DEL CÁLCULO</h3>
+              <button onClick={() => setShowConfigModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-full transition-colors shadow-sm" title="Cerrar">
+                <FiX className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6">
+              {/* Header Colaborador */}
+              <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Colaborador seleccionado:</p>
+                  <p className="text-base font-extrabold text-slate-800">{selectedEmployee?.name}</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white px-3.5 py-2 rounded-lg border border-slate-200 shadow-2xs self-start sm:self-auto">
+                  <span>Salario base registrado:</span>
+                  <span className="font-bold text-slate-900">₡{parsedConfigBaseSalary.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              {/* Main Grid: 3 Columns on desktop / 2 on tablet / 1 on mobile */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
+                
+                {/* Panel 1: Salario & Horas Ordinarias */}
+                <div className="space-y-5 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+                  <div>
+                    <h4 className="text-[11px] font-bold text-slate-700 mb-3 border-b border-slate-200 pb-2 uppercase tracking-wider flex items-center gap-2">
+                      <span>Salario Base</span>
+                    </h4>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">Salario base actual:</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">₡</span>
+                        <input type="number" value={configBaseSalary} onChange={e => setConfigBaseSalary(e.target.value)} onBlur={handleBaseSalaryBlur} className="w-full pl-8 pr-3 py-2 text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-[11px] font-bold text-blue-600 mb-3 border-b border-blue-100 pb-2 uppercase tracking-wider flex items-center gap-2">
+                      <span>Horas Ordinarias</span>
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                      {/* Campos de Configuración */}
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">Horas por quincena:</label>
+                          <input type="number" value={configOrdinaryHours} onChange={e => setConfigOrdinaryHours(e.target.value)} className="w-full text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors p-2" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">Horas base mensuales:</label>
+                          <input type="number" value={configSalaryDivisor} onChange={e => setConfigSalaryDivisor(e.target.value)} className="w-full text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors p-2" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">Multiplicador:</label>
+                          <input type="number" step="0.01" value={configOrdinaryMultiplier} onChange={e => setConfigOrdinaryMultiplier(e.target.value)} className="w-full text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors p-2" />
+                        </div>
+                      </div>
+
+                      {/* Tarjeta Resumen / Ajuste Editable al lado */}
+                      <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-100/80 space-y-3">
+                        <div className="flex justify-between items-center border-b border-blue-200/50 pb-1.5">
+                          <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Valores Hora</span>
+                          <span className="text-[10px] font-medium text-slate-500 italic">Editable manual</span>
+                        </div>
+
+                        {/* Valor Hora Base */}
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-bold text-slate-700">Valor hora base:</label>
+                            {isManualValHoraBase && (
+                              <button
+                                type="button"
+                                onClick={handleResetValHoraBase}
+                                className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-1.5 py-0.5 rounded transition-colors"
+                                title="Restaurar cálculo automático"
+                              >
+                                Autocalcular
+                              </button>
+                            )}
+                          </div>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">₡</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={configValHoraBaseStr}
+                              onChange={e => setConfigValHoraBaseStr(e.target.value)}
+                              onBlur={handleValHoraBaseBlur}
+                              className={`w-full pl-6 pr-2 py-1.5 text-xs font-bold border rounded-lg focus:ring-2 focus:ring-blue-400 bg-white transition-colors ${
+                                isManualValHoraBase ? 'border-amber-400 text-amber-900 bg-amber-50/30' : 'border-blue-200 text-slate-800'
+                              }`}
+                            />
+                          </div>
+                          {isManualValHoraBase && (
+                            <span className="text-[9px] text-amber-700 font-medium block mt-0.5">⚠️ Valor fijado manualmente</span>
+                          )}
+                        </div>
+
+                        {/* Valor Hora Ordinaria */}
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-bold text-slate-700">Valor hora ordinaria:</label>
+                            {isManualValHoraOrg && (
+                              <button
+                                type="button"
+                                onClick={handleResetValHoraOrg}
+                                className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-1.5 py-0.5 rounded transition-colors"
+                                title="Restaurar cálculo automático"
+                              >
+                                Autocalcular
+                              </button>
+                            )}
+                          </div>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">₡</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={configValHoraOrgStr}
+                              onChange={e => setConfigValHoraOrgStr(e.target.value)}
+                              onBlur={handleValHoraOrgBlur}
+                              className={`w-full pl-6 pr-2 py-1.5 text-xs font-bold border rounded-lg focus:ring-2 focus:ring-blue-400 bg-white transition-colors ${
+                                isManualValHoraOrg ? 'border-amber-400 text-amber-900 bg-amber-50/30' : 'border-blue-200 text-blue-800'
+                              }`}
+                            />
+                          </div>
+                          {isManualValHoraOrg && (
+                            <span className="text-[9px] text-amber-700 font-medium block mt-0.5">⚠️ Valor fijado manualmente</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panel 2: Horas Extra, Feriado & Resumen */}
+                <div className="space-y-5 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+                  <div>
+                    <h4 className="text-[11px] font-bold text-amber-600 mb-3 border-b border-amber-100 pb-2 uppercase tracking-wider flex items-center gap-2">
+                      <span>Horas Extra</span>
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">Multiplicador:</label>
+                        <input type="number" step="0.01" value={configExtraMultiplier} onChange={e => handleConfigExtraMultiplierChange(e.target.value)} className="w-full text-sm border-slate-200 rounded-lg focus:ring-amber-500 focus:border-amber-500 bg-slate-50 focus:bg-white transition-colors p-2" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">Valor hora extra:</label>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">₡</span>
+                          <input type="number" step="0.01" value={configExtraValueStr} onChange={e => handleConfigExtraValueChange(e.target.value)} className="w-full pl-6 pr-2 py-2 text-sm border-slate-200 rounded-lg focus:ring-amber-500 focus:border-amber-500 bg-slate-50 focus:bg-white transition-colors" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-[11px] font-bold text-emerald-600 mb-3 border-b border-emerald-100 pb-2 uppercase tracking-wider flex items-center gap-2">
+                      <span>Horas Feriado</span>
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">Multiplicador:</label>
+                        <input type="number" step="0.01" value={configHolidayMultiplier} onChange={e => handleConfigHolidayMultiplierChange(e.target.value)} className="w-full text-sm border-slate-200 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 bg-slate-50 focus:bg-white transition-colors p-2" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">Valor hora feriado:</label>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">₡</span>
+                          <input type="number" step="0.01" value={configHolidayValueStr} onChange={e => handleConfigHolidayValueChange(e.target.value)} className="w-full pl-6 pr-2 py-2 text-sm border-slate-200 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 bg-slate-50 focus:bg-white transition-colors" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/70">
+                    <h4 className="text-[11px] font-bold text-slate-500 mb-3 uppercase tracking-wider border-b border-slate-200/60 pb-2">Resumen (Auto-calculado)</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Salario base utilizado:</span>
+                        <span className="font-bold text-slate-800">₡{parsedConfigBaseSalary.toLocaleString('es-CR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Valor hora base:</span>
+                        <span className="font-bold text-slate-800">₡{configValHoraBase.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-200/60">
+                        <span className="text-slate-600">Valor hora ordinaria:</span>
+                        <span className="font-bold text-blue-700">₡{configValHoraOrg.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Valor hora extra:</span>
+                        <span className="font-bold text-amber-700">₡{configValHoraExt.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Valor hora feriado:</span>
+                        <span className="font-bold text-emerald-700">₡{configValHoraFeriado.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panel 3: Configuración CCSS & Acción Masiva */}
+                <div className="space-y-5 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs md:col-span-2 lg:col-span-1">
+                  <div>
+                    <h4 className="text-[11px] font-bold text-slate-700 mb-3 border-b border-slate-200 pb-2 uppercase tracking-wider flex items-center gap-2">
+                      <span>Configuración CCSS</span>
+                    </h4>
+                    <div className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">Salario reportado a CCSS:</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">₡</span>
+                          <input type="number" value={configReportadoCCSS} onChange={e => setConfigReportadoCCSS(e.target.value)} onBlur={handleReportadoCCSSBlur} className="w-full pl-8 pr-3 py-2 text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tipo deducción:</label>
+                          <select value={configCcssType} onChange={e => setConfigCcssType(e.target.value as 'percentage'|'fixed')} className="w-full p-2 text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors">
+                            <option value="percentage">Porcentaje</option>
+                            <option value="fixed">Monto fijo</option>
+                          </select>
+                        </div>
+                        {configCcssType === 'percentage' ? (
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Porcentaje (%):</label>
+                            <input type="number" step="0.01" value={configCcssPercentage} onChange={e => setConfigCcssPercentage(e.target.value)} className="w-full p-2 text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Monto fijo:</label>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">₡</span>
+                              <input type="number" value={configCcssFixedAmount} onChange={e => setConfigCcssFixedAmount(e.target.value)} className="w-full pl-6 pr-2 py-2 text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="flex items-center gap-2 cursor-pointer pt-1">
+                          <input type="checkbox" checked={configCcssDivideByTwo} onChange={e => setConfigCcssDivideByTwo(e.target.checked)} className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500" />
+                          <span className="text-xs font-semibold text-slate-700">Dividir entre 2 para pago quincenal</span>
+                        </label>
+                      </div>
+
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70 space-y-1 text-xs">
+                        <div className="flex justify-between items-center text-slate-600">
+                          <span>Deducción mensual:</span>
+                          <span className="font-bold text-slate-800">₡{calculatedCcssMonthly.toLocaleString('es-CR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-slate-600">
+                          <span>Deducción quincenal:</span>
+                          <span className="font-bold text-slate-800">₡{calculatedCcssFortnightly.toLocaleString('es-CR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200 flex flex-col items-center">
+                    <ActionButton
+                      type="button"
+                      label={
+                        <span className="flex flex-col items-center justify-center text-center leading-tight">
+                          <span>APLICAR ESTA CONFIGURACIÓN</span>
+                          <span>A TODOS LOS COLABORADORES</span>
+                        </span>
+                      }
+                      onClick={() => setShowBulkConfirmModal1(true)}
+                      variant="warning"
+                      className="w-full !py-2.5 !px-3 !text-[11px] !leading-tight !h-auto !min-h-0 ![&_div]:whitespace-normal ![&_div]:w-full ![&_div]:flex ![&_div]:justify-center !font-extrabold !tracking-normal shadow-xs hover:scale-[1.005] transition-transform"
+                    />
+                    <p className="text-[10px] text-slate-500 text-center mt-1.5 font-medium">
+                      Copia la configuración actual de este colaborador a todos los demás.
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <div className="p-4 sm:px-6 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50 rounded-b-2xl flex-none">
+              <ActionButton label="Cancelar" onClick={() => setShowConfigModal(false)} variant="secondary" />
+              <ActionButton label="Guardar" onClick={handleSaveConfig} variant="primary" />
+            </div>
+          </div>
+        </div>
+      )}
+      <ConfirmModal
+          show={showSalaryConfirmModal1}
+          onClose={() => {
+              setShowSalaryConfirmModal1(false);
+              setConfigBaseSalary((selectedEmployee?.baseSalary || 0).toString());
+          }}
+          onConfirm={() => {
+              setShowSalaryConfirmModal1(false);
+              setShowSalaryConfirmModal2(true);
+          }}
+          title="¿Deseas modificar el salario base de este colaborador?"
+          description={`Salario actual: ₡${(selectedEmployee?.baseSalary || 0).toLocaleString('es-CR')}\nNuevo salario: ₡${parsedConfigBaseSalary.toLocaleString('es-CR')}`}
+          confirmLabel="CONTINUAR"
+          variant="warning"
+      />
+      <ConfirmModal
+          show={showSalaryConfirmModal2}
+          onClose={() => {
+              setShowSalaryConfirmModal2(false);
+              setConfigBaseSalary((selectedEmployee?.baseSalary || 0).toString());
+          }}
+          onConfirm={async () => {
+              if (selectedEmployee && updateEmployee) {
+                  try {
+                      await updateEmployee({ baseSalary: parsedConfigBaseSalary }, selectedEmployee.id);
+                      setShowSalaryConfirmModal2(false);
+                  } catch (err) {
+                      console.error("Error updating salary:", err);
+                      alert("Error al actualizar el salario.");
+                  }
+              }
+          }}
+          title="CONFIRMACIÓN FINAL"
+          description={`Esta modificación cambiará el salario base registrado en el módulo Colaboradores y será utilizado para futuros cálculos de nómina.\n\nAnterior: ₡${(selectedEmployee?.baseSalary || 0).toLocaleString('es-CR')}\nNuevo: ₡${parsedConfigBaseSalary.toLocaleString('es-CR')}`}
+          confirmLabel="CONFIRMAR CAMBIO"
+          variant="danger"
+      />
+      <ConfirmModal
+          show={showCcssConfirmModal}
+          onClose={() => {
+              setShowCcssConfirmModal(false);
+              setConfigReportadoCCSS((selectedEmployee?.reportadoCCSS || selectedEmployee?.baseSalary || 0).toString());
+          }}
+          onConfirm={async () => {
+              if (selectedEmployee && updateEmployee) {
+                  try {
+                      await updateEmployee({ reportadoCCSS: parsedReportado, ccssDeduction: calculatedCcssMonthly, ccssDeductionQuincenal: calculatedCcssFortnightly }, selectedEmployee.id);
+                      setShowCcssConfirmModal(false);
+                  } catch (err) {
+                      console.error("Error updating CCSS salary:", err);
+                      alert("Error al actualizar el salario reportado a CCSS.");
+                  }
+              }
+          }}
+          title="Confirmar cambio de salario reportado a CCSS"
+          description={`Se modificará el salario reportado a CCSS del colaborador.\n\nAnterior: ₡${(selectedEmployee?.reportadoCCSS || selectedEmployee?.baseSalary || 0).toLocaleString('es-CR')}\nNuevo: ₡${parsedReportado.toLocaleString('es-CR')}\n\n¿Deseas continuar?`}
+          confirmLabel="CONFIRMAR CAMBIO"
+          variant="warning"
+      />
+      {/* Modales de Confirmación para Valor Hora Base */}
+      <ConfirmModal
+          show={showValHoraBaseConfirm1}
+          onClose={handleCancelValHoraBaseConfirm}
+          onConfirm={handleConfirmValHoraBase1}
+          title="¿MODIFICAR VALOR HORA BASE?"
+          description={`Has cambiado manualmente el Valor Hora Base.\n\nAnterior: ₡${(isManualValHoraBase && manualValHoraBaseNum !== null ? manualValHoraBaseNum : autoValHoraBase).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nNuevo: ₡${(pendingValHoraBase || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\nEste valor manual reemplazará el cálculo automático (Salario Base / Horas base mensuales). ¿Deseas continuar?`}
+          confirmLabel="CONTINUAR"
+          variant="warning"
+      />
+      <ConfirmModal
+          show={showValHoraBaseConfirm2}
+          onClose={handleCancelValHoraBaseConfirm}
+          onConfirm={handleConfirmValHoraBase2}
+          title="CONFIRMACIÓN FINAL - VALOR HORA BASE"
+          description={`Esta es la confirmación definitiva para establecer manualmente el Valor Hora Base en ₡${(pendingValHoraBase || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\n\n¿Confirmas que deseas aplicar este cambio personalizado?`}
+          confirmLabel="CONFIRMAR Y APLICAR"
+          variant="danger"
+      />
+
+      {/* Modales de Confirmación para Valor Hora Ordinaria */}
+      <ConfirmModal
+          show={showValHoraOrgConfirm1}
+          onClose={handleCancelValHoraOrgConfirm}
+          onConfirm={handleConfirmValHoraOrg1}
+          title="¿MODIFICAR VALOR HORA ORDINARIA?"
+          description={`Has cambiado manualmente el Valor Hora Ordinaria.\n\nAnterior: ₡${(isManualValHoraOrg && manualValHoraOrgNum !== null ? manualValHoraOrgNum : autoValHoraOrg).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nNuevo: ₡${(pendingValHoraOrg || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\nEste valor manual reemplazará el cálculo automático (Valor Hora Base × Multiplicador). ¿Deseas continuar?`}
+          confirmLabel="CONTINUAR"
+          variant="warning"
+      />
+      <ConfirmModal
+          show={showValHoraOrgConfirm2}
+          onClose={handleCancelValHoraOrgConfirm}
+          onConfirm={handleConfirmValHoraOrg2}
+          title="CONFIRMACIÓN FINAL - VALOR HORA ORDINARIA"
+          description={`Esta es la confirmación definitiva para establecer manualmente el Valor Hora Ordinaria en ₡${(pendingValHoraOrg || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\n\n¿Confirmas que deseas aplicar este cambio personalizado?`}
+          confirmLabel="CONFIRMAR Y APLICAR"
+          variant="danger"
+      />
+
+      <ConfirmModal
+          show={showBulkConfirmModal1}
+          onClose={() => setShowBulkConfirmModal1(false)}
+          onConfirm={() => {
+              setShowBulkConfirmModal1(false);
+              setShowBulkConfirmModal2(true);
+          }}
+          title="¿APLICAR CONFIGURACIÓN A TODOS?"
+          description={
+            <div className="space-y-3 text-left">
+              <p className="text-xs font-medium text-slate-600">
+                La configuración actual de este colaborador será utilizada como configuración de cálculo para todos los colaboradores.
+              </p>
+              <p className="text-xs font-bold text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
+                ✔️ Los salarios base e individuales de cada colaborador permanecerán intactos. Solo se copiarán los parámetros de configuración de cálculo y se recalcularán sus deducciones de CCSS de forma individual.
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-52 overflow-y-auto text-xs space-y-1.5 custom-scrollbar">
+                <div className="font-bold text-slate-800 border-b border-slate-200 pb-1 mb-2 uppercase tracking-wide text-[10px]">Parámetros que serán copiados:</div>
+                <div className="flex justify-between"><span className="text-slate-500">Horas por quincena:</span> <span className="font-semibold text-slate-800">{configOrdinaryHours}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Horas base mensuales:</span> <span className="font-semibold text-slate-800">{configSalaryDivisor}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Multiplicador ordinario:</span> <span className="font-semibold text-slate-800">{configOrdinaryMultiplier}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Valor hora base:</span> <span className="font-bold text-slate-800">₡{configValHoraBase.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Valor hora ordinaria:</span> <span className="font-bold text-blue-700">₡{configValHoraOrg.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Multiplicador hora extra:</span> <span className="font-semibold text-slate-800">{configExtraMultiplier}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Valor hora extra:</span> <span className="font-bold text-amber-700">₡{configValHoraExt.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Multiplicador hora feriado:</span> <span className="font-semibold text-slate-800">{configHolidayMultiplier}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Valor hora feriado:</span> <span className="font-bold text-emerald-700">₡{configValHoraFeriado.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 mt-1"><span className="text-slate-500">Tipo deducción CCSS:</span> <span className="font-semibold text-slate-800">{configCcssType === 'percentage' ? 'Porcentaje' : 'Monto fijo'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Porcentaje / Monto CCSS:</span> <span className="font-semibold text-slate-800">{configCcssType === 'percentage' ? `${parsedPercentage}%` : `₡${parsedFixed.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">División quincenal CCSS:</span> <span className="font-semibold text-slate-800">{configCcssDivideByTwo ? 'Sí' : 'No'}</span></div>
+              </div>
+            </div>
+          }
+          confirmLabel="CONTINUAR"
+          variant="warning"
+      />
+      <ConfirmModal
+          show={showBulkConfirmModal2}
+          onClose={() => setShowBulkConfirmModal2(false)}
+          onConfirm={executeBulkApplyConfig}
+          title="CONFIRMACIÓN FINAL"
+          description={
+            <div className="space-y-3 text-center">
+              <p className="text-xs font-semibold text-slate-600">
+                Esta acción modificará la configuración de cálculo de <strong>TODOS los colaboradores</strong>.
+              </p>
+              <p className="text-xs font-bold text-emerald-700 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 text-left">
+                ✔️ Los salarios base e individuales de cada colaborador NO serán alterados. Solo se actualizarán sus configuraciones generales de cálculo de horas y porcentajes de deducción de CCSS de forma individual.
+              </p>
+            </div>
+          }
+          confirmLabel="CONFIRMAR Y APLICAR A TODOS"
+          variant="danger"
+          isLoading={isBulkSubmitting}
+      />
+    </>,
     document.body
   );
 };

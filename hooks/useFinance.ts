@@ -312,18 +312,30 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
 
       if (!employee) throw new Error("Colaborador no encontrado. No se pudo obtener la información salarial.");
 
-      const valHoraOrg = (employee.baseSalary || 0) / 300;
-      const valHoraExt = valHoraOrg * 1.5;
+      const salaryConfig = employee.salaryConfiguration || {
+        salaryDivisor: 300,
+        ordinaryHours: 150,
+        ordinaryMultiplier: 1,
+        extraHours: 0,
+        extraMultiplier: 1.5,
+        holidayHours: 0,
+        holidayMultiplier: 2
+      };
+
+      const valHoraBase = (employee.baseSalary || 0) / salaryConfig.salaryDivisor;
+      const valHoraOrg = valHoraBase * salaryConfig.ordinaryMultiplier;
+      const valHoraExt = valHoraBase * salaryConfig.extraMultiplier;
+      const valHoraFeriado = valHoraBase * salaryConfig.holidayMultiplier;
       
-      const ordinaryHours = stubData.ordinaryHours !== undefined ? stubData.ordinaryHours : 150;
-      const extraHoursCount = stubData.extraHoursCount !== undefined ? stubData.extraHoursCount : 0;
-      const holidayHoursCount = stubData.holidayHoursCount !== undefined ? stubData.holidayHoursCount : 0;
+      const ordinaryHours = stubData.ordinaryHours !== undefined ? stubData.ordinaryHours : (salaryConfig.ordinaryHours || 150);
+      const extraHoursCount = stubData.extraHoursCount !== undefined ? stubData.extraHoursCount : (salaryConfig.extraHours || 0);
+      const holidayHoursCount = stubData.holidayHoursCount !== undefined ? stubData.holidayHoursCount : (salaryConfig.holidayHours || 0);
 
       const baseSalary = Math.round(valHoraOrg * ordinaryHours * 100) / 100;
       const extraHours = Math.round(valHoraExt * extraHoursCount * 100) / 100;
-      const holidays = Math.round(valHoraOrg * holidayHoursCount * 100) / 100;
+      const holidays = Math.round(valHoraFeriado * holidayHoursCount * 100) / 100;
       
-      const ccss = (employee.ccssDeduction || 0) / 2;
+      const ccss = employee.ccssDeductionQuincenal !== undefined ? employee.ccssDeductionQuincenal : ((employee.ccssDeduction || 0) / 2);
       
       const bonuses = stubData.bonuses || 0;
       const travelExpenses = stubData.travelExpenses || 0;
