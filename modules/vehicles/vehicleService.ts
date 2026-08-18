@@ -247,64 +247,19 @@ export const saveVehicleLog = async (
                 return timeB.localeCompare(timeA);
             });
 
-            // Consideramos bitácora activa cualquiera que no tenga kmLlegada (o kmLlegada === 0), 
-            // no esté borrada
+            // Consideramos bitácora activa cualquiera que no tenga kmLlegada (o kmFinal), 
+            // no esté borrada y el estado NO sea 'Finalizada'
             const activeLog = logs.find(l => 
-                (!l.kmLlegada || Number(l.kmLlegada) === 0) && 
+                !l.kmLlegada && 
                 !l.isDeleted && 
+                l.estado !== 'Finalizada' &&
                 l.id !== initialData?.id
             );
             
             if (activeLog) {
-                // --- INICIO DE CORRECCIÓN FALSO BLOQUEO FASE 1 ---
-                // Cuando se encuentre una supuesta bitácora activa localmente, primero verificamos Firestore
-                let isReallyActiveOnServer = true;
-                try {
-                    const { getDocFromServer } = await import('firebase/firestore');
-                    const docRef = doc(db, 'bitacora_vehiculos', activeLog.id);
-                    const serverDoc = await getDocFromServer(docRef);
-                    
-                    if (serverDoc.exists()) {
-                        const serverData = serverDoc.data() as VehicleLog;
-                        const isFinalized = (serverData.kmLlegada && Number(serverData.kmLlegada) > 0) || serverData.estado === 'Finalizada';
-                        
-                        if (isFinalized) {
-                            isReallyActiveOnServer = false;
-                            // Actualizar/limpiar la copia local obsoleta de esa bitácora
-                            try {
-                                await localDocStore.saveLocalDoc('bitacora_vehiculos', activeLog.id, { ...serverData, id: serverDoc.id }, false);
-                            } catch (localWriteErr) {
-                                console.warn("[vehicleService] Failed to update stale local doc:", localWriteErr);
-                            }
-                        } else {
-                            // Sigue realmente abierta, actualizamos los datos locales por si acaso
-                            try {
-                                await localDocStore.saveLocalDoc('bitacora_vehiculos', activeLog.id, { ...serverData, id: serverDoc.id }, false);
-                            } catch (localWriteErr) {
-                                console.warn("[vehicleService] Failed to update active local doc:", localWriteErr);
-                            }
-                        }
-                    } else {
-                        // No existe en servidor (es un registro huérfano/fantasma que fue eliminado)
-                        isReallyActiveOnServer = false;
-                        try {
-                            await localDocStore.removeLocalDoc('bitacora_vehiculos', activeLog.id);
-                        } catch (localDeleteErr) {
-                            console.warn("[vehicleService] Failed to remove stale local ghost doc:", localDeleteErr);
-                        }
-                    }
-                } catch (verifyError) {
-                    console.error("[vehicleService] Error verifying active log against server. Keeping block for safety.", verifyError);
-                    // En caso de no poder determinarse, por seguridad se asume activa para evitar duplicados
-                    isReallyActiveOnServer = true;
-                }
-
-                if (isReallyActiveOnServer) {
-                    const conductor = activeLog.conductorName || 'otro conductor';
-                    const fecha = activeLog.fecha || 'sin fecha';
-                    throw new Error(`BLOQUEO: La unidad ${vUnidad} ya tiene una bitácora activa sin finalizar (Conductor: ${conductor}, Fecha: ${fecha}).`);
-                }
-                // --- FIN DE CORRECCIÓN FALSO BLOQUEO FASE 1 ---
+                const conductor = activeLog.conductorName || 'otro conductor';
+                const fecha = activeLog.fecha || 'sin fecha';
+                throw new Error(`BLOQUEO: La unidad ${vUnidad} ya tiene una bitácora activa sin finalizar (Conductor: ${conductor}, Fecha: ${fecha}).`);
             }
         }
     }

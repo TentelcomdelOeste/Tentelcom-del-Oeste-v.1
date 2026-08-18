@@ -288,9 +288,14 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
       where("kmLlegada", "==", null),
       limit(20)
     );
-    const unsubscribeIncomplete = onSnapshot(qIncomplete, (snap) => {
+    const unsubscribeIncomplete = onSnapshot(qIncomplete, async (snap) => {
+      for (const change of snap.docChanges()) {
+        if (change.type === "removed") {
+          await localDocStore.removeLocalDoc("bitacora_vehiculos", change.doc.id);
+        }
+      }
       const activeData = snap.docs.map(d => ({ ...d.data(), id: d.id }) as VehicleLog);
-      localDocStore.saveLocalDocsBatch("bitacora_vehiculos", activeData);
+      await localDocStore.saveLocalDocsBatch("bitacora_vehiculos", activeData);
     });
 
     // Fetch expenses for the logs

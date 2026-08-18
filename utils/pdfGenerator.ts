@@ -10,7 +10,7 @@ import { AutomaticAdjustment } from '../modules/finance/automatic_adjustments/au
 import { numeroALetras } from './numberToWords';
 import { formatCurrency } from './formatCurrency';
 import { LOGO_BASE64, LOGO14_BASE64 } from './logoBase64';
-import { normalizeOrigin } from './originUtils';
+import { normalizeOrigin } from '@/utils/originUtils';
 import { triggerFileDownload } from './fileUtils';
 
 export const monthNames = [
@@ -1408,6 +1408,8 @@ export const generateShortagePDF = async (shortage: Shortage) => {
   const blob = docPdf.output('blob');
   triggerFileDownload(blob, fileName);
 };
+
+import { normalizeOrigin } from './originUtils';
 
 export const generateAutomaticAdjustmentPDF = async (adjustment: AutomaticAdjustment, history: any[]) => {
   const doc = new jsPDF('p', 'pt', 'letter');

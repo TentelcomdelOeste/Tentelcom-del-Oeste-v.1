@@ -2,7 +2,7 @@ import { networkProbe } from './networkProbe';
 import { offlineQueueEngine, PendingMutation } from './offlineQueueEngine';
 import { localDocStore } from './localDocStore';
 import { db } from '../../firebase';
-import { doc, setDoc, deleteDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { localDB } from './localDB';
 import { runPdfSyncCycle } from '../pdf/pdfStorageSync';
 
@@ -16,26 +16,16 @@ export class SyncEngine {
     private syncStartTime: number = 0;
     private autoSyncInterval: NodeJS.Timeout | null = null;
     private isAuthenticated: boolean = false;
-    private networkUnsubscribe: (() => void) | null = null;
-    private pendingRerunRequested: boolean = false;
-    private handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible' && !this.isSyncing) {
-            console.log("SyncEngine: App regresó a primer plano. Disparando ciclo de sincronización inmediato.");
-            this.runSyncCycle();
-        }
-    };
 
     public setAuthStatus(ready: boolean, user: any | null): void {
         this.currentUserId = user?.uid || null;
         const wasAuthenticated = this.isAuthenticated;
         this.isAuthenticated = ready && !!user;
         
+        // Si acabamos de autenticarnos, disparar sync inmediatamente
         if (!wasAuthenticated && this.isAuthenticated) {
-            console.log("SyncEngine: Autenticación exitosa detectada. Disparando sync inmediato e iniciando auto-sync.");
+            console.log("SyncEngine: Autenticación exitosa detectada. Disparando sync inmediato.");
             this.runSyncCycle();
-            this.startAutoSync();
-        } else if (wasAuthenticated && !this.isAuthenticated) {
-            this.stopAutoSync();
         }
     }
     
@@ -52,8 +42,7 @@ export class SyncEngine {
                 console.warn("SyncEngine: Watchdog tripped. Sync block released.");
                 this.isSyncing = false;
             } else {
-                console.log("SyncEngine: Sincronización ya en curso. Abortando y encolando reintento.");
-                this.pendingRerunRequested = true;
+                console.log("SyncEngine: Sincronización ya en curso. Abortando.");
                 return;
             }
         }
@@ -89,25 +78,6 @@ export class SyncEngine {
 
                     if (mutation.retryCount >= MAX_RETRIES) {
                         console.error(`SyncEngine: Mutación ${mutation.id} excedió límite de reintentos.`);
-                        
-                        // Escribir telemetría de fallo persistente
-                        try {
-                            if (networkProbe.isOnline()) {
-                                await addDoc(collection(db, 'sync_failures'), {
-                                    mutationId: mutation.id,
-                                    collection: mutation.collection,
-                                    docId: mutation.docId,
-                                    operation: mutation.operation,
-                                    errorMessage: mutation.error || 'Excedido límite de reintentos',
-                                    userId: this.currentUserId,
-                                    timestamp: serverTimestamp(),
-                                    deviceInfo: navigator.userAgent
-                                });
-                            }
-                        } catch (telemetryErr) {
-                            console.warn("SyncEngine: Falló escritura de telemetría sync_failures", telemetryErr);
-                        }
-
                         await offlineQueueEngine.markEntryStatus(mutation.id, 'dead', 'Excedido límite de reintentos');
                         continue; 
                     }
@@ -134,11 +104,6 @@ export class SyncEngine {
         } finally {
             this.isSyncing = false;
             console.log("SyncEngine: Ciclo de sincronización finalizado.");
-            if (this.pendingRerunRequested) {
-                console.log("SyncEngine: Consumiendo reintento pendiente...");
-                this.pendingRerunRequested = false;
-                setTimeout(() => this.runSyncCycle(), 0);
-            }
         }
     }
 
@@ -225,13 +190,13 @@ export class SyncEngine {
         }
     }
 
-    // Inicializa el sistema de auto-sync
+    // Inicializa el sistema de auto-sync (Aún NO ACTIVO globalmente en app productiva)
     public startAutoSync(intervalMs: number = 30000): void {
         if (this.autoSyncInterval) {
             clearInterval(this.autoSyncInterval);
         }
 
-        console.log(`SyncEngine: AutoSync iniciado cada ${intervalMs}ms`);
+        console.log(`SyncEngine: AutoSync iniciado cada ${intervalMs}ms (Sandboxed)`);
 
         this.autoSyncInterval = setInterval(() => {
             if (!this.isSyncing) {
@@ -240,17 +205,12 @@ export class SyncEngine {
         }, intervalMs);
 
         // Suscribirse a cambios de red para sincronización inmediata al reconectar
-        if (!this.networkUnsubscribe) {
-            this.networkUnsubscribe = networkProbe.subscribe((isOnline) => {
-                if (isOnline && !this.isSyncing) {
-                    console.log("SyncEngine: Reconexión detectada. Disparando ciclo de sincronización inmediato.");
-                    this.runSyncCycle();
-                }
-            });
-        }
-
-        // Suscribirse a cambios de visibilidad (background a foreground)
-        document.addEventListener('visibilitychange', this.handleVisibilityChange);
+        networkProbe.subscribe((isOnline) => {
+            if (isOnline && !this.isSyncing) {
+                console.log("SyncEngine: Reconexión detectada. Disparando ciclo de sincronización inmediato.");
+                this.runSyncCycle();
+            }
+        });
     }
 
     public stopAutoSync(): void {
@@ -258,11 +218,6 @@ export class SyncEngine {
             clearInterval(this.autoSyncInterval);
             this.autoSyncInterval = null;
         }
-        if (this.networkUnsubscribe) {
-            this.networkUnsubscribe();
-            this.networkUnsubscribe = null;
-        }
-        document.removeEventListener('visibilitychange', this.handleVisibilityChange);
         console.log("SyncEngine: AutoSync detenido.");
     }
 }

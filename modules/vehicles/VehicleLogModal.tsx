@@ -3,14 +3,14 @@ import { createPortal } from 'react-dom';
 import { User } from '../../utils/types';
 import { VehicleLog, VehicleRecharge, VehicleExpense } from '../../types/vehicle.types';
 import { db } from '../../firebase';
-import { collection, query, getDocs, orderBy, where, onSnapshot, deleteDoc, doc, getDocsFromServer, limit } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, where, limit, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { localDocStore } from '../../core/offline/localDocStore';
-
+import { offlineQueueEngine } from '../../core/offline/offlineQueueEngine';
 import { VEHICLES } from '../job_scheduling/JobForm';
 import { useAuditPermanence } from '../../hooks/useAuditPermanence';
 import { Select, ActionButton, IconButton, useConfirm } from '../../design-system';
 import { SignaturePad } from '../../components/SignaturePad';
-import { FiX, FiCreditCard, FiPlus, FiTrash2, FiEdit2 } from 'react-icons/fi';
+import { FiX, FiAlertTriangle, FiCreditCard, FiPlus, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import { isAdmin as checkIsAdmin } from '../../utils/permissions';
 import { saveVehicleLog } from './vehicleService';
 import { VehicleExpenseModal } from './components/VehicleExpenseModal';
@@ -49,17 +49,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const [isLoading, setIsLoading] = useState(false);
     const [employees, setEmployees] = useState<{id: string, name: string}[]>(initialEmployees);
     const [isSigned, setIsSigned] = useState(!!initialData?.firma);
-    const [_foundActiveLog, setFoundActiveLog] = useState<VehicleLog | null>(null);
-    const [_activeLogOnServer, _setActiveLogOnServer] = useState<any>(null);
-    const [staleActiveLog, setStaleActiveLog] = useState<VehicleLog | null>(null);
-    const [triggerRefresh, setTriggerRefresh] = useState<number>(0);
-
-    // Refs y estado unificado para evitar parpadeos y ejecuciones cíclicas en iPhone/iOS
-    const lastCheckedUnidadRef = React.useRef<string | null>(null);
-    const checkingActiveLogRef = React.useRef<boolean>(false);
-    type VerificationState = 'idle' | 'checking' | 'active_confirmed' | 'stale_local' | 'verification_error';
-    const [verificationState, setVerificationState] = useState<VerificationState>('idle');
-
+    const [activeLogWarning, setActiveLogWarning] = useState<string | null>(null);
     const [lastKnownKmLlegada, setLastKnownKmLlegada] = useState<number | null>(null);
     const [relatedExpenses, setRelatedExpenses] = useState<VehicleExpense[]>([]);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -154,141 +144,135 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         loadEmployees();
     }, [initialEmployees, employees.length, formData.conductorId, formData.conductorName]);
 
-    // Independent autocomplete starting mileage logic from local storage
+    // Auto-complete mileage logic
     useEffect(() => {
-        if (isEditing || !formData.unidadId) {
-            setLastKnownKmLlegada(null);
-            lastCheckedUnidadRef.current = null;
-            return;
-        }
-
-        const unitName = formData.unidadName || formData.unidadId.split(" - ")[0]?.trim();
-        if (!unitName) {
-            setFormData(prev => ({ ...prev, kmSalida: '' }));
-            setLastKnownKmLlegada(null);
-            lastCheckedUnidadRef.current = null;
-            return;
-        }
-
-        if (lastCheckedUnidadRef.current === unitName) return;
-        lastCheckedUnidadRef.current = unitName;
-
-        let active = true;
-
         const fetchLastMileage = async () => {
-            let localLastKm: number | null = null;
-            let localLastLog: any = null;
+            // Only for new records and when a unit is selected
+            if (isEditing || !formData.unidadId) {
+                setActiveLogWarning(null);
+                setLastKnownKmLlegada(null);
+                return;
+            }
+
+            const unitMatch = formData.unidadId.split(" - ");
+            const unitName = unitMatch[0]?.trim();
+            if (!unitName) return;
 
             try {
-                const logs = await localDocStore.getLocalCollection('bitacora_vehiculos');
-                if (!active) return;
+                // 1. Fetch Remote Logs (Firestore) - Intentamos servidor para evitar cache de borrados
+                let remoteLogs: VehicleLog[] = [];
+                try {
+                    const { getDocsFromServer } = await import('firebase/firestore');
+                    const qLogs = query(
+                        collection(db, 'bitacora_vehiculos'),
+                        where('unidad', '==', unitName),
+                        orderBy('fecha', 'desc'),
+                        limit(15)
+                    );
+                    
+                    const timeoutPromise = new Promise<any>((_, reject) => setTimeout(() => reject(new Error("TIMEOUT_GETDOCS")), 2500));
+                    const snapLogs = await Promise.race([
+                        getDocsFromServer(qLogs),
+                        timeoutPromise
+                    ]);
+                    
+                    remoteLogs = snapLogs.docs.map(doc => ({ ...doc.data() as VehicleLog, id: doc.id }));
+                } catch (e) {
+                    console.warn("[VehicleLogModal] Server fetch failed or timed out, using getDocsFromCache:", e);
+                    try {
+                        const { getDocsFromCache } = await import('firebase/firestore');
+                        const qLogs = query(collection(db, 'bitacora_vehiculos'), where('unidad', '==', unitName), orderBy('fecha', 'desc'), limit(15));
+                        const snapLogs = await getDocsFromCache(qLogs);
+                        remoteLogs = !snapLogs.empty ? snapLogs.docs.map(doc => ({ ...doc.data() as VehicleLog, id: doc.id })) : [];
+                    } catch (cacheError) {
+                        console.warn("[VehicleLogModal] Cache fetch failed, relying on localDocStore:", cacheError);
+                    }
+                }
 
-                const validLogs = logs.filter((log: any) => {
-                    const docData = log.data || {};
-                    const logUnitClean = docData.unidad?.trim();
-                    return logUnitClean === unitName && 
-                           docData.isDeleted !== true && 
-                           docData.kmLlegada !== undefined && 
-                           docData.kmLlegada !== null && 
-                           Number(docData.kmLlegada) > 0;
+                // 2. Fetch Local Logs and Pending Mutations
+                let localDocs: any[] = [];
+                let pendingMutations: any[] = [];
+                try {
+                    localDocs = await localDocStore.getLocalCollection('bitacora_vehiculos');
+                    pendingMutations = await offlineQueueEngine.getPendingQueue();
+                } catch (e) { 
+                    console.warn("[VehicleLogModal] localDocStore/offlineQueue access failed:", e); 
+                }
+
+                const deleteMutations = new Set(
+                    pendingMutations
+                        .filter(m => m.collection === 'bitacora_vehiculos' && m.operation === 'delete')
+                        .map(m => m.docId)
+                );
+
+                const localLogs = localDocs
+                    .filter(d => d.data?.unidad === unitName)
+                    .map(d => ({ ...d.data, id: d.docId }) as VehicleLog);
+
+                // 3. Hybrid Merge: Priority to local dirty records
+                const logMap = new Map<string, VehicleLog>();
+                
+                // Add remote logs first, skipping those pending deletion or legacy deleted
+                remoteLogs.forEach(l => {
+                    if (!deleteMutations.has(l.id) && !l.isDeleted) {
+                        logMap.set(l.id, l);
+                    }
                 });
-
-                if (validLogs.length > 0) {
-                    validLogs.sort((a: any, b: any) => {
-                        const dataA = a.data || {};
-                        const dataB = b.data || {};
-                        const dateA = dataA.fecha || "";
-                        const dateB = dataB.fecha || "";
+                
+                // Overlay local logs (especially dirty ones or locals-only)
+                localLogs.forEach(l => {
+                    const localEntry = localDocs.find(d => d.docId === l.id);
+                    if (localEntry?.isDirty || !logMap.has(l.id)) {
+                        if (!deleteMutations.has(l.id) && !l.isDeleted) {
+                            logMap.set(l.id, l);
+                        }
+                    }
+                });
+                
+                // 4. Sort
+                const logs = Array.from(logMap.values());
+                
+                if (logs.length > 0) {
+                    // Sort locally to handle same-day order
+                    logs.sort((a, b) => {
+                        const dateA = a.fecha || "";
+                        const dateB = b.fecha || "";
                         if (dateA !== dateB) return dateB.localeCompare(dateA);
-
-                        const timeA = dataA.horaSalida || "";
-                        const timeB = dataB.horaSalida || "";
+                        
+                        const timeA = a.horaSalida || "";
+                        const timeB = b.horaSalida || "";
                         return timeB.localeCompare(timeA);
                     });
 
-                    localLastLog = validLogs[0];
-                    localLastKm = Number(localLastLog.data.kmLlegada);
+                    const activeLog = logs.find(log => !log.kmLlegada && !log.isDeleted);
+                    if (activeLog && activeLog.id !== editingLog?.id) {
+                        setActiveLogWarning(`Esta unidad (${unitName}) posee una bitácora activa actualmente.`);
+                    } else {
+                        setActiveLogWarning(null);
+                    }
 
-                    setFormData(prev => ({ ...prev, kmSalida: localLastKm }));
-                    setLastKnownKmLlegada(localLastKm);
+                    // Find the last log that has an arrival mileage
+                    const lastFinalLog = logs.find(log => (log.kmLlegada ?? 0) > 0);
+
+                    if (lastFinalLog) {
+                        setFormData(prev => ({ ...prev, kmSalida: lastFinalLog.kmLlegada }));
+                        setLastKnownKmLlegada(lastFinalLog.kmLlegada);
+                    } else {
+                        setLastKnownKmLlegada(null);
+                        setFormData(prev => ({ ...prev, kmSalida: undefined }));
+                    }
                 } else {
-                    setFormData(prev => ({ ...prev, kmSalida: '' }));
+                    setActiveLogWarning(null);
                     setLastKnownKmLlegada(null);
+                    setFormData(prev => ({ ...prev, kmSalida: undefined }));
                 }
             } catch (err) {
-                console.error("Error in autocomplete mileage effect (local):", err);
-            }
-
-            // Fallback optimista silencioso en background a Firestore
-            const suggestedKm = localLastKm !== null ? localLastKm : '';
-            try {
-                const remoteQuery = query(
-                    collection(db, 'bitacora_vehiculos'),
-                    where('unidad', '==', unitName),
-                    orderBy('fecha', 'desc'),
-                    limit(1)
-                );
-
-                const timeoutPromise = new Promise<never>((_, reject) => {
-                    setTimeout(() => reject(new Error('Timeout remote km query')), 2500);
-                });
-
-                const firestorePromise = getDocsFromServer(remoteQuery);
-
-                const snap = await Promise.race([firestorePromise, timeoutPromise]);
-                if (!active) return;
-
-                if (snap && snap.docs && snap.docs.length > 0) {
-                    const remoteDoc = snap.docs[0].data();
-                    const remoteKm = remoteDoc.kmLlegada !== undefined && remoteDoc.kmLlegada !== null ? Number(remoteDoc.kmLlegada) : 0;
-                    
-                    if (remoteKm > 0) {
-                        const isRemoteNewer = () => {
-                            if (!localLastLog) return true;
-                            
-                            const rUpdate = remoteDoc.updatedAt || '';
-                            const lUpdate = localLastLog.data?.updatedAt || '';
-                            if (rUpdate && lUpdate) {
-                                return rUpdate.localeCompare(lUpdate) > 0;
-                            }
-                            
-                            const rFecha = remoteDoc.fecha || '';
-                            const lFecha = localLastLog.data?.fecha || '';
-                            if (rFecha !== lFecha) {
-                                return rFecha.localeCompare(lFecha) > 0;
-                            }
-                            
-                            const rTime = remoteDoc.horaLlegada || remoteDoc.horaSalida || '';
-                            const lTime = localLastLog.data?.horaLlegada || localLastLog.data?.horaSalida || '';
-                            return rTime.localeCompare(lTime) > 0;
-                        };
-
-                        if (isRemoteNewer()) {
-                            setFormData(prev => {
-                                const currentKm = prev.kmSalida !== undefined && prev.kmSalida !== null ? prev.kmSalida : '';
-                                if (currentKm === suggestedKm) {
-                                    return { ...prev, kmSalida: remoteKm };
-                                }
-                                return prev;
-                            });
-                            setLastKnownKmLlegada(remoteKm);
-                        }
-                    }
-                }
-            } catch (remoteErr) {
-                // Silencioso por directivas de background query
-                console.debug("Silent mileage remote query background fail/timeout:", remoteErr);
+                console.error("Error fetching mileage history:", err);
             }
         };
 
         fetchLastMileage();
-
-        return () => {
-            active = false;
-        };
-    }, [formData.unidadId, formData.unidadName, isEditing]);
-
-
+    }, [formData.unidadId, isEditing]);
 
     const handleDeleteExpense = async (expenseId: string) => {
         const confirmed = await confirm({
@@ -560,6 +544,12 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     placeholder="Buscar vehículo..."
                                     required
                                 />
+                                {activeLogWarning && (
+                                    <div className="mt-2 flex items-center gap-2 text-[10px] font-black text-orange-600 bg-orange-50 p-2 rounded-lg border border-orange-100 animate-pulse">
+                                        <FiAlertTriangle className="text-xs shrink-0" />
+                                        <span className="uppercase tracking-tight font-black">{activeLogWarning}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -863,8 +853,8 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         form="vehicle-log-form"
                         variant="primary"
                         label={isLoading ? "Guardando..." : "Guardar Registro"}
-                        disabled={isLoading}
-                        className={`flex-1 !py-3 !text-[10px] !font-black !uppercase !tracking-wider !rounded-xl ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        disabled={isLoading || (activeLogWarning !== null && !isEditing)}
+                        className={`flex-1 !py-3 !text-[10px] !font-black !uppercase !tracking-wider !rounded-xl ${isLoading || (activeLogWarning !== null && !isEditing) ? 'opacity-50 cursor-not-allowed' : ''}`}
                     />
                 </div>
             </div>

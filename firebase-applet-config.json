@@ -1,12 +1,10 @@
 {
   "projectId": "tentelcom-del-oeste",
-  "appId": "1:669263702822:web:a9a85c6b9bfadcd6062fe7",
-  "apiKey": "AIzaSyDENRJxLvJWX9zyOJOWXWKb_YX-jKDOucw",
+  "appId": "1:669263702822:web:0dd30912a8cd4156062fe7",
+  "apiKey": "AIzaSyBZClYso1SeEnWdqIjlkRPiN0oSQV47JPQ",
   "authDomain": "tentelcom-del-oeste.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-telecomdeloesteg-79973514-1874-4fbc-9ec5-679d3216d0f7",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "tentelcom-del-oeste.firebasestorage.app",
   "messagingSenderId": "669263702822",
-  "measurementId": "",
-  "oAuthClientId": "669263702822-3tpm2bs653ti49najbumdon76ri2mkht.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "measurementId": ""
 }

@@ -22,7 +22,7 @@ const auth = initializeAuth(app, {
 
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache()
-});
+}, firebaseConfigJson.firestoreDatabaseId || "(default)");
 
 const storage = getStorage(app);
 const messaging = typeof window !== "undefined" ? getMessaging(app) : null;
