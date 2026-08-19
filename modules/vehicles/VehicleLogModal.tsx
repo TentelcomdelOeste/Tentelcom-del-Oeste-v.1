@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { User } from '../../utils/types';
 import { VehicleLog, VehicleRecharge, VehicleExpense } from '../../types/vehicle.types';
@@ -51,6 +51,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const [isSigned, setIsSigned] = useState(!!initialData?.firma);
     const [activeLogWarning, setActiveLogWarning] = useState<string | null>(null);
     const [lastKnownKmLlegada, setLastKnownKmLlegada] = useState<number | null>(null);
+    const lastSuggestionRef = useRef<{ unitName: string | null; suggestedKm: number | null }>({ unitName: null, suggestedKm: null });
     const [relatedExpenses, setRelatedExpenses] = useState<VehicleExpense[]>([]);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState<VehicleExpense | null>(null);
@@ -247,16 +248,22 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             setLastKnownKmLlegada(localResult.lastKm);
             
             const initialSuggestedKm = localResult.lastKm;
+            const unitChanged = lastSuggestionRef.current.unitName !== unitName;
 
-            if (initialSuggestedKm !== null) {
-                setFormData(prev => {
-                    if (prev.kmSalida === undefined || prev.kmSalida === null) {
-                        return { ...prev, kmSalida: initialSuggestedKm };
-                    }
-                    return prev;
-                });
+            if (unitChanged) {
+                setFormData(prev => ({ ...prev, kmSalida: initialSuggestedKm !== null ? initialSuggestedKm : undefined }));
+                lastSuggestionRef.current = { unitName, suggestedKm: initialSuggestedKm };
             } else {
-                setFormData(prev => ({ ...prev, kmSalida: undefined }));
+                if (initialSuggestedKm !== null) {
+                    setFormData(prev => {
+                        if (prev.kmSalida === undefined || prev.kmSalida === null) {
+                            return { ...prev, kmSalida: initialSuggestedKm };
+                        }
+                        return prev;
+                    });
+                } else {
+                    setFormData(prev => ({ ...prev, kmSalida: undefined }));
+                }
             }
 
             // 2. PASO 2 & 3: Consulta remota en background (non-blocking)
@@ -300,10 +307,12 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
                     if (fullResult.lastKm !== null) {
                         setFormData(prev => {
-                            // Protección contra edición manual (commit 9028a6d):
-                            // Si el valor actual es undefined/null o coincide exactamente con la sugerencia previa, actualizamos.
-                            // Si el técnico ya lo editó a mano, respetamos su valor.
-                            if (prev.kmSalida === undefined || prev.kmSalida === null || prev.kmSalida === initialSuggestedKm) {
+                            // Protección contra edición manual usando lastSuggestionRef.current.suggestedKm
+                            const currentKm = prev.kmSalida;
+                            const lastSuggested = lastSuggestionRef.current.suggestedKm;
+
+                            if (currentKm === undefined || currentKm === null || currentKm === lastSuggested) {
+                                lastSuggestionRef.current = { unitName, suggestedKm: fullResult.lastKm };
                                 return { ...prev, kmSalida: fullResult.lastKm };
                             }
                             return prev;
