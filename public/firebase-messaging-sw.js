@@ -4,6 +4,17 @@
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
+// >>> CICLO DE VIDA DEL SERVICE WORKER (Forzar actualización) <<<
+self.addEventListener('install', (event) => {
+  console.log('[SW] Instalando nueva versión...');
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Activando nueva versión...');
+  event.waitUntil(self.clients.claim());
+});
+
 // 1. CONFIGURACIÓN FIREBASE
 firebase.initializeApp({
   apiKey: "AIzaSyBZClYso1SeEnWdqIjlkRPiN0oSQV47JPQ",
