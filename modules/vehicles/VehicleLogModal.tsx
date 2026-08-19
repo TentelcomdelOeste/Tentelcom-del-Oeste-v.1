@@ -146,11 +146,15 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     // Auto-complete mileage logic
     useEffect(() => {
+        let isCancelled = false;
+
         const fetchLastMileage = async () => {
             // Only for new records and when a unit is selected
             if (isEditing || !formData.unidadId) {
-                setActiveLogWarning(null);
-                setLastKnownKmLlegada(null);
+                if (!isCancelled) {
+                    setActiveLogWarning(null);
+                    setLastKnownKmLlegada(null);
+                }
                 return;
             }
 
@@ -158,8 +162,105 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             const unitName = unitMatch[0]?.trim();
             if (!unitName) return;
 
+            const computeLogsAndSuggest = (remoteLogs: VehicleLog[], localDocs: any[], pendingMutations: any[]) => {
+                const deleteMutations = new Set(
+                    pendingMutations
+                        .filter(m => m.collection === 'bitacora_vehiculos' && m.operation === 'delete')
+                        .map(m => m.docId)
+                );
+
+                const localLogs = localDocs
+                    .filter(d => d.data?.unidad === unitName)
+                    .map(d => ({ ...d.data, id: d.docId }) as VehicleLog);
+
+                // Hybrid Merge: Priority to local dirty records
+                const logMap = new Map<string, VehicleLog>();
+                
+                // Add remote logs first, skipping those pending deletion or legacy deleted
+                remoteLogs.forEach(l => {
+                    if (!deleteMutations.has(l.id) && !l.isDeleted) {
+                        logMap.set(l.id, l);
+                    }
+                });
+                
+                // Overlay local logs (especially dirty ones or locals-only)
+                localLogs.forEach(l => {
+                    const localEntry = localDocs.find(d => d.docId === l.id);
+                    if (localEntry?.isDirty || !logMap.has(l.id)) {
+                        if (!deleteMutations.has(l.id) && !l.isDeleted) {
+                            logMap.set(l.id, l);
+                        }
+                    }
+                });
+                
+                const logs = Array.from(logMap.values());
+                
+                if (logs.length > 0) {
+                    logs.sort((a, b) => {
+                        const dateA = a.fecha || "";
+                        const dateB = b.fecha || "";
+                        if (dateA !== dateB) return dateB.localeCompare(dateA);
+                        
+                        const timeA = a.horaSalida || "";
+                        const timeB = b.horaSalida || "";
+                        return timeB.localeCompare(timeA);
+                    });
+
+                    const activeLog = logs.find(log => !log.kmLlegada && !log.isDeleted);
+                    const warning = (activeLog && activeLog.id !== (initialData?.id)) 
+                        ? `Esta unidad (${unitName}) posee una bitácora activa actualmente.` 
+                        : null;
+
+                    const lastFinalLog = logs.find(log => (log.kmLlegada ?? 0) > 0);
+                    const suggestedKm = lastFinalLog ? lastFinalLog.kmLlegada : null;
+
+                    return {
+                        warning,
+                        lastKm: suggestedKm,
+                        logsCount: logs.length
+                    };
+                }
+
+                return {
+                    warning: null,
+                    lastKm: null,
+                    logsCount: 0
+                };
+            };
+
+            // 1. PASO 1: Obtención inmediata local (sin await a red)
+            let localDocs: any[] = [];
+            let pendingMutations: any[] = [];
             try {
-                // 1. Fetch Remote Logs (Firestore) - Intentamos servidor para evitar cache de borrados
+                [localDocs, pendingMutations] = await Promise.all([
+                    localDocStore.getLocalCollection('bitacora_vehiculos'),
+                    offlineQueueEngine.getPendingQueue()
+                ]);
+            } catch (e) {
+                console.warn("[VehicleLogModal] localDocStore/offlineQueue access failed:", e);
+            }
+
+            if (isCancelled) return;
+
+            const localResult = computeLogsAndSuggest([], localDocs, pendingMutations);
+            setActiveLogWarning(localResult.warning);
+            setLastKnownKmLlegada(localResult.lastKm);
+            
+            const initialSuggestedKm = localResult.lastKm;
+
+            if (initialSuggestedKm !== null) {
+                setFormData(prev => {
+                    if (prev.kmSalida === undefined || prev.kmSalida === null) {
+                        return { ...prev, kmSalida: initialSuggestedKm };
+                    }
+                    return prev;
+                });
+            } else {
+                setFormData(prev => ({ ...prev, kmSalida: undefined }));
+            }
+
+            // 2. PASO 2 & 3: Consulta remota en background (non-blocking)
+            (async () => {
                 let remoteLogs: VehicleLog[] = [];
                 try {
                     const { getDocsFromServer } = await import('firebase/firestore');
@@ -189,89 +290,36 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     }
                 }
 
-                // 2. Fetch Local Logs and Pending Mutations
-                let localDocs: any[] = [];
-                let pendingMutations: any[] = [];
-                try {
-                    localDocs = await localDocStore.getLocalCollection('bitacora_vehiculos');
-                    pendingMutations = await offlineQueueEngine.getPendingQueue();
-                } catch (e) { 
-                    console.warn("[VehicleLogModal] localDocStore/offlineQueue access failed:", e); 
+                if (isCancelled) return;
+
+                const fullResult = computeLogsAndSuggest(remoteLogs, localDocs, pendingMutations);
+
+                if (fullResult.warning !== localResult.warning || fullResult.lastKm !== localResult.lastKm) {
+                    setActiveLogWarning(fullResult.warning);
+                    setLastKnownKmLlegada(fullResult.lastKm);
+
+                    if (fullResult.lastKm !== null) {
+                        setFormData(prev => {
+                            // Protección contra edición manual (commit 9028a6d):
+                            // Si el valor actual es undefined/null o coincide exactamente con la sugerencia previa, actualizamos.
+                            // Si el técnico ya lo editó a mano, respetamos su valor.
+                            if (prev.kmSalida === undefined || prev.kmSalida === null || prev.kmSalida === initialSuggestedKm) {
+                                return { ...prev, kmSalida: fullResult.lastKm };
+                            }
+                            return prev;
+                        });
+                    }
                 }
-
-                const deleteMutations = new Set(
-                    pendingMutations
-                        .filter(m => m.collection === 'bitacora_vehiculos' && m.operation === 'delete')
-                        .map(m => m.docId)
-                );
-
-                const localLogs = localDocs
-                    .filter(d => d.data?.unidad === unitName)
-                    .map(d => ({ ...d.data, id: d.docId }) as VehicleLog);
-
-                // 3. Hybrid Merge: Priority to local dirty records
-                const logMap = new Map<string, VehicleLog>();
-                
-                // Add remote logs first, skipping those pending deletion or legacy deleted
-                remoteLogs.forEach(l => {
-                    if (!deleteMutations.has(l.id) && !l.isDeleted) {
-                        logMap.set(l.id, l);
-                    }
-                });
-                
-                // Overlay local logs (especially dirty ones or locals-only)
-                localLogs.forEach(l => {
-                    const localEntry = localDocs.find(d => d.docId === l.id);
-                    if (localEntry?.isDirty || !logMap.has(l.id)) {
-                        if (!deleteMutations.has(l.id) && !l.isDeleted) {
-                            logMap.set(l.id, l);
-                        }
-                    }
-                });
-                
-                // 4. Sort
-                const logs = Array.from(logMap.values());
-                
-                if (logs.length > 0) {
-                    // Sort locally to handle same-day order
-                    logs.sort((a, b) => {
-                        const dateA = a.fecha || "";
-                        const dateB = b.fecha || "";
-                        if (dateA !== dateB) return dateB.localeCompare(dateA);
-                        
-                        const timeA = a.horaSalida || "";
-                        const timeB = b.horaSalida || "";
-                        return timeB.localeCompare(timeA);
-                    });
-
-                    const activeLog = logs.find(log => !log.kmLlegada && !log.isDeleted);
-                    if (activeLog && activeLog.id !== editingLog?.id) {
-                        setActiveLogWarning(`Esta unidad (${unitName}) posee una bitácora activa actualmente.`);
-                    } else {
-                        setActiveLogWarning(null);
-                    }
-
-                    // Find the last log that has an arrival mileage
-                    const lastFinalLog = logs.find(log => (log.kmLlegada ?? 0) > 0);
-
-                    if (lastFinalLog) {
-                        setFormData(prev => ({ ...prev, kmSalida: lastFinalLog.kmLlegada }));
-                        setLastKnownKmLlegada(lastFinalLog.kmLlegada);
-                    } else {
-                        setLastKnownKmLlegada(null);
-                        setFormData(prev => ({ ...prev, kmSalida: undefined }));
-                    }
-                } else {
-                    setActiveLogWarning(null);
-                    setLastKnownKmLlegada(null);
-                    setFormData(prev => ({ ...prev, kmSalida: undefined }));
-                }
-            } catch (err) {
-                console.error("Error fetching mileage history:", err);
-            }
+            })().catch(err => {
+                console.error("Error in background remote mileage fetch:", err);
+            });
         };
 
         fetchLastMileage();
+
+        return () => {
+            isCancelled = true;
+        };
     }, [formData.unidadId, isEditing]);
 
     const handleDeleteExpense = async (expenseId: string) => {
