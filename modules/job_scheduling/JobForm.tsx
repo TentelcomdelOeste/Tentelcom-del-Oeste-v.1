@@ -45,6 +45,11 @@ const toTitleCase = (text: string) => {
   }).join(' ');
 };
 
+const isMidnight = (date: Date | null | undefined) => {
+  if (!date) return true;
+  return date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0;
+};
+
 export const JobForm: React.FC<JobFormProps> = ({ 
   trabajo, 
   onClose, 
@@ -85,8 +90,8 @@ export const JobForm: React.FC<JobFormProps> = ({
       descripcion: parentData?.descripcion || '',
       fecha_inicio: defaultStart || new Date(),
       fecha_fin: defaultEnd || new Date(),
-      hora_inicio: mode === 'create' ? '06:00' : (defaultStart ? format(defaultStart, 'HH:mm') : '06:00'),
-      hora_fin: mode === 'create' ? '16:00' : (defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00'),
+      hora_inicio: defaultStart ? (isMidnight(defaultStart) ? '06:00' : format(defaultStart, 'HH:mm')) : '06:00',
+      hora_fin: defaultEnd ? (isMidnight(defaultEnd) ? '16:00' : format(defaultEnd, 'HH:mm')) : '16:00',
       cuadrilla: [],
       unidades: [],
       ubicacion: parentData?.ubicacion ? toTitleCase(parentData.ubicacion) : '',
@@ -346,8 +351,8 @@ export const JobForm: React.FC<JobFormProps> = ({
         descripcion: '',
         cuadrilla: [],
         unidades: [],
-        hora_inicio: defaultStart ? format(defaultStart, 'HH:mm') : '06:00',
-        hora_fin: defaultEnd ? format(defaultEnd, 'HH:mm') : '16:00',
+        hora_inicio: defaultStart ? (isMidnight(defaultStart) ? '06:00' : format(defaultStart, 'HH:mm')) : '06:00',
+        hora_fin: defaultEnd ? (isMidnight(defaultEnd) ? '16:00' : format(defaultEnd, 'HH:mm')) : '16:00',
         bitacorasRelacionadas: [],
         bitacoraIds: []
       });
@@ -427,6 +432,8 @@ export const JobForm: React.FC<JobFormProps> = ({
         throw new Error('Las horas son inválidas. Por favor verifique el formato (ej: 08:30).');
       }
 
+      console.log("[DIAGNOSTICO HORA 1] formData.hora_inicio:", formData.hora_inicio, "formData.hora_fin:", formData.hora_fin);
+
       const fecha_inicio = new Date(baseStartDate);
       fecha_inicio.setHours(hStart, mStart, 0, 0);
 
@@ -484,9 +491,14 @@ export const JobForm: React.FC<JobFormProps> = ({
         const currentFechaInicio = latestTrabajo.fecha_inicio instanceof Date ? latestTrabajo.fecha_inicio : (latestTrabajo.fecha_inicio as any)?.toDate?.() || new Date(latestTrabajo.fecha_inicio);
         const currentFechaFin = latestTrabajo.fecha_fin instanceof Date ? latestTrabajo.fecha_fin : (latestTrabajo.fecha_fin as any)?.toDate?.() || new Date(latestTrabajo.fecha_fin);
         
+        console.log("[DIAGNOSTICO HORA 2] finalData.fecha_inicio (con hora):", finalData.fecha_inicio, "finalData.fecha_fin (con hora):", finalData.fecha_fin);
+        console.log("[DIAGNOSTICO HORA 2] currentFechaInicio:", currentFechaInicio, "currentFechaFin:", currentFechaFin);
+
         const fechasModificadas = 
           finalData.fecha_inicio.getTime() !== currentFechaInicio.getTime() ||
           finalData.fecha_fin.getTime() !== currentFechaFin.getTime();
+
+        console.log("[DIAGNOSTICO HORA 3] fechasModificadas:", fechasModificadas);
 
         if (fechasModificadas) {
           const nuevosDias = generateDiasDetalle(baseStartDate, baseEndDate, formData.dias_detalle);
@@ -506,13 +518,16 @@ export const JobForm: React.FC<JobFormProps> = ({
           });
 
           if (isReprogramar) {
+            console.log("[DIAGNOSTICO HORA 3] Entró a branch de reprogramar (isReprogramar === true)");
             finalData.reprogramado = true;
             finalData.fecha_reprogramacion = new Date();
             await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
           } else {
+            console.log("[DIAGNOSTICO HORA 3] Entró a branch de guardar normal (isReprogramar === false)");
             await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
           }
         } else {
+          console.log("[DIAGNOSTICO HORA 3] Entró a branch de guardar normal (fechasModificadas === false)");
           syncSingleDayStatus(finalData);
           await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
         }
