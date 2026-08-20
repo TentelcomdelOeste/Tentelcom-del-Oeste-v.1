@@ -519,12 +519,8 @@ export const updateTrabajo = async (id: string, updates: Partial<Trabajo>, _expe
   const addedBitacoras = currentBitacoraIds.filter(bid => !previousBitacoraIds.includes(bid));
   const removedBitacoras = previousBitacoraIds.filter(bid => !currentBitacoraIds.includes(bid));
 
-  console.log("[DIAGNOSTICO HORA 4] Objeto 'data' completo en updateTrabajo antes de updateVersionedDocOffline:", JSON.stringify(data));
-  console.log("[DIAGNOSTICO HORA 4] data.fecha_inicio:", data.fecha_inicio, "data.fecha_fin:", data.fecha_fin);
-
   // Actualizar documento principal usando control de versiones offline
-  const result = await updateVersionedDocOffline(COLLECTION_NAME, id, data);
-  console.log("[DIAGNOSTICO HORA 5] Resultado de updateVersionedDocOffline:", JSON.stringify(result));
+  await updateVersionedDocOffline(COLLECTION_NAME, id, data);
 
   // Procesar bitácoras añadidas (Vinculación y Consolidación de Timelines)
   for (const bitacoraId of addedBitacoras) {

@@ -150,8 +150,8 @@ export const JobForm: React.FC<JobFormProps> = ({
         fecha: new Date(currentDate.getTime()), // Guardar medianoche local
         completado: found ? found.completado : false,
         completado_en: found?.completado_en ? found.completado_en : undefined,
-        hora_inicio: found?.hora_inicio || defaultStart,
-        hora_fin: found?.hora_fin || defaultEnd,
+        hora_inicio: found?.recursos_ajustados ? (found?.hora_inicio || defaultStart) : defaultStart,
+        hora_fin: found?.recursos_ajustados ? (found?.hora_fin || defaultEnd) : defaultEnd,
         recursos_ajustados: found?.recursos_ajustados || false,
         cuadrilla_diaria: found?.cuadrilla_diaria || [],
         unidades_diarias: found?.unidades_diarias || [],
@@ -432,8 +432,6 @@ export const JobForm: React.FC<JobFormProps> = ({
         throw new Error('Las horas son inválidas. Por favor verifique el formato (ej: 08:30).');
       }
 
-      console.log("[DIAGNOSTICO HORA 1] formData.hora_inicio:", formData.hora_inicio, "formData.hora_fin:", formData.hora_fin);
-
       const fecha_inicio = new Date(baseStartDate);
       fecha_inicio.setHours(hStart, mStart, 0, 0);
 
@@ -491,21 +489,26 @@ export const JobForm: React.FC<JobFormProps> = ({
         const currentFechaInicio = latestTrabajo.fecha_inicio instanceof Date ? latestTrabajo.fecha_inicio : (latestTrabajo.fecha_inicio as any)?.toDate?.() || new Date(latestTrabajo.fecha_inicio);
         const currentFechaFin = latestTrabajo.fecha_fin instanceof Date ? latestTrabajo.fecha_fin : (latestTrabajo.fecha_fin as any)?.toDate?.() || new Date(latestTrabajo.fecha_fin);
         
-        console.log("[DIAGNOSTICO HORA 2] finalData.fecha_inicio (con hora):", finalData.fecha_inicio, "finalData.fecha_fin (con hora):", finalData.fecha_fin);
-        console.log("[DIAGNOSTICO HORA 2] currentFechaInicio:", currentFechaInicio, "currentFechaFin:", currentFechaFin);
-
         const fechasModificadas = 
           finalData.fecha_inicio.getTime() !== currentFechaInicio.getTime() ||
           finalData.fecha_fin.getTime() !== currentFechaFin.getTime();
 
-        console.log("[DIAGNOSTICO HORA 3] fechasModificadas:", fechasModificadas);
-
         if (fechasModificadas) {
           const nuevosDias = generateDiasDetalle(baseStartDate, baseEndDate, formData.dias_detalle);
-          finalData.dias_detalle = nuevosDias;
-          finalData.dias_programados = nuevosDias.length;
-          const completedCount = nuevosDias.filter((d: any) => d.completado).length;
-          finalData.progreso = nuevosDias.length > 0 ? Math.round((completedCount / nuevosDias.length) * 100) : 0;
+          // Propagar horas nuevas en días que no hayan sido editados manualmente
+          finalData.dias_detalle = nuevosDias.map((dia: any) => {
+            if (dia.recursos_ajustados) {
+              return dia;
+            }
+            return {
+              ...dia,
+              hora_inicio: finalData.hora_inicio,
+              hora_fin: finalData.hora_fin,
+            };
+          });
+          finalData.dias_programados = finalData.dias_detalle.length;
+          const completedCount = finalData.dias_detalle.filter((d: any) => d.completado).length;
+          finalData.progreso = finalData.dias_detalle.length > 0 ? Math.round((completedCount / finalData.dias_detalle.length) * 100) : 0;
           
           syncSingleDayStatus(finalData);
 
@@ -518,16 +521,26 @@ export const JobForm: React.FC<JobFormProps> = ({
           });
 
           if (isReprogramar) {
-            console.log("[DIAGNOSTICO HORA 3] Entró a branch de reprogramar (isReprogramar === true)");
             finalData.reprogramado = true;
             finalData.fecha_reprogramacion = new Date();
             await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
           } else {
-            console.log("[DIAGNOSTICO HORA 3] Entró a branch de guardar normal (isReprogramar === false)");
             await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
           }
         } else {
-          console.log("[DIAGNOSTICO HORA 3] Entró a branch de guardar normal (fechasModificadas === false)");
+          // Propagar horas nuevas en días que no hayan sido editados manualmente si las fechas no se modificaron
+          if (finalData.dias_detalle && Array.isArray(finalData.dias_detalle)) {
+            finalData.dias_detalle = finalData.dias_detalle.map((dia: any) => {
+              if (dia.recursos_ajustados) {
+                return dia;
+              }
+              return {
+                ...dia,
+                hora_inicio: finalData.hora_inicio,
+                hora_fin: finalData.hora_fin,
+              };
+            });
+          }
           syncSingleDayStatus(finalData);
           await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
         }

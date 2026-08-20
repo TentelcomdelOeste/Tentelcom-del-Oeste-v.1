@@ -243,8 +243,8 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
     setContinuarJob(t);
     setSelectedTrabajo(null);
     setFormMode('continuacion');
-    setDefaultStart(new Date());
-    setDefaultEnd(new Date());
+    setDefaultStart(new Date(new Date().setHours(0,0,0,0)));
+    setDefaultEnd(new Date(new Date().setHours(0,0,0,0)));
     setIsModalOpen(true);
   };
   const [dayDetailJobs, setDayDetailJobs] = useState<Trabajo[]>([]);
@@ -462,8 +462,8 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
     setSelectedTrabajo(null);
     setContinuarJob(null);
     setFormMode('create');
-    setDefaultStart(new Date());
-    setDefaultEnd(new Date());
+    setDefaultStart(new Date(new Date().setHours(0,0,0,0)));
+    setDefaultEnd(new Date(new Date().setHours(0,0,0,0)));
     setIsModalOpen(true);
   };
 
