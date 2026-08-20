@@ -24,31 +24,40 @@ export const getJobTitles = async (): Promise<JobTitle[]> => {
 };
 
 export const createOrUpdateJobTitle = async (titulo: string) => {
-  const tituloNormalizado = titulo.trim().toLowerCase();
-  
-  const q = query(collection(db, COLLECTION_NAME), where("tituloNormalizado", "==", tituloNormalizado));
-  const querySnapshot = await getDocs(q);
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout actualizando catálogo de títulos de trabajo")), 4000)
+  );
 
-  if (!querySnapshot.empty) {
-    const docRef = doc(db, COLLECTION_NAME, querySnapshot.docs[0].id);
-    await updateDoc(docRef, {
-        frecuenciaUso: (querySnapshot.docs[0].data().frecuenciaUso || 0) + 1,
-        ultimaUtilizacion: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        isActive: true
+  const actionPromise = (async () => {
+    const tituloNormalizado = titulo.trim().toLowerCase();
+    
+    const q = query(collection(db, COLLECTION_NAME), where("tituloNormalizado", "==", tituloNormalizado));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const docRef = doc(db, COLLECTION_NAME, querySnapshot.docs[0].id);
+      await updateDoc(docRef, {
+          frecuenciaUso: (querySnapshot.docs[0].data().frecuenciaUso || 0) + 1,
+          ultimaUtilizacion: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          isActive: true
+      });
+      return querySnapshot.docs[0].id;
+    }
+
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+      titulo,
+      tituloNormalizado,
+      frecuenciaUso: 1,
+      ultimaUtilizacion: serverTimestamp(),
+      isActive: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
-    return querySnapshot.docs[0].id;
-  }
+    return docRef.id;
+  })();
 
-  return await addDoc(collection(db, COLLECTION_NAME), {
-    titulo,
-    tituloNormalizado,
-    frecuenciaUso: 1,
-    ultimaUtilizacion: serverTimestamp(),
-    isActive: true,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  return await Promise.race([actionPromise, timeoutPromise]);
 };
 
 export const updateJobTitle = async (id: string, titulo: string) => {

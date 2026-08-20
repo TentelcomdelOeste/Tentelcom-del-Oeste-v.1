@@ -26,56 +26,72 @@ export const getJobTypes = async (): Promise<JobType[]> => {
 };
 
 export const createJobType = async (name: string) => {
-  const nameTrimmed = name.trim();
-  const nameNormalizado = nameTrimmed.toLowerCase();
-  
-  // Check if case-insensitive match exists
-  const qAll = query(collection(db, COLLECTION_NAME));
-  const snapshot = await getDocs(qAll);
-  const existingDoc = snapshot.docs.find(doc => doc.data().name.trim().toLowerCase() === nameNormalizado);
-  
-  if (existingDoc) {
-    const docRef = doc(db, COLLECTION_NAME, existingDoc.id);
-    await updateDoc(docRef, { isActive: true });
-    return existingDoc.id;
-  }
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout creando tipo de trabajo")), 4000)
+  );
 
-  const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-    name: nameTrimmed,
-    creado_en: serverTimestamp(),
-    isActive: true,
-    frecuenciaUso: 0,
-    ultimaUtilizacion: serverTimestamp()
-  });
-  return docRef.id;
+  const actionPromise = (async () => {
+    const nameTrimmed = name.trim();
+    const nameNormalizado = nameTrimmed.toLowerCase();
+    
+    // Check if case-insensitive match exists
+    const qAll = query(collection(db, COLLECTION_NAME));
+    const snapshot = await getDocs(qAll);
+    const existingDoc = snapshot.docs.find(doc => doc.data().name.trim().toLowerCase() === nameNormalizado);
+    
+    if (existingDoc) {
+      const docRef = doc(db, COLLECTION_NAME, existingDoc.id);
+      await updateDoc(docRef, { isActive: true });
+      return existingDoc.id;
+    }
+
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+      name: nameTrimmed,
+      creado_en: serverTimestamp(),
+      isActive: true,
+      frecuenciaUso: 0,
+      ultimaUtilizacion: serverTimestamp()
+    });
+    return docRef.id;
+  })();
+
+  return await Promise.race([actionPromise, timeoutPromise]);
 };
 
 export const createOrUpdateJobType = async (name: string) => {
-  const nameTrimmed = name.trim();
-  const nameNormalizado = nameTrimmed.toLowerCase();
-  
-  const qAll = query(collection(db, COLLECTION_NAME));
-  const snapshot = await getDocs(qAll);
-  const existingDoc = snapshot.docs.find(doc => doc.data().name.trim().toLowerCase() === nameNormalizado);
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout actualizando catálogo de tipos de trabajo")), 4000)
+  );
 
-  if (existingDoc) {
-    const docRef = doc(db, COLLECTION_NAME, existingDoc.id);
-    await updateDoc(docRef, {
-      frecuenciaUso: (existingDoc.data().frecuenciaUso || 0) + 1,
-      ultimaUtilizacion: serverTimestamp(),
-      isActive: true
+  const actionPromise = (async () => {
+    const nameTrimmed = name.trim();
+    const nameNormalizado = nameTrimmed.toLowerCase();
+    
+    const qAll = query(collection(db, COLLECTION_NAME));
+    const snapshot = await getDocs(qAll);
+    const existingDoc = snapshot.docs.find(doc => doc.data().name.trim().toLowerCase() === nameNormalizado);
+
+    if (existingDoc) {
+      const docRef = doc(db, COLLECTION_NAME, existingDoc.id);
+      await updateDoc(docRef, {
+        frecuenciaUso: (existingDoc.data().frecuenciaUso || 0) + 1,
+        ultimaUtilizacion: serverTimestamp(),
+        isActive: true
+      });
+      return existingDoc.id;
+    }
+
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+      name: nameTrimmed,
+      creado_en: serverTimestamp(),
+      isActive: true,
+      frecuenciaUso: 1,
+      ultimaUtilizacion: serverTimestamp()
     });
-    return existingDoc.id;
-  }
+    return docRef.id;
+  })();
 
-  const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-    name: nameTrimmed,
-    creado_en: serverTimestamp(),
-    isActive: true,
-    frecuenciaUso: 1,
-    ultimaUtilizacion: serverTimestamp()
-  });
-  return docRef.id;
+  return await Promise.race([actionPromise, timeoutPromise]);
 };
 
 export const updateJobType = async (id: string, name: string) => {
