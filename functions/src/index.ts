@@ -130,6 +130,7 @@ export const sendContactEmail = functions
   });
 
 export * from "./geminiProxy";
+export * from "./oneDriveSync";
 
 const tasksClient = new CloudTasksClient();
 
