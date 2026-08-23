@@ -57,58 +57,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState<VehicleExpense | null>(null);
     
-    const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
-    const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
-    const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
-
-    useEffect(() => {
-        const checkPolicy = async () => {
-            const unidad = formData.unidadName || initialData?.unidad;
-            if (!unidad) return;
-            setPhotoPolicyStatus(prev => ({ ...prev, loading: true }));
-            try {
-                const res = await checkVehiclePhotoPolicy(unidad);
-                setPhotoPolicyStatus({
-                    vencida: res.vencida,
-                    loading: false,
-                    intervalDays: res.intervalDays,
-                    disabled: res.disabled
-                });
-            } catch (e) {
-                console.error("Error checking photo policy:", e);
-                setPhotoPolicyStatus(prev => ({ ...prev, loading: false }));
-            }
-        };
-        if (show) {
-            checkPolicy();
-        }
-    }, [show, formData.unidadName, initialData?.unidad]);
-    
-    
-    const [recargas, setRecargas] = useState<VehicleRecharge[]>(() => {
-        if (initialData?.recargas && initialData.recargas.length > 0) {
-            return initialData.recargas;
-        }
-        if (initialData && (initialData.kmRecarga || initialData.monto || initialData.litros)) {
-            return [{
-                id: crypto.randomUUID(),
-                kmRecarga: initialData.kmRecarga,
-                monto: initialData.monto,
-                litros: initialData.litros,
-                tipoCombustible: initialData.tipoCombustible,
-                gasolinera: initialData.gasolinera || ''
-            }];
-        }
-        return [{
-            id: crypto.randomUUID(),
-            kmRecarga: null,
-            monto: null,
-            litros: null,
-            tipoCombustible: null,
-            gasolinera: ''
-        }];
-    });
-
     // Use official helper
     const userIsAdmin = checkIsAdmin(currentUser?.role);
     
@@ -146,6 +94,58 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
 
         return base;
+    });
+
+    const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
+    const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
+    const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        const checkPolicy = async () => {
+            const unidad = formData.unidadName || formData.unidad || initialData?.unidad;
+            if (!unidad) return;
+            setPhotoPolicyStatus(prev => ({ ...prev, loading: true }));
+            try {
+                const res = await checkVehiclePhotoPolicy(unidad);
+                setPhotoPolicyStatus({
+                    vencida: res.vencida,
+                    loading: false,
+                    intervalDays: res.intervalDays,
+                    disabled: res.disabled
+                });
+            } catch (e) {
+                console.error("Error checking photo policy:", e);
+                setPhotoPolicyStatus(prev => ({ ...prev, loading: false }));
+            }
+        };
+        if (show) {
+            checkPolicy();
+        }
+    }, [show, formData.unidadName, formData.unidad, initialData?.unidad]);
+    
+    
+    const [recargas, setRecargas] = useState<VehicleRecharge[]>(() => {
+        if (initialData?.recargas && initialData.recargas.length > 0) {
+            return initialData.recargas;
+        }
+        if (initialData && (initialData.kmRecarga || initialData.monto || initialData.litros)) {
+            return [{
+                id: crypto.randomUUID(),
+                kmRecarga: initialData.kmRecarga,
+                monto: initialData.monto,
+                litros: initialData.litros,
+                tipoCombustible: initialData.tipoCombustible,
+                gasolinera: initialData.gasolinera || ''
+            }];
+        }
+        return [{
+            id: crypto.randomUUID(),
+            kmRecarga: null,
+            monto: null,
+            litros: null,
+            tipoCombustible: null,
+            gasolinera: ''
+        }];
     });
 
     useEffect(() => {
