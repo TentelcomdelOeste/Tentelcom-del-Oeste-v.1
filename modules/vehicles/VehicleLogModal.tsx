@@ -14,6 +14,7 @@ import { FiX, FiAlertTriangle, FiCreditCard, FiPlus, FiTrash2, FiEdit2 } from 'r
 import { isAdmin as checkIsAdmin } from '../../utils/permissions';
 import { saveVehicleLog } from './vehicleService';
 import { VehicleExpenseModal } from './components/VehicleExpenseModal';
+import { checkVehiclePhotoPolicy } from '../../core/photoPolicy';
 
 interface VehicleLogModalProps {
     show: boolean;
@@ -55,6 +56,33 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const [relatedExpenses, setRelatedExpenses] = useState<VehicleExpense[]>([]);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState<VehicleExpense | null>(null);
+    
+    const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
+    const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
+    const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        const checkPolicy = async () => {
+            const unidad = formData.unidadName || initialData?.unidad;
+            if (!unidad) return;
+            setPhotoPolicyStatus(prev => ({ ...prev, loading: true }));
+            try {
+                const res = await checkVehiclePhotoPolicy(unidad);
+                setPhotoPolicyStatus({
+                    vencida: res.vencida,
+                    loading: false,
+                    intervalDays: res.intervalDays,
+                    disabled: res.disabled
+                });
+            } catch (e) {
+                console.error("Error checking photo policy:", e);
+                setPhotoPolicyStatus(prev => ({ ...prev, loading: false }));
+            }
+        };
+        if (show) {
+            checkPolicy();
+        }
+    }, [show, formData.unidadName, initialData?.unidad]);
     
     
     const [recargas, setRecargas] = useState<VehicleRecharge[]>(() => {
@@ -495,10 +523,22 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             gasolinera: validRecargas.length > 0 ? validRecargas.map(r => r.gasolinera).filter(Boolean).join(', ') : '',
         };
 
+        const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
+        if (isPhotoRequired && !selectedPhotoFile && !initialData?.oneDriveUrl && !initialData?.photoTimestamp) {
+            setIsLoading(false);
+            await confirm({
+                title: 'Fotografía de Bitácora Requerida',
+                description: `Esta unidad tiene la fotografía de bitácora vencida (más de ${photoPolicyStatus.intervalDays} días). Debe adjuntar una foto actual para registrar o cerrar la boleta.`,
+                confirmLabel: 'ACEPTAR',
+                variant: 'warning'
+            });
+            return;
+        }
+
         // 2. Ejecutar Guardado Centralizado
         // El servicio maneja: persistencia, resolución de timelineId, y disparo de eventos operativos.
         try {
-            const result = await saveVehicleLog(dataToSave, currentUser, isEditing, initialData, trabajoId);
+            const result = await saveVehicleLog(dataToSave, currentUser, isEditing, initialData, trabajoId, selectedPhotoFile);
             onClose(result);
         } catch (err: any) {
             console.error("Error saving vehicle log:", err);
@@ -690,6 +730,47 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                             </div>
                         </div>
                     </div>
+
+                    {photoPolicyStatus.vencida && !photoPolicyStatus.disabled && (
+                        <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-3">
+                            <div className="flex items-center gap-2 text-amber-800 font-black text-xs uppercase">
+                                <FiAlertTriangle className="text-base shrink-0 text-amber-600" />
+                                <span>Bitácora Vencida — Fotografía Obligatoria Requerida</span>
+                            </div>
+                            <p className="text-xs text-amber-700">
+                                Han pasado más de {photoPolicyStatus.intervalDays} días desde la última fotografía de bitácora para esta unidad. Es obligatorio adjuntar una foto actual para registrar o cerrar la boleta.
+                            </p>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Tomar / Seleccionar Foto de Bitácora *</label>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            setSelectedPhotoFile(file);
+                                            setPhotoPreviewUrl(URL.createObjectURL(file));
+                                        }
+                                    }}
+                                    className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                                    required={photoPolicyStatus.vencida && !photoPolicyStatus.disabled}
+                                />
+                            </div>
+                            {photoPreviewUrl && (
+                                <div className="mt-2 relative w-32 h-32 rounded-lg overflow-hidden border border-slate-300">
+                                    <img src={photoPreviewUrl} alt="Vista previa" className="w-full h-full object-cover" />
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSelectedPhotoFile(null); setPhotoPreviewUrl(null); }}
+                                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 text-xs"
+                                    >
+                                        <FiX />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* CONTROL DE COMBUSTIBLE */}
                     <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100 space-y-6">
@@ -905,14 +986,21 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         onClick={onClose}
                         className="flex-1 !py-3 !text-[10px] !font-bold !uppercase !rounded-xl"
                     />
-                    <ActionButton
-                        type="submit"
-                        form="vehicle-log-form"
-                        variant="primary"
-                        label={isLoading ? "Guardando..." : "Guardar Registro"}
-                        disabled={isLoading || (activeLogWarning !== null && !isEditing)}
-                        className={`flex-1 !py-3 !text-[10px] !font-black !uppercase !tracking-wider !rounded-xl ${isLoading || (activeLogWarning !== null && !isEditing) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    />
+                    {(() => {
+                        const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
+                        const isPhotoMissing = isPhotoRequired && !selectedPhotoFile && !initialData?.oneDriveUrl && !initialData?.photoTimestamp;
+                        const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
+                        return (
+                            <ActionButton
+                                type="submit"
+                                form="vehicle-log-form"
+                                variant="primary"
+                                label={isLoading ? "Guardando..." : "Guardar Registro"}
+                                disabled={isDisabled}
+                                className={`flex-1 !py-3 !text-[10px] !font-black !uppercase !tracking-wider !rounded-xl ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                        );
+                    })()}
                 </div>
             </div>
 

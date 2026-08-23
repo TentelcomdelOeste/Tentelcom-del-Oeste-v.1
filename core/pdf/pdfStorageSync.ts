@@ -111,7 +111,7 @@ export async function runPdfSyncCycle(): Promise<void> {
                 }
 
                 const orgId = "tentelcom";
-                const firebasePath = alreadyUploadedPath || `uploads/${orgId}/${entry.module}/${entry.targetDocId}/${entry.fileName}`;
+                const firebasePath = entry.module === 'vehicles' ? entry.localPath : (alreadyUploadedPath || `uploads/${orgId}/${entry.module}/${entry.targetDocId}/${entry.fileName}`);
                 const storageRef = ref(storage, firebasePath);
 
                 await pdfOfflineQueue.markUploadStatus(entry.id, 'uploading');

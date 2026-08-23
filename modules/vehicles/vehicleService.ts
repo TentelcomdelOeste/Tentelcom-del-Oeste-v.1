@@ -88,6 +88,40 @@ export const recordBitacoraFinalizedEvent = async (timelineId: string, dataToSav
     }
 };
 
+export const compressImage = async (file: File, maxWidth = 1280, quality = 0.85): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (e) => {
+            const img = new Image();
+            img.src = e.target?.result as string;
+            img.onload = () => {
+                let w = img.width;
+                let h = img.height;
+                if (w > maxWidth) {
+                    h = Math.round((h * maxWidth) / w);
+                    w = maxWidth;
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    reject(new Error("Canvas context failed"));
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, w, h);
+                canvas.toBlob((blob) => {
+                    if (blob) resolve(blob);
+                    else reject(new Error("Canvas to blob failed"));
+                }, 'image/jpeg', quality);
+            };
+            img.onerror = reject;
+        };
+        reader.onerror = reject;
+    });
+};
+
 /**
  * Servicio centralizado para guardar registros de bitácora y disparar eventos operativos.
  * Esta función desacopla la persistencia de la UI y asegura que los eventos se registren siempre.
@@ -97,9 +131,10 @@ export const saveVehicleLog = async (
     currentUser: User,
     isEditing: boolean,
     initialData?: VehicleLog | null,
-    trabajoId?: string
+    trabajoId?: string,
+    photoFile?: File | null
 ) => {
-    console.log("[vehicleService] Starting saveVehicleLog pipeline (Unified Offline Architecture)...", { isEditing, trabajoId });
+    console.log("[vehicleService] Starting saveVehicleLog pipeline (Unified Offline Architecture)...", { isEditing, trabajoId, hasPhoto: !!photoFile });
 
     // 1. Sanitización y Preparación de Datos
     const totalKm = formData.kmLlegada ? Math.max(0, formData.kmLlegada - (formData.kmSalida || 0)) : 0;
@@ -112,6 +147,41 @@ export const saveVehicleLog = async (
             sanitizedData[key] = val;
         }
     });
+
+    if (photoFile) {
+        const timestamp = Date.now();
+        const unidadName = sanitizedData.unidad || 'unidad';
+        const storagePath = `vehicle_photos/${unidadName}/${timestamp}.jpg`;
+        sanitizedData.photoTimestamp = timestamp;
+
+        try {
+            const compressedBlob = await compressImage(photoFile);
+            if (networkProbe.isOnline()) {
+                const { storage } = await import("../../firebase");
+                const { ref, uploadBytes } = await import("firebase/storage");
+                const storageRef = ref(storage, storagePath);
+                await uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
+                console.log("[vehicleService] Vehicle photo uploaded successfully to Storage:", storagePath);
+            } else {
+                console.log("[vehicleService] Offline detected, storing vehicle photo locally in offlineMediaStore & queue:", storagePath);
+                const { storeBlob } = await import("../../services/offlineMediaStore");
+                const { pdfOfflineQueue, calculateBlobChecksum } = await import("../../core/pdf/pdfOfflineQueue");
+                await storeBlob(storagePath, compressedBlob);
+                const checksum = await calculateBlobChecksum(compressedBlob);
+                await pdfOfflineQueue.enqueuePdfUpload(
+                    storagePath,
+                    `${unidadName}_${timestamp}.jpg`,
+                    'image/jpeg',
+                    'vehicles',
+                    'bitacora_vehiculos',
+                    initialData?.id || 'temp_id',
+                    checksum
+                );
+            }
+        } catch (photoErr) {
+            console.error("[vehicleService] Error processing/uploading vehicle photo:", photoErr);
+        }
+    }
 
     // NORMALIZATION: Ensure 'unidad' is always present if 'unidadId' exists
     if (sanitizedData.unidadId && !sanitizedData.unidad) {
