@@ -98,6 +98,8 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
     const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
+    const takePhotoInputRef = useRef<HTMLInputElement>(null);
+    const galleryInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const checkPolicy = async () => {
@@ -740,19 +742,50 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 Han pasado más de {photoPolicyStatus.intervalDays} días desde la última fotografía de bitácora para esta unidad. Es obligatorio adjuntar una foto actual para registrar o cerrar la boleta.
                             </p>
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Tomar / Seleccionar Fotos de Bitácora * (Múltiples)</label>
+                                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Tomar o Seleccionar Fotos de Bitácora *</label>
+                                <div className="flex flex-wrap gap-3 mb-3">
+                                    <ActionButton
+                                        type="button"
+                                        variant="primary"
+                                        label="Tomar foto"
+                                        onClick={() => takePhotoInputRef.current?.click()}
+                                        className="!py-2 !px-4 !text-xs !font-black !uppercase !rounded-xl"
+                                    />
+                                    <ActionButton
+                                        type="button"
+                                        variant="secondary"
+                                        label="Elegir de galería"
+                                        onClick={() => galleryInputRef.current?.click()}
+                                        className="!py-2 !px-4 !text-xs !font-black !uppercase !rounded-xl"
+                                    />
+                                </div>
                                 <input
+                                    ref={takePhotoInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            setSelectedPhotoFiles(prev => [...prev, file]);
+                                        }
+                                        e.target.value = '';
+                                    }}
+                                />
+                                <input
+                                    ref={galleryInputRef}
                                     type="file"
                                     accept="image/*"
                                     multiple
+                                    className="hidden"
                                     onChange={(e) => {
                                         const files = Array.from(e.target.files || []);
                                         if (files.length > 0) {
                                             setSelectedPhotoFiles(prev => [...prev, ...files]);
                                         }
+                                        e.target.value = '';
                                     }}
-                                    className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                                    required={photoPolicyStatus.vencida && !photoPolicyStatus.disabled && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp}
                                 />
                             </div>
                             {selectedPhotoFiles.length > 0 && (

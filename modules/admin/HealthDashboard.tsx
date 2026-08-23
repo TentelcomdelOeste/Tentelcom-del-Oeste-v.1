@@ -5,7 +5,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { useUserContext } from '../../contexts/UserContext';
 import { isAdmin } from '../../utils/permissions';
 import { DataTable } from '../../design-system';
-import { FiServer, FiShield, FiCamera } from 'react-icons/fi';
+import { FiServer, FiShield, FiCamera, FiCheck, FiAlertTriangle } from 'react-icons/fi';
+import { checkVehiclePhotoPolicy } from '../../core/photoPolicy';
 
 const AuditDashboard = lazy(() => import('./AuditDashboard'));
 
@@ -56,21 +57,25 @@ function PhotoPolicySettings() {
     };
 
     const handleUpdateVehiclePolicy = async (vehId: string, override: any, disabled: boolean) => {
-        try {
-            const numOverride = override === '' || override === null ? null : Number(override);
-            await updateDoc(doc(db, 'vehiculos', vehId), {
-                photoPolicy: {
-                    intervalDaysOverride: isNaN(numOverride!) ? null : numOverride,
-                    disabled: !!disabled
-                }
-            });
-            setVehicles(prev => prev.map(v => v.id === vehId ? { ...v, photoPolicy: { intervalDaysOverride: numOverride, disabled } } : v));
-            setMessage("Unidad actualizada.");
-            setTimeout(() => setMessage(null), 2000);
-        } catch (err: any) {
-            alert("Error al actualizar unidad: " + err.message);
-        }
+        const numOverride = override === '' || override === null ? null : Number(override);
+        await updateDoc(doc(db, 'vehiculos', vehId), {
+            photoPolicy: {
+                intervalDaysOverride: isNaN(numOverride!) ? null : numOverride,
+                disabled: !!disabled
+            }
+        });
+        setVehicles(prev => prev.map(v => v.id === vehId ? { ...v, photoPolicy: { intervalDaysOverride: numOverride, disabled } } : v));
     };
+
+    const unidadCounts = vehicles.reduce((acc: Record<string, number>, v: any) => {
+        acc[v.unidad] = (acc[v.unidad] || 0) + 1;
+        return acc;
+    }, {});
+    const isDuplicate = (unidad: string) => (unidadCounts[unidad] || 0) > 1;
+
+    const globalCount = vehicles.filter(v => (v.photoPolicy?.intervalDaysOverride === null || v.photoPolicy?.intervalDaysOverride === undefined || v.photoPolicy?.intervalDaysOverride === '') && !v.photoPolicy?.disabled).length;
+    const overrideCount = vehicles.filter(v => typeof v.photoPolicy?.intervalDaysOverride === 'number' && !v.photoPolicy?.disabled).length;
+    const excludedCount = vehicles.filter(v => v.photoPolicy?.disabled).length;
 
     return (
         <div className="space-y-6">
@@ -109,28 +114,43 @@ function PhotoPolicySettings() {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="p-4 border-b border-slate-100 bg-slate-50">
-                    <h2 className="text-sm font-bold text-slate-700">Excepciones y Overrides por Unidad</h2>
-                    <p className="text-xs text-slate-500">Configura un intervalo específico o desactiva la exigencia de foto para unidades particulares.</p>
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden space-y-2">
+                <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h2 className="text-sm font-bold text-slate-700">Excepciones y Overrides por Unidad</h2>
+                        <p className="text-xs text-slate-500">Configura un intervalo específico o desactiva la exigencia de foto para unidades particulares.</p>
+                    </div>
+                    <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-xs font-bold text-blue-900">
+                        {globalCount} unidades usando el valor global, {overrideCount} con override personalizado, {excludedCount} excluidas.
+                    </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-100/75 border-b border-slate-200 text-[11px] font-black uppercase text-slate-600 tracking-wider">
                                 <th className="p-3">Unidad / Placa</th>
-                                <th className="p-3">Días Override (Opcional)</th>
-                                <th className="p-3">Excluir Requisito (Disabled)</th>
+                                <th className="p-3">
+                                    Días Override
+                                    <span className="block font-normal normal-case text-[10px] text-slate-500 mt-0.5">Déjalo vacío para usar el valor global. Si pones un número, aplica solo a esta unidad.</span>
+                                </th>
+                                <th className="p-3">
+                                    Excluir Requisito
+                                    <span className="block font-normal normal-case text-[10px] text-slate-500 mt-0.5">Actívalo si esta unidad NUNCA debe pedir foto, sin importar el plazo.</span>
+                                </th>
+                                <th className="p-3">
+                                    Estado actual
+                                    <span className="block font-normal normal-case text-[10px] text-slate-500 mt-0.5">Estado en tiempo real calculado por política.</span>
+                                </th>
                                 <th className="p-3 text-right">Acción</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                             {vehicles.map(veh => (
-                                <VehiclePolicyRow key={veh.id} veh={veh} onSave={handleUpdateVehiclePolicy} />
+                                <VehiclePolicyRow key={veh.id} veh={veh} isDuplicate={isDuplicate(veh.unidad)} onSave={handleUpdateVehiclePolicy} />
                             ))}
                             {vehicles.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="p-6 text-center text-slate-400 font-bold">No hay vehículos registrados</td>
+                                    <td colSpan={5} className="p-6 text-center text-slate-400 font-bold">No hay vehículos registrados</td>
                                 </tr>
                             )}
                         </tbody>
@@ -141,23 +161,55 @@ function PhotoPolicySettings() {
     );
 }
 
-function VehiclePolicyRow({ veh, onSave }: { veh: any; onSave: (id: string, override: any, disabled: boolean) => void }) {
+function VehiclePolicyRow({ veh, isDuplicate, onSave }: { veh: any; isDuplicate: boolean; onSave: (id: string, override: any, disabled: boolean) => Promise<void> }) {
     const [override, setOverride] = useState(veh.photoPolicy?.intervalDaysOverride ?? '');
     const [disabled, setDisabled] = useState(veh.photoPolicy?.disabled ?? false);
     const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+
+    const [policyStatus, setPolicyStatus] = useState<{ vencida: boolean; intervalDays: number; disabled: boolean; ultimaFotoDate: Date | null; fechaLimite: Date | null } | null>(null);
+    const [loadingStatus, setLoadingStatus] = useState(true);
+
+    useEffect(() => {
+        let isMounted = true;
+        const fetchStatus = async () => {
+            try {
+                const res = await checkVehiclePhotoPolicy(veh.unidad);
+                if (isMounted) {
+                    setPolicyStatus(res);
+                }
+            } catch (e) {
+                console.error("Error fetching policy status:", e);
+            } finally {
+                if (isMounted) setLoadingStatus(false);
+            }
+        };
+        fetchStatus();
+        return () => { isMounted = false; };
+    }, [veh.unidad, veh.photoPolicy]);
 
     return (
-        <tr className="hover:bg-slate-50/50">
+        <tr className={`hover:bg-slate-50/50 ${isDuplicate ? 'bg-amber-50/30' : ''}`}>
             <td className="p-3 font-bold text-slate-900">
-                {veh.unidad} <span className="font-normal text-slate-500">({veh.placa || 'Sin placa'})</span>
+                <div className="flex items-center gap-2">
+                    <span>{veh.unidad}</span>
+                    <span className="font-normal text-slate-500">({veh.placa || 'Sin placa'})</span>
+                </div>
+                {isDuplicate && (
+                    <div className="mt-1 flex items-center gap-1 text-[10px] font-black text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300 w-fit">
+                        <FiAlertTriangle className="text-amber-600 shrink-0" />
+                        <span>Unidad duplicada — revisar en Firestore manualmente</span>
+                    </div>
+                )}
             </td>
             <td className="p-3">
                 <input
                     type="number"
-                    placeholder={`Global (${veh.photoPolicy?.intervalDaysOverride === null ? 'Default' : ''})`}
+                    placeholder="Global"
                     value={override}
                     onChange={(e) => setOverride(e.target.value)}
-                    className="w-36 px-2 py-1 border border-slate-300 rounded text-xs"
+                    className="w-32 px-2 py-1.5 border border-slate-300 rounded text-xs font-bold"
                 />
             </td>
             <td className="p-3">
@@ -169,22 +221,59 @@ function VehiclePolicyRow({ veh, onSave }: { veh: any; onSave: (id: string, over
                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
                     />
                     <span className={disabled ? "text-rose-600 font-bold" : "text-slate-600"}>
-                        {disabled ? "Desactivado" : "Activo"}
+                        {disabled ? "Excluida" : "Activo"}
                     </span>
                 </label>
             </td>
+            <td className="p-3">
+                {loadingStatus ? (
+                    <span className="text-[11px] text-slate-400">Calculando...</span>
+                ) : policyStatus?.disabled ? (
+                    <span className="inline-flex items-center px-2 py-1 bg-slate-100 text-slate-600 rounded text-[11px] font-bold">
+                        Excluida
+                    </span>
+                ) : policyStatus?.vencida ? (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-rose-50 border border-rose-200 text-rose-700 rounded text-[11px] font-bold">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                        Vencida — pedirá foto
+                    </span>
+                ) : (
+                    (() => {
+                        const daysRemaining = policyStatus?.fechaLimite ? Math.ceil((policyStatus.fechaLimite.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
+                        return (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded text-[11px] font-bold">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                OK — faltan {Math.max(0, daysRemaining)} días
+                            </span>
+                        );
+                    })()
+                )}
+            </td>
             <td className="p-3 text-right">
-                <button
-                    onClick={async () => {
-                        setIsSaving(true);
-                        await onSave(veh.id, override, disabled);
-                        setIsSaving(false);
-                    }}
-                    disabled={isSaving}
-                    className="px-3 py-1 bg-slate-900 hover:bg-blue-600 text-white rounded text-[11px] font-bold transition-all disabled:opacity-50"
-                >
-                    {isSaving ? 'Guardando...' : 'Actualizar'}
-                </button>
+                <div className="flex flex-col items-end gap-1">
+                    <button
+                        onClick={async () => {
+                            setIsSaving(true);
+                            setSaveError(null);
+                            try {
+                                await onSave(veh.id, override, disabled);
+                                setSaveSuccess(true);
+                                setTimeout(() => setSaveSuccess(false), 2500);
+                            } catch (err: any) {
+                                setSaveError(err.message || "Error");
+                            } finally {
+                                setIsSaving(false);
+                            }
+                        }}
+                        disabled={isSaving}
+                        className={`px-3 py-1.5 rounded text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1 ${
+                            saveSuccess ? 'bg-emerald-600 text-white' : 'bg-slate-900 hover:bg-blue-600 text-white'
+                        } disabled:opacity-50`}
+                    >
+                        {isSaving ? 'Guardando...' : saveSuccess ? <><FiCheck className="text-sm" /> Guardado</> : 'Guardar'}
+                    </button>
+                    {saveError && <span className="text-[10px] text-rose-600 font-bold">{saveError}</span>}
+                </div>
             </td>
         </tr>
     );
