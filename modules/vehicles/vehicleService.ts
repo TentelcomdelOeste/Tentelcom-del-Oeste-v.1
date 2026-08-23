@@ -132,9 +132,9 @@ export const saveVehicleLog = async (
     isEditing: boolean,
     initialData?: VehicleLog | null,
     trabajoId?: string,
-    photoFile?: File | null
+    photoFiles?: File[]
 ) => {
-    console.log("[vehicleService] Starting saveVehicleLog pipeline (Unified Offline Architecture)...", { isEditing, trabajoId, hasPhoto: !!photoFile });
+    console.log("[vehicleService] Starting saveVehicleLog pipeline (Unified Offline Architecture)...", { isEditing, trabajoId, photoCount: photoFiles?.length || 0 });
 
     // 1. Sanitización y Preparación de Datos
     const totalKm = formData.kmLlegada ? Math.max(0, formData.kmLlegada - (formData.kmSalida || 0)) : 0;
@@ -148,41 +148,6 @@ export const saveVehicleLog = async (
         }
     });
 
-    if (photoFile) {
-        const timestamp = Date.now();
-        const unidadName = sanitizedData.unidad || 'unidad';
-        const storagePath = `vehicle_photos/${unidadName}/${timestamp}.jpg`;
-        sanitizedData.photoTimestamp = timestamp;
-
-        try {
-            const compressedBlob = await compressImage(photoFile);
-            if (networkProbe.isOnline()) {
-                const { storage } = await import("../../firebase");
-                const { ref, uploadBytes } = await import("firebase/storage");
-                const storageRef = ref(storage, storagePath);
-                await uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
-                console.log("[vehicleService] Vehicle photo uploaded successfully to Storage:", storagePath);
-            } else {
-                console.log("[vehicleService] Offline detected, storing vehicle photo locally in offlineMediaStore & queue:", storagePath);
-                const { storeBlob } = await import("../../services/offlineMediaStore");
-                const { pdfOfflineQueue, calculateBlobChecksum } = await import("../../core/pdf/pdfOfflineQueue");
-                await storeBlob(storagePath, compressedBlob);
-                const checksum = await calculateBlobChecksum(compressedBlob);
-                await pdfOfflineQueue.enqueuePdfUpload(
-                    storagePath,
-                    `${unidadName}_${timestamp}.jpg`,
-                    'image/jpeg',
-                    'vehicles',
-                    'bitacora_vehiculos',
-                    initialData?.id || 'temp_id',
-                    checksum
-                );
-            }
-        } catch (photoErr) {
-            console.error("[vehicleService] Error processing/uploading vehicle photo:", photoErr);
-        }
-    }
-
     // NORMALIZATION: Ensure 'unidad' is always present if 'unidadId' exists
     if (sanitizedData.unidadId && !sanitizedData.unidad) {
         const parts = sanitizedData.unidadId.split(" - ");
@@ -193,6 +158,45 @@ export const saveVehicleLog = async (
         const derivedUnidad = parts[0]?.trim() || "";
         if (derivedUnidad && sanitizedData.unidad !== derivedUnidad) {
             sanitizedData.unidad = derivedUnidad;
+        }
+    }
+
+    if (photoFiles && photoFiles.length > 0) {
+        const timestamp = Date.now();
+        const unidadName = sanitizedData.unidad || 'unidad';
+        sanitizedData.photoTimestamp = timestamp;
+
+        for (let i = 0; i < photoFiles.length; i++) {
+            const photoFile = photoFiles[i];
+            const storagePath = `vehicle_photos/${unidadName}/${timestamp}_${i}.jpg`;
+
+            try {
+                const compressedBlob = await compressImage(photoFile);
+                if (networkProbe.isOnline()) {
+                    const { storage } = await import("../../firebase");
+                    const { ref, uploadBytes } = await import("firebase/storage");
+                    const storageRef = ref(storage, storagePath);
+                    await uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
+                    console.log("[vehicleService] Vehicle photo uploaded successfully to Storage:", storagePath);
+                } else {
+                    console.log("[vehicleService] Offline detected, storing vehicle photo locally in offlineMediaStore & queue:", storagePath);
+                    const { storeBlob } = await import("../../services/offlineMediaStore");
+                    const { pdfOfflineQueue, calculateBlobChecksum } = await import("../../core/pdf/pdfOfflineQueue");
+                    await storeBlob(storagePath, compressedBlob);
+                    const checksum = await calculateBlobChecksum(compressedBlob);
+                    await pdfOfflineQueue.enqueuePdfUpload(
+                        storagePath,
+                        `${unidadName}_${timestamp}_${i}.jpg`,
+                        'image/jpeg',
+                        'vehicles',
+                        'bitacora_vehiculos',
+                        initialData?.id || 'temp_id',
+                        checksum
+                    );
+                }
+            } catch (photoErr) {
+                console.error(`[vehicleService] Error processing/uploading vehicle photo ${i}:`, photoErr);
+            }
         }
     }
 

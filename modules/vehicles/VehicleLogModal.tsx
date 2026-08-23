@@ -97,8 +97,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     });
 
     const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
-    const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
-    const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+    const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
 
     useEffect(() => {
         const checkPolicy = async () => {
@@ -524,11 +523,11 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         };
 
         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-        if (isPhotoRequired && !selectedPhotoFile && !initialData?.oneDriveUrl && !initialData?.photoTimestamp) {
+        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp) {
             setIsLoading(false);
             await confirm({
                 title: 'Fotografía de Bitácora Requerida',
-                description: `Esta unidad tiene la fotografía de bitácora vencida (más de ${photoPolicyStatus.intervalDays} días). Debe adjuntar una foto actual para registrar o cerrar la boleta.`,
+                description: `Esta unidad tiene la fotografía de bitácora vencida (más de ${photoPolicyStatus.intervalDays} días). Debe adjuntar al menos una foto actual para registrar o cerrar la boleta.`,
                 confirmLabel: 'ACEPTAR',
                 variant: 'warning'
             });
@@ -538,7 +537,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         // 2. Ejecutar Guardado Centralizado
         // El servicio maneja: persistencia, resolución de timelineId, y disparo de eventos operativos.
         try {
-            const result = await saveVehicleLog(dataToSave, currentUser, isEditing, initialData, trabajoId, selectedPhotoFile);
+            const result = await saveVehicleLog(dataToSave, currentUser, isEditing, initialData, trabajoId, selectedPhotoFiles);
             onClose(result);
         } catch (err: any) {
             console.error("Error saving vehicle log:", err);
@@ -741,32 +740,40 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 Han pasado más de {photoPolicyStatus.intervalDays} días desde la última fotografía de bitácora para esta unidad. Es obligatorio adjuntar una foto actual para registrar o cerrar la boleta.
                             </p>
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Tomar / Seleccionar Foto de Bitácora *</label>
+                                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Tomar / Seleccionar Fotos de Bitácora * (Múltiples)</label>
                                 <input
                                     type="file"
                                     accept="image/*"
-                                    capture="environment"
+                                    multiple
                                     onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                            setSelectedPhotoFile(file);
-                                            setPhotoPreviewUrl(URL.createObjectURL(file));
+                                        const files = Array.from(e.target.files || []);
+                                        if (files.length > 0) {
+                                            setSelectedPhotoFiles(prev => [...prev, ...files]);
                                         }
                                     }}
                                     className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                                    required={photoPolicyStatus.vencida && !photoPolicyStatus.disabled}
+                                    required={photoPolicyStatus.vencida && !photoPolicyStatus.disabled && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp}
                                 />
                             </div>
-                            {photoPreviewUrl && (
-                                <div className="mt-2 relative w-32 h-32 rounded-lg overflow-hidden border border-slate-300">
-                                    <img src={photoPreviewUrl} alt="Vista previa" className="w-full h-full object-cover" />
-                                    <button
-                                        type="button"
-                                        onClick={() => { setSelectedPhotoFile(null); setPhotoPreviewUrl(null); }}
-                                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 text-xs"
-                                    >
-                                        <FiX />
-                                    </button>
+                            {selectedPhotoFiles.length > 0 && (
+                                <div className="mt-3 flex flex-wrap gap-3">
+                                    {selectedPhotoFiles.map((file, idx) => {
+                                        const previewUrl = URL.createObjectURL(file);
+                                        return (
+                                            <div key={idx} className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-300 shadow-sm">
+                                                <img src={previewUrl} alt={`Vista previa ${idx + 1}`} className="w-full h-full object-cover" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedPhotoFiles(prev => prev.filter((_, i) => i !== idx));
+                                                    }}
+                                                    className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 text-xs hover:bg-red-700 transition-colors"
+                                                >
+                                                    <FiX />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -988,7 +995,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     />
                     {(() => {
                         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-                        const isPhotoMissing = isPhotoRequired && !selectedPhotoFile && !initialData?.oneDriveUrl && !initialData?.photoTimestamp;
+                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp;
                         const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
                         return (
                             <ActionButton
