@@ -1,7 +1,6 @@
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import * as nodemailer from "nodemailer";
 import { defineSecret } from "firebase-functions/params";
 import { CloudTasksClient } from "@google-cloud/tasks";
 
@@ -9,125 +8,6 @@ import { CloudTasksClient } from "@google-cloud/tasks";
 if (!admin.apps.length) {
   admin.initializeApp();
 }
-
-// 1. DEFINICIÓN DE SECRETOS (Seguridad)
-const smtpEmail = defineSecret("SMTP_EMAIL");
-const smtpPassword = defineSecret("SMTP_PASSWORD");
-
-/**
- * Utilería para sanitizar strings y evitar inyección HTML/XSS
- */
-const escapeHtml = (unsafe: unknown): string => {
-  if (typeof unsafe !== "string") return "";
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-};
-
-/**
- * Validación básica de formato de email
- */
-const isValidEmail = (email: string): boolean => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
-export const sendContactEmail = functions
-  .runWith({
-    secrets: [smtpEmail, smtpPassword],
-    memory: "256MB",
-    timeoutSeconds: 60,
-  })
-  .firestore.document("contact_requests/{docId}")
-  .onCreate(async (snap, context) => {
-    const docId = context.params.docId;
-    const data = snap.data();
-
-    const name = data.name as string;
-    const email = data.email as string;
-    const message = data.message as string;
-    const phone = data.phone as string | undefined;
-
-    const isDataValid =
-      name &&
-      name.trim().length > 0 &&
-      email &&
-      isValidEmail(email) &&
-      message &&
-      message.trim().length > 0;
-
-    if (!isDataValid) {
-      functions.logger.warn(`Datos inválidos en solicitud de contacto [${docId}]`, {
-        data: { name, email, hasMessage: !!message },
-      });
-      
-      await snap.ref.update({
-        status: "invalid_data",
-        processedAt: admin.firestore.FieldValue.serverTimestamp(),
-        error: "Campos obligatorios faltantes o formato de email incorrecto.",
-      });
-      return;
-    }
-
-    const safeName = escapeHtml(name);
-    const safeEmail = escapeHtml(email);
-    const safePhone = phone ? escapeHtml(phone) : "N/A";
-    const safeMessage = escapeHtml(message);
-
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: smtpEmail.value(),
-        pass: smtpPassword.value(),
-      },
-    });
-
-    const mailOptions = {
-      from: `"Web Contact Form" <${smtpEmail.value()}>`,
-      replyTo: safeEmail,
-      to: "admin@tentelcom.com",
-      subject: `Nuevo contacto web: ${safeName}`,
-      text: `Nombre: ${safeName}\nEmail: ${safeEmail}\nTeléfono: ${safePhone}\n\nMensaje:\n${safeMessage}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; color: #333;">
-          <h2 style="color: #1e3a8a;">Nueva Solicitud de Contacto</h2>
-          <hr style="border: 0; border-top: 1px solid #eee;" />
-          <p><strong>Nombre:</strong> ${safeName}</p>
-          <p><strong>Email:</strong> <a href="mailto:${safeEmail}">${safeEmail}</a></p>
-          <p><strong>Teléfono:</strong> ${safePhone}</p>
-          <br/>
-          <p><strong>Mensaje:</strong></p>
-          <div style="background-color: #f9fafb; padding: 15px; border-left: 4px solid #1e3a8a; border-radius: 4px;">
-            ${safeMessage.replace(/\n/g, "<br/>")}
-          </div>
-          <br/>
-          <small style="color: #888;">ID Referencia: ${docId}</small>
-        </div>
-      `,
-    };
-
-    try {
-      await transporter.sendMail(mailOptions);
-      functions.logger.info(`Correo enviado exitosamente para [${docId}]`);
-      await snap.ref.update({
-        status: "email_sent",
-        emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
-        processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    } catch (error: any) {
-      functions.logger.error(`Error SMTP enviando correo para [${docId}]`, {
-        error: error.message || error,
-      });
-      await snap.ref.update({
-        status: "email_failed",
-        error: error.message || "Error desconocido en el servidor de correo",
-        processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
-  });
 
 export * from "./geminiProxy";
 export * from "./oneDriveSync";

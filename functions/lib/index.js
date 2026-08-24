@@ -14,124 +14,14 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onCriticalActionAudit = exports.weeklyTokenCleanup = exports.onNotificationCreated = exports.sendJobNotification = exports.onTrabajoChange = exports.sendContactEmail = void 0;
+exports.onCriticalActionAudit = exports.weeklyTokenCleanup = exports.onNotificationCreated = exports.sendJobNotification = exports.onTrabajoChange = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const nodemailer = require("nodemailer");
-const params_1 = require("firebase-functions/params");
 const tasks_1 = require("@google-cloud/tasks");
 // Inicialización de Admin SDK (Singleton pattern)
 if (!admin.apps.length) {
     admin.initializeApp();
 }
-// 1. DEFINICIÓN DE SECRETOS (Seguridad)
-const smtpEmail = (0, params_1.defineSecret)("SMTP_EMAIL");
-const smtpPassword = (0, params_1.defineSecret)("SMTP_PASSWORD");
-/**
- * Utilería para sanitizar strings y evitar inyección HTML/XSS
- */
-const escapeHtml = (unsafe) => {
-    if (typeof unsafe !== "string")
-        return "";
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-};
-/**
- * Validación básica de formato de email
- */
-const isValidEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-};
-exports.sendContactEmail = functions
-    .runWith({
-    secrets: [smtpEmail, smtpPassword],
-    memory: "256MB",
-    timeoutSeconds: 60,
-})
-    .firestore.document("contact_requests/{docId}")
-    .onCreate(async (snap, context) => {
-    const docId = context.params.docId;
-    const data = snap.data();
-    const name = data.name;
-    const email = data.email;
-    const message = data.message;
-    const phone = data.phone;
-    const isDataValid = name &&
-        name.trim().length > 0 &&
-        email &&
-        isValidEmail(email) &&
-        message &&
-        message.trim().length > 0;
-    if (!isDataValid) {
-        functions.logger.warn(`Datos inválidos en solicitud de contacto [${docId}]`, {
-            data: { name, email, hasMessage: !!message },
-        });
-        await snap.ref.update({
-            status: "invalid_data",
-            processedAt: admin.firestore.FieldValue.serverTimestamp(),
-            error: "Campos obligatorios faltantes o formato de email incorrecto.",
-        });
-        return;
-    }
-    const safeName = escapeHtml(name);
-    const safeEmail = escapeHtml(email);
-    const safePhone = phone ? escapeHtml(phone) : "N/A";
-    const safeMessage = escapeHtml(message);
-    const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-            user: smtpEmail.value(),
-            pass: smtpPassword.value(),
-        },
-    });
-    const mailOptions = {
-        from: `"Web Contact Form" <${smtpEmail.value()}>`,
-        replyTo: safeEmail,
-        to: "admin@tentelcom.com",
-        subject: `Nuevo contacto web: ${safeName}`,
-        text: `Nombre: ${safeName}\nEmail: ${safeEmail}\nTeléfono: ${safePhone}\n\nMensaje:\n${safeMessage}`,
-        html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; color: #333;">
-          <h2 style="color: #1e3a8a;">Nueva Solicitud de Contacto</h2>
-          <hr style="border: 0; border-top: 1px solid #eee;" />
-          <p><strong>Nombre:</strong> ${safeName}</p>
-          <p><strong>Email:</strong> <a href="mailto:${safeEmail}">${safeEmail}</a></p>
-          <p><strong>Teléfono:</strong> ${safePhone}</p>
-          <br/>
-          <p><strong>Mensaje:</strong></p>
-          <div style="background-color: #f9fafb; padding: 15px; border-left: 4px solid #1e3a8a; border-radius: 4px;">
-            ${safeMessage.replace(/\n/g, "<br/>")}
-          </div>
-          <br/>
-          <small style="color: #888;">ID Referencia: ${docId}</small>
-        </div>
-      `,
-    };
-    try {
-        await transporter.sendMail(mailOptions);
-        functions.logger.info(`Correo enviado exitosamente para [${docId}]`);
-        await snap.ref.update({
-            status: "email_sent",
-            emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
-            processedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-    }
-    catch (error) {
-        functions.logger.error(`Error SMTP enviando correo para [${docId}]`, {
-            error: error.message || error,
-        });
-        await snap.ref.update({
-            status: "email_failed",
-            error: error.message || "Error desconocido en el servidor de correo",
-            processedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-    }
-});
 __exportStar(require("./geminiProxy"), exports);
 __exportStar(require("./oneDriveSync"), exports);
 const tasksClient = new tasks_1.CloudTasksClient();

@@ -4,7 +4,7 @@ import { defineSecret } from "firebase-functions/params";
 
 const onedriveClientId = defineSecret("ONEDRIVE_CLIENT_ID");
 const onedriveClientSecret = defineSecret("ONEDRIVE_CLIENT_SECRET");
-const onedriveTenantId = defineSecret("ONEDRIVE_TENANT_ID");
+const onedriveRefreshToken = defineSecret("ONEDRIVE_REFRESH_TOKEN");
 
 let cachedToken: string | null = null;
 let tokenExpiresAt: number = 0;
@@ -17,14 +17,15 @@ async function getOneDriveAccessToken(): Promise<string> {
 
   const clientId = onedriveClientId.value();
   const clientSecret = onedriveClientSecret.value();
-  const tenantId = onedriveTenantId.value();
+  const refreshToken = onedriveRefreshToken.value();
 
-  const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+  const tokenUrl = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
   const params = new URLSearchParams();
   params.append("client_id", clientId);
   params.append("client_secret", clientSecret);
-  params.append("scope", "https://graph.microsoft.com/.default");
-  params.append("grant_type", "client_credentials");
+  params.append("refresh_token", refreshToken);
+  params.append("grant_type", "refresh_token");
+  params.append("scope", "offline_access Files.ReadWrite User.Read");
 
   const response = await fetch(tokenUrl, {
     method: "POST",
@@ -36,10 +37,10 @@ async function getOneDriveAccessToken(): Promise<string> {
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Failed to obtain OneDrive access token: ${response.status} ${errText}`);
+    throw new Error(`Failed to obtain OneDrive access token (refresh_token): ${response.status} ${errText}`);
   }
 
-  const data = await response.json() as { access_token: string; expires_in?: number };
+  const data = await response.json() as { access_token: string; expires_in?: number; refresh_token?: string };
   cachedToken = data.access_token;
   const expiresIn = data.expires_in || 3600;
   tokenExpiresAt = now + (expiresIn * 1000);
@@ -49,7 +50,7 @@ async function getOneDriveAccessToken(): Promise<string> {
 
 export const syncVehiclePhotoToOneDrive = functions
   .runWith({
-    secrets: [onedriveClientId, onedriveClientSecret, onedriveTenantId],
+    secrets: [onedriveClientId, onedriveClientSecret, onedriveRefreshToken],
     timeoutSeconds: 300,
     memory: "512MB",
   })
@@ -132,8 +133,7 @@ export const syncVehiclePhotoToOneDrive = functions
       return;
     }
 
-    const userId = "a632808b-7d8e-430b-9275-9e9560d830e9";
-    const graphEndpoint = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}/drive/root:/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
+    const graphEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
 
     while (attempts < maxRetries && !success) {
       attempts++;

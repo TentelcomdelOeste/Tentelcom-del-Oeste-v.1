@@ -165,10 +165,15 @@ export const saveVehicleLog = async (
         const timestamp = Date.now();
         const unidadName = sanitizedData.unidad || 'unidad';
         sanitizedData.photoTimestamp = timestamp;
+        const paths: string[] = [];
 
         for (let i = 0; i < photoFiles.length; i++) {
             const photoFile = photoFiles[i];
             const storagePath = `vehicle_photos/${unidadName}/${timestamp}_${i}.jpg`;
+            paths.push(storagePath);
+            if (i === 0) {
+                sanitizedData.photoStoragePath = storagePath;
+            }
 
             try {
                 const compressedBlob = await compressImage(photoFile);
@@ -197,6 +202,30 @@ export const saveVehicleLog = async (
             } catch (photoErr) {
                 console.error(`[vehicleService] Error processing/uploading vehicle photo ${i}:`, photoErr);
             }
+        }
+        sanitizedData.photoStoragePaths = paths;
+    } else if (initialData) {
+        if (initialData.photoStoragePath) {
+            sanitizedData.photoStoragePath = initialData.photoStoragePath;
+        }
+        if (initialData.photoStoragePaths) {
+            sanitizedData.photoStoragePaths = initialData.photoStoragePaths;
+        }
+        if (initialData.photoTimestamp) {
+            sanitizedData.photoTimestamp = initialData.photoTimestamp;
+            if (!sanitizedData.photoStoragePath) {
+                const unidadName = sanitizedData.unidad || initialData.unidad || 'unidad';
+                sanitizedData.photoStoragePath = `vehicle_photos/${unidadName}/${initialData.photoTimestamp}_0.jpg`;
+            }
+        }
+        if (initialData.oneDriveUrl) {
+            sanitizedData.oneDriveUrl = initialData.oneDriveUrl;
+        }
+        if (initialData.oneDriveSyncedAt) {
+            sanitizedData.oneDriveSyncedAt = initialData.oneDriveSyncedAt;
+        }
+        if (initialData.oneDriveSyncError) {
+            sanitizedData.oneDriveSyncError = initialData.oneDriveSyncError;
         }
     }
 

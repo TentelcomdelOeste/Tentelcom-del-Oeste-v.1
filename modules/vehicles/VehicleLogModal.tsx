@@ -15,6 +15,7 @@ import { isAdmin as checkIsAdmin } from '../../utils/permissions';
 import { saveVehicleLog } from './vehicleService';
 import { VehicleExpenseModal } from './components/VehicleExpenseModal';
 import { checkVehiclePhotoPolicy } from '../../core/photoPolicy';
+import { networkProbe } from '../../core/offline/networkProbe';
 
 interface VehicleLogModalProps {
     show: boolean;
@@ -98,8 +99,53 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
     const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
+    const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
+    const [photoLoading, setPhotoLoading] = useState(false);
     const takePhotoInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        const loadExistingPhoto = async () => {
+            if (!initialData) return;
+            const path = initialData.photoStoragePath || 
+                (initialData.photoTimestamp && (initialData.unidad || formData.unidad) 
+                    ? `vehicle_photos/${initialData.unidad || formData.unidad}/${initialData.photoTimestamp}_0.jpg` 
+                    : null);
+
+            if (!path) {
+                if (initialData.oneDriveUrl) {
+                    setExistingPhotoUrl(initialData.oneDriveUrl);
+                }
+                return;
+            }
+
+            setPhotoLoading(true);
+            try {
+                if (networkProbe.isOnline()) {
+                    const { storage } = await import('../../firebase');
+                    const { ref, getDownloadURL } = await import('firebase/storage');
+                    const url = await getDownloadURL(ref(storage, path));
+                    setExistingPhotoUrl(url);
+                } else {
+                    const { getBlob } = await import('../../services/offlineMediaStore');
+                    const blob = await getBlob(path);
+                    if (blob) {
+                        const url = URL.createObjectURL(blob);
+                        setExistingPhotoUrl(url);
+                    }
+                }
+            } catch (err) {
+                console.warn("Could not load existing photo from Storage, trying oneDriveUrl fallback:", err);
+                if (initialData.oneDriveUrl) {
+                    setExistingPhotoUrl(initialData.oneDriveUrl);
+                }
+            } finally {
+                setPhotoLoading(false);
+            }
+        };
+
+        loadExistingPhoto();
+    }, [initialData]);
 
     useEffect(() => {
         const checkPolicy = async () => {
@@ -525,7 +571,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         };
 
         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp) {
+        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && !existingPhotoUrl) {
             setIsLoading(false);
             await confirm({
                 title: 'Fotografía de Bitácora Requerida',
@@ -732,85 +778,129 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         </div>
                     </div>
 
-                    {photoPolicyStatus.vencida && !photoPolicyStatus.disabled && (
-                        <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-3">
-                            <div className="flex items-center gap-2 text-amber-800 font-black text-xs uppercase">
-                                <FiAlertTriangle className="text-base shrink-0 text-amber-600" />
-                                <span>Bitácora Vencida — Fotografía Obligatoria Requerida</span>
+                    {/* SECCIÓN DE FOTOGRAFÍA DE BITÁCORA */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-black text-slate-700 uppercase">Fotografía de Bitácora</span>
+                                {initialData?.oneDriveUrl || initialData?.oneDriveSyncedAt ? (
+                                    <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Sincronizado correctamente con OneDrive">
+                                        ✅ Foto Sincronizada con OneDrive
+                                    </span>
+                                ) : initialData?.oneDriveSyncError ? (
+                                    <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title={initialData.oneDriveSyncError}>
+                                        ⚠️ Error al Sincronizar con OneDrive
+                                    </span>
+                                ) : (initialData?.photoStoragePath || initialData?.photoTimestamp || existingPhotoUrl) ? (
+                                    <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Guardada en Storage, pendiente de sincronización secundaria con OneDrive">
+                                        ☁️ Sincronizando con OneDrive...
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                        📷 Sin foto adjunta
+                                    </span>
+                                )}
                             </div>
-                            <p className="text-xs text-amber-700">
-                                Han pasado más de {photoPolicyStatus.intervalDays} días desde la última fotografía de bitácora para esta unidad. Es obligatorio adjuntar una foto actual para registrar o cerrar la boleta.
-                            </p>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Tomar o Seleccionar Fotos de Bitácora *</label>
-                                <div className="flex flex-wrap gap-3 mb-3">
-                                    <ActionButton
-                                        type="button"
-                                        variant="primary"
-                                        label="Tomar foto"
-                                        onClick={() => takePhotoInputRef.current?.click()}
-                                        className="!py-2 !px-4 !text-xs !font-black !uppercase !rounded-xl"
-                                    />
-                                    <ActionButton
-                                        type="button"
-                                        variant="secondary"
-                                        label="Elegir de galería"
-                                        onClick={() => galleryInputRef.current?.click()}
-                                        className="!py-2 !px-4 !text-xs !font-black !uppercase !rounded-xl"
-                                    />
+                            <div className="flex gap-2">
+                                <ActionButton
+                                    type="button"
+                                    variant="primary"
+                                    label="Tomar foto"
+                                    onClick={() => takePhotoInputRef.current?.click()}
+                                    className="!py-1.5 !px-3 !text-[10px] !font-bold !uppercase !rounded-lg"
+                                />
+                                <ActionButton
+                                    type="button"
+                                    variant="secondary"
+                                    label="Galería"
+                                    onClick={() => galleryInputRef.current?.click()}
+                                    className="!py-1.5 !px-3 !text-[10px] !font-bold !uppercase !rounded-lg"
+                                />
+                            </div>
+                        </div>
+
+                        {photoPolicyStatus.vencida && !photoPolicyStatus.disabled && (
+                            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 flex items-start gap-2 text-amber-800 text-xs">
+                                <FiAlertTriangle className="text-base shrink-0 text-amber-600 mt-0.5" />
+                                <div>
+                                    <span className="font-bold uppercase">Fotografía Obligatoria Requerida:</span> Han pasado más de {photoPolicyStatus.intervalDays} días desde la última fotografía de bitácora para esta unidad.
                                 </div>
-                                <input
-                                    ref={takePhotoInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                            setSelectedPhotoFiles(prev => [...prev, file]);
-                                        }
-                                        e.target.value = '';
-                                    }}
-                                />
-                                <input
-                                    ref={galleryInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    className="hidden"
-                                    onChange={(e) => {
-                                        const files = Array.from(e.target.files || []);
-                                        if (files.length > 0) {
-                                            setSelectedPhotoFiles(prev => [...prev, ...files]);
-                                        }
-                                        e.target.value = '';
-                                    }}
-                                />
                             </div>
-                            {selectedPhotoFiles.length > 0 && (
-                                <div className="mt-3 flex flex-wrap gap-3">
-                                    {selectedPhotoFiles.map((file, idx) => {
-                                        const previewUrl = URL.createObjectURL(file);
-                                        return (
-                                            <div key={idx} className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-300 shadow-sm">
-                                                <img src={previewUrl} alt={`Vista previa ${idx + 1}`} className="w-full h-full object-cover" />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedPhotoFiles(prev => prev.filter((_, i) => i !== idx));
-                                                    }}
-                                                    className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 text-xs hover:bg-red-700 transition-colors"
-                                                >
-                                                    <FiX />
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
+                        )}
+
+                        {/* Visor de Fotos Existentes y Nuevas */}
+                        <div className="flex flex-wrap gap-3">
+                            {photoLoading && (
+                                <div className="w-28 h-28 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-xs text-slate-500 animate-pulse">
+                                    Cargando foto...
+                                </div>
+                            )}
+
+                            {existingPhotoUrl && !photoLoading && selectedPhotoFiles.length === 0 && (
+                                <div className="relative w-28 h-28 rounded-xl overflow-hidden border-2 border-slate-300 shadow-md group">
+                                    <img src={existingPhotoUrl} alt="Bitácora" className="w-full h-full object-cover" />
+                                    <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[9px] text-center py-0.5 font-bold truncate px-1">
+                                        Firebase Storage
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedPhotoFiles.map((file, idx) => {
+                                const previewUrl = URL.createObjectURL(file);
+                                return (
+                                    <div key={idx} className="relative w-28 h-28 rounded-xl overflow-hidden border-2 border-blue-500 shadow-md">
+                                        <img src={previewUrl} alt={`Nueva ${idx + 1}`} className="w-full h-full object-cover" />
+                                        <IconButton
+                                            icon={<FiX size={12} />}
+                                            onClick={() => {
+                                                setSelectedPhotoFiles(prev => prev.filter((_, i) => i !== idx));
+                                            }}
+                                            className="absolute top-1 right-1 !bg-red-600 !text-white !p-1 hover:!bg-red-700 transition-colors shadow rounded-full"
+                                        />
+                                        <div className="absolute inset-x-0 bottom-0 bg-blue-600 text-white text-[9px] text-center py-0.5 font-bold">
+                                            Nueva (Lista)
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {!existingPhotoUrl && !photoLoading && selectedPhotoFiles.length === 0 && (
+                                <div className="w-full py-6 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 bg-white">
+                                    <span className="text-xs font-semibold">No se ha seleccionado ninguna fotografía</span>
+                                    <span className="text-[10px] text-slate-400 mt-1">Utilice los botones superiores para capturar o seleccionar una imagen</span>
                                 </div>
                             )}
                         </div>
-                    )}
+
+                        <input
+                            ref={takePhotoInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                    setSelectedPhotoFiles(prev => [...prev, file]);
+                                }
+                                e.target.value = '';
+                            }}
+                        />
+                        <input
+                            ref={galleryInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                if (files.length > 0) {
+                                    setSelectedPhotoFiles(prev => [...prev, ...files]);
+                                }
+                                e.target.value = '';
+                            }}
+                        />
+                    </div>
 
                     {/* CONTROL DE COMBUSTIBLE */}
                     <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100 space-y-6">
@@ -1028,7 +1118,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     />
                     {(() => {
                         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp;
+                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && !existingPhotoUrl;
                         const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
                         return (
                             <ActionButton

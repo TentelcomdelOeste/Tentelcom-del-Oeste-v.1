@@ -56,6 +56,12 @@ export interface VehicleLog {
     vehiculoId?: string;
     unidad?: string;
     placa?: string;
+    photoStoragePath?: string;
+    photoStoragePaths?: string[];
+    photoTimestamp?: number;
+    oneDriveUrl?: string;
+    oneDriveSyncedAt?: string;
+    oneDriveSyncError?: string;
 }
 
 export const extraerUnidad = (unidadId?: string): string => {
