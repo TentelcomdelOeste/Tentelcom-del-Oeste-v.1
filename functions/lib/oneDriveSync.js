@@ -120,7 +120,7 @@ exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
         functions.logger.error(`Error downloading file ${filePath} from storage:`, err);
         return;
     }
-    const graphEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
+    const graphEndpoint = `https://graph.microsoft.com/v1.0/users/jenamorado@tentelcom.com/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
     while (attempts < maxRetries && !success) {
         attempts++;
         try {
