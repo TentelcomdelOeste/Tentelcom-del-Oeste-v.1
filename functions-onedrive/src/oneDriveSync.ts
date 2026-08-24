@@ -136,7 +136,7 @@ export const syncVehiclePhotoToOneDrive = onObjectFinalized(
       return;
     }
 
-    const graphEndpoint = `https://graph.microsoft.com/v1.0/users/jenamorado@tentelcom.com/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
+    const graphEndpoint = `https://graph.microsoft.com/v1.0/users/a632808b-7d8e-430b-9275-9e9560d830e9/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
 
     while (attempts < maxRetries && !success) {
       attempts++;
