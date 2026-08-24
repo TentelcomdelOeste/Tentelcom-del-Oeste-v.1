@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.syncVehiclePhotoToOneDrive = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const storage_1 = require("firebase-functions/v2/storage");
 const params_1 = require("firebase-functions/params");
 const onedriveClientId = (0, params_1.defineSecret)("ONEDRIVE_CLIENT_ID");
 const onedriveClientSecret = (0, params_1.defineSecret)("ONEDRIVE_CLIENT_SECRET");
@@ -41,15 +42,16 @@ async function getOneDriveAccessToken() {
     tokenExpiresAt = now + (expiresIn * 1000);
     return cachedToken;
 }
-exports.syncVehiclePhotoToOneDrive = functions
-    .runWith({
-    secrets: [onedriveClientId, onedriveClientSecret, onedriveRefreshToken],
+exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
+    region: "us-central1",
+    memory: "512MiB",
     timeoutSeconds: 300,
-    memory: "512MB",
-})
-    .storage
-    .object()
-    .onFinalize(async (object) => {
+    secrets: [onedriveClientId, onedriveClientSecret, onedriveRefreshToken],
+}, async (event) => {
+    const object = event.data;
+    if (!object) {
+        return;
+    }
     const filePath = object.name;
     if (!filePath || !filePath.startsWith("vehicle_photos/")) {
         return;
@@ -61,7 +63,8 @@ exports.syncVehiclePhotoToOneDrive = functions
     const unidadId = pathParts[1];
     const fileName = pathParts[2];
     const db = admin.firestore();
-    const bucket = admin.storage().bucket(object.bucket);
+    const bucketName = object.bucket || event.bucket;
+    const bucket = admin.storage().bucket(bucketName);
     let attempts = 0;
     const maxRetries = 3;
     let success = false;

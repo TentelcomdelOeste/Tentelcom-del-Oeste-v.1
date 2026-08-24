@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { defineSecret } from "firebase-functions/params";
 
 const onedriveClientId = defineSecret("ONEDRIVE_CLIENT_ID");
@@ -48,15 +49,19 @@ async function getOneDriveAccessToken(): Promise<string> {
   return cachedToken;
 }
 
-export const syncVehiclePhotoToOneDrive = functions
-  .runWith({
-    secrets: [onedriveClientId, onedriveClientSecret, onedriveRefreshToken],
+export const syncVehiclePhotoToOneDrive = onObjectFinalized(
+  {
+    region: "us-central1",
+    memory: "512MiB",
     timeoutSeconds: 300,
-    memory: "512MB",
-  })
-  .storage
-  .object()
-  .onFinalize(async (object: any) => {
+    secrets: [onedriveClientId, onedriveClientSecret, onedriveRefreshToken],
+  },
+  async (event) => {
+    const object = event.data;
+    if (!object) {
+      return;
+    }
+
     const filePath = object.name;
     if (!filePath || !filePath.startsWith("vehicle_photos/")) {
       return;
@@ -71,15 +76,16 @@ export const syncVehiclePhotoToOneDrive = functions
     const fileName = pathParts[2];
 
     const db = admin.firestore();
-    const bucket = admin.storage().bucket(object.bucket);
+    const bucketName = object.bucket || event.bucket;
+    const bucket = admin.storage().bucket(bucketName);
 
     let attempts = 0;
     const maxRetries = 3;
     let success = false;
     let lastError: any = null;
     let webUrl = "";
-
     let nombreUnidad = unidadId;
+
     try {
       const vehDoc = await db.collection("vehiculos").doc(unidadId).get();
       if (vehDoc.exists) {
@@ -139,6 +145,7 @@ export const syncVehiclePhotoToOneDrive = functions
       attempts++;
       try {
         const token = await getOneDriveAccessToken();
+
         const response = await fetch(graphEndpoint, {
           method: "PUT",
           headers: {
@@ -187,6 +194,7 @@ export const syncVehiclePhotoToOneDrive = functions
             .orderBy("fecha", "desc")
             .limit(1)
             .get();
+
           if (!logsQuery2.empty) {
             await logsQuery2.docs[0].ref.update({
               oneDriveUrl: webUrl,
@@ -212,4 +220,5 @@ export const syncVehiclePhotoToOneDrive = functions
         functions.logger.error("Error writing to sync_failures collection:", failErr);
       }
     }
-  });
+  }
+);
