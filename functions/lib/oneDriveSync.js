@@ -7,7 +7,7 @@ const storage_1 = require("firebase-functions/v2/storage");
 const params_1 = require("firebase-functions/params");
 const onedriveClientId = (0, params_1.defineSecret)("ONEDRIVE_CLIENT_ID");
 const onedriveClientSecret = (0, params_1.defineSecret)("ONEDRIVE_CLIENT_SECRET");
-const onedriveRefreshToken = (0, params_1.defineSecret)("ONEDRIVE_REFRESH_TOKEN");
+const onedriveTenantId = (0, params_1.defineSecret)("ONEDRIVE_TENANT_ID");
 let cachedToken = null;
 let tokenExpiresAt = 0;
 async function getOneDriveAccessToken() {
@@ -17,24 +17,21 @@ async function getOneDriveAccessToken() {
     }
     const clientId = onedriveClientId.value();
     const clientSecret = onedriveClientSecret.value();
-    const refreshToken = onedriveRefreshToken.value();
-    const tokenUrl = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
+    const tenantId = onedriveTenantId.value();
+    const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
     const params = new URLSearchParams();
     params.append("client_id", clientId);
     params.append("client_secret", clientSecret);
-    params.append("refresh_token", refreshToken);
-    params.append("grant_type", "refresh_token");
-    params.append("scope", "offline_access Files.ReadWrite User.Read");
+    params.append("scope", "https://graph.microsoft.com/.default");
+    params.append("grant_type", "client_credentials");
     const response = await fetch(tokenUrl, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: params.toString(),
     });
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Failed to obtain OneDrive access token (refresh_token): ${response.status} ${errText}`);
+        throw new Error(`Failed to obtain OneDrive access token: ${response.status} ${errText}`);
     }
     const data = await response.json();
     cachedToken = data.access_token;
@@ -46,7 +43,7 @@ exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
     region: "us-central1",
     memory: "512MiB",
     timeoutSeconds: 300,
-    secrets: [onedriveClientId, onedriveClientSecret, onedriveRefreshToken],
+    secrets: [onedriveClientId, onedriveClientSecret, onedriveTenantId],
 }, async (event) => {
     const object = event.data;
     if (!object) {

@@ -1,10 +1,11 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { defineSecret } from "firebase-functions/params";
 
 const onedriveClientId = defineSecret("ONEDRIVE_CLIENT_ID");
 const onedriveClientSecret = defineSecret("ONEDRIVE_CLIENT_SECRET");
-const onedriveRefreshToken = defineSecret("ONEDRIVE_REFRESH_TOKEN");
+const onedriveTenantId = defineSecret("ONEDRIVE_TENANT_ID");
 
 let cachedToken: string | null = null;
 let tokenExpiresAt: number = 0;
@@ -17,27 +18,24 @@ async function getOneDriveAccessToken(): Promise<string> {
 
   const clientId = onedriveClientId.value();
   const clientSecret = onedriveClientSecret.value();
-  const refreshToken = onedriveRefreshToken.value();
+  const tenantId = onedriveTenantId.value();
 
-  const tokenUrl = `https://login.microsoftonline.com/consumers/oauth2/v2.0/token`;
+  const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
   const params = new URLSearchParams();
   params.append("client_id", clientId);
   params.append("client_secret", clientSecret);
-  params.append("refresh_token", refreshToken);
-  params.append("grant_type", "refresh_token");
-  params.append("scope", "offline_access Files.ReadWrite User.Read");
+  params.append("scope", "https://graph.microsoft.com/.default");
+  params.append("grant_type", "client_credentials");
 
   const response = await fetch(tokenUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Failed to obtain OneDrive access token (refresh_token): ${response.status} ${errText}`);
+    throw new Error(`Failed to obtain OneDrive access token: ${response.status} ${errText}`);
   }
 
   const data = await response.json() as { access_token: string; expires_in?: number };
@@ -48,15 +46,19 @@ async function getOneDriveAccessToken(): Promise<string> {
   return cachedToken;
 }
 
-export const syncVehiclePhotoToOneDrive = functions
-  .runWith({
-    secrets: [onedriveClientId, onedriveClientSecret, onedriveRefreshToken],
+export const syncVehiclePhotoToOneDrive = onObjectFinalized(
+  {
+    region: "us-central1",
+    memory: "512MiB",
     timeoutSeconds: 300,
-    memory: "512MB",
-  })
-  .storage
-  .object()
-  .onFinalize(async (object: any) => {
+    secrets: [onedriveClientId, onedriveClientSecret, onedriveTenantId],
+  },
+  async (event) => {
+    const object = event.data;
+    if (!object) {
+      return;
+    }
+
     const filePath = object.name;
     if (!filePath || !filePath.startsWith("vehicle_photos/")) {
       return;
@@ -71,15 +73,16 @@ export const syncVehiclePhotoToOneDrive = functions
     const fileName = pathParts[2];
 
     const db = admin.firestore();
-    const bucket = admin.storage().bucket(object.bucket);
+    const bucketName = object.bucket || event.bucket;
+    const bucket = admin.storage().bucket(bucketName);
 
     let attempts = 0;
     const maxRetries = 3;
     let success = false;
     let lastError: any = null;
     let webUrl = "";
-
     let nombreUnidad = unidadId;
+
     try {
       const vehDoc = await db.collection("vehiculos").doc(unidadId).get();
       if (vehDoc.exists) {
@@ -139,6 +142,7 @@ export const syncVehiclePhotoToOneDrive = functions
       attempts++;
       try {
         const token = await getOneDriveAccessToken();
+
         const response = await fetch(graphEndpoint, {
           method: "PUT",
           headers: {
@@ -187,6 +191,7 @@ export const syncVehiclePhotoToOneDrive = functions
             .orderBy("fecha", "desc")
             .limit(1)
             .get();
+
           if (!logsQuery2.empty) {
             await logsQuery2.docs[0].ref.update({
               oneDriveUrl: webUrl,
@@ -212,4 +217,5 @@ export const syncVehiclePhotoToOneDrive = functions
         functions.logger.error("Error writing to sync_failures collection:", failErr);
       }
     }
-  });
+  }
+);
