@@ -7,7 +7,7 @@ const storage_1 = require("firebase-functions/v2/storage");
 const params_1 = require("firebase-functions/params");
 const onedriveClientId = (0, params_1.defineSecret)("ONEDRIVE_CLIENT_ID");
 const onedriveClientSecret = (0, params_1.defineSecret)("ONEDRIVE_CLIENT_SECRET");
-const onedriveTenantId = (0, params_1.defineSecret)("ONEDRIVE_TENANT_ID");
+const onedriveRefreshToken = (0, params_1.defineSecret)("ONEDRIVE_REFRESH_TOKEN");
 let cachedToken = null;
 let tokenExpiresAt = 0;
 async function getOneDriveAccessToken() {
@@ -17,13 +17,14 @@ async function getOneDriveAccessToken() {
     }
     const clientId = onedriveClientId.value();
     const clientSecret = onedriveClientSecret.value();
-    const tenantId = onedriveTenantId.value();
-    const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+    const refreshToken = onedriveRefreshToken.value();
+    const tokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
     const params = new URLSearchParams();
     params.append("client_id", clientId);
     params.append("client_secret", clientSecret);
-    params.append("scope", "https://graph.microsoft.com/.default");
-    params.append("grant_type", "client_credentials");
+    params.append("refresh_token", refreshToken);
+    params.append("grant_type", "refresh_token");
+    params.append("scope", "offline_access Files.ReadWrite User.Read");
     const response = await fetch(tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -37,13 +38,16 @@ async function getOneDriveAccessToken() {
     cachedToken = data.access_token;
     const expiresIn = data.expires_in || 3600;
     tokenExpiresAt = now + (expiresIn * 1000);
+    if (data.refresh_token) {
+        functions.logger.info("New refresh_token received during token rotation. Note: Secret Manager update required to persist.");
+    }
     return cachedToken;
 }
 exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
     region: "us-central1",
     memory: "512MiB",
     timeoutSeconds: 300,
-    secrets: [onedriveClientId, onedriveClientSecret, onedriveTenantId],
+    secrets: [onedriveClientId, onedriveClientSecret, onedriveRefreshToken],
 }, async (event) => {
     const object = event.data;
     if (!object) {
@@ -120,7 +124,7 @@ exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
         functions.logger.error(`Error downloading file ${filePath} from storage:`, err);
         return;
     }
-    const graphEndpoint = `https://graph.microsoft.com/v1.0/users/a632808b-7d8e-430b-9275-9e9560d830e9/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
+    const graphEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
     while (attempts < maxRetries && !success) {
         attempts++;
         try {
