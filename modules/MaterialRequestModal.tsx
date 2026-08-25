@@ -100,14 +100,13 @@ export const MaterialRequestModal = ({
         if (initialData) {
             // Modo Edición: Cargar datos existentes
             setOrigin(initialData.origin);
-            setProjectId(initialData.projectId === 'N/A' ? '' : initialData.projectId);
-            
-            // Set project search text
             const proj = approvedQuotes.find(q => q.id.toString() === initialData.projectId);
             if (proj) {
+                setProjectId(initialData.projectId);
                 setProjectSearch(`#${proj.id.toString().padStart(3, '0')}-${getYearFromDateString(proj.fecha)} | ${proj.empresa}`);
             } else {
-                setProjectSearch('');
+                setProjectId('');
+                setProjectSearch(initialData.projectName && initialData.projectName !== 'SIN PROYECTO' && initialData.projectName !== 'IBUX-CLARO' && initialData.projectName !== 'N/A' ? initialData.projectName : '');
             }
 
             setPlanta(initialData.planta || (initialData as any).plantel || '');
@@ -331,7 +330,7 @@ export const MaterialRequestModal = ({
               return;
           }
       } else {
-          if (!projectId) {
+          if (!projectId && !projectSearch.trim()) {
               setError("Para este origen, el Proyecto Asociado es obligatorio.");
               return;
           }
@@ -347,12 +346,12 @@ export const MaterialRequestModal = ({
         // FIX: Safe navigation for projectCode
         const projectCodeValue = selectedProject 
             ? `#${selectedProject.id.toString().padStart(3, '0')}-${getYearFromDateString(selectedProject.fecha)}` 
-            : 'S/C';
+            : (origin === 'PRIVADO' ? 'PRIVADO' : 'S/C');
 
           const payload = {
               origin: origin.replace(" MANTENIMIENTO", ""),
-              projectId: projectId || (isIBUX ? 'IBUX' : 'N/A'),
-              projectName: selectedProject ? selectedProject.empresa.replace(" MANTENIMIENTO", "") : (isIBUX ? 'IBUX-CLARO' : 'SIN PROYECTO'),
+              projectId: selectedProject ? selectedProject.id.toString() : (projectId || (origin === 'PRIVADO' ? 'MANUAL' : (isIBUX ? 'IBUX' : 'N/A'))),
+              projectName: selectedProject ? selectedProject.empresa.replace(" MANTENIMIENTO", "") : (projectSearch.trim() || (isIBUX ? 'IBUX-CLARO' : 'SIN PROYECTO')),
               projectCode: projectCodeValue,
               // Mantenemos el solicitante original si estamos editando, o el actual si es nuevo
               requestedBy: initialData ? initialData.requestedBy : currentUser.id,

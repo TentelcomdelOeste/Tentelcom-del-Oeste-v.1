@@ -532,8 +532,14 @@ const handleBaseSalaryBlur = () => {
         : valHoraBase * (salaryConfig.ordinaryMultiplier || 1))
     : 0;
 
-  const valHoraExt = valHoraBase * (salaryConfig.extraMultiplier || 1.5);
-  const valHoraFeriado = valHoraBase * (salaryConfig.holidayMultiplier || 2);
+  const valHoraRecargos = selectedEmployee
+    ? (salaryConfig.isManualValHoraRecargos && typeof salaryConfig.manualValHoraRecargos === 'number'
+        ? salaryConfig.manualValHoraRecargos
+        : valHoraBase)
+    : 0;
+
+  const valHoraExt = valHoraRecargos * (salaryConfig.extraMultiplier || 1.5);
+  const valHoraFeriado = valHoraRecargos * (salaryConfig.holidayMultiplier || 2);
 
   const currentOrdinaryHours = ordinaryHours ? parseFloat(ordinaryHours) : 0;
   const currentExtraHoursCount = extraHoursCount ? parseFloat(extraHoursCount) : 0;
@@ -765,8 +771,8 @@ const handleBaseSalaryBlur = () => {
 
   return createPortal(
     <>
-      <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[200] p-4">
-      <div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh] overflow-hidden">
+      <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[200] p-4 sm:p-6">
+      <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh] overflow-hidden">
         <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-[32px] flex-none">
                 <div>
@@ -786,9 +792,9 @@ const handleBaseSalaryBlur = () => {
             {/* Body */}
             <div className="p-6 space-y-5 overflow-y-auto flex-1 custom-scrollbar bg-white">
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     {/* Colaborador */}
-                    <div className="col-span-2">
+                    <div className="col-span-1 sm:col-span-2 md:grid-cols-3">
                                                 <Select
                             label="Colaborador *"
                             options={employeeOptions}
@@ -812,7 +818,7 @@ const handleBaseSalaryBlur = () => {
                     </div>
 
                     {/* Periodo */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Año *</label>
                         <select
                             value={year}
@@ -823,7 +829,7 @@ const handleBaseSalaryBlur = () => {
                         </select>
                     </div>
 
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Mes *</label>
                         <select
                             value={month}
@@ -834,7 +840,7 @@ const handleBaseSalaryBlur = () => {
                         </select>
                     </div>
 
-                    <div className="col-span-2">
+                    <div className="col-span-1 sm:col-span-2 md:col-span-3">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Quincena *</label>
                         <div className="flex bg-slate-100 p-1 rounded-xl">
                             <ActionButton 
@@ -859,7 +865,7 @@ const handleBaseSalaryBlur = () => {
                         const v = canGeneratePaystub(year, month, fortnight);
                         if (!v.allowed && !error) {
                             return (
-                                <div className="col-span-2 bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-2 shadow-sm animate-in fade-in slide-in-from-top-1">
+                                <div className="col-span-1 sm:col-span-2 md:col-span-3 bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-2 shadow-sm animate-in fade-in slide-in-from-top-1">
                                     <FiAlertCircle className="text-amber-500 mt-0.5 shrink-0" size={16} />
                                     <div className="flex flex-col">
                                         <p className="text-[10px] font-black text-amber-700 uppercase tracking-tight">{v.message}</p>
@@ -871,14 +877,14 @@ const handleBaseSalaryBlur = () => {
                         return null;
                     })()}
 
-                    <div className="col-span-2">
+                    <div className="col-span-1 sm:col-span-2 md:col-span-3">
                         <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-2 mb-1 flex items-center gap-2">
                             <FiDollarSign className="text-blue-500" /> Ajustes de Nómina
                         </h4>
                     </div>
 
                     {/* Horas Ordinarias */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Horas Ordinarias</label>
                         <input 
                             type="number" 
@@ -897,7 +903,7 @@ const handleBaseSalaryBlur = () => {
                     </div>
 
                     {/* Horas Extra */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Horas Extra</label>
                         <input 
                             type="number" 
@@ -916,7 +922,7 @@ const handleBaseSalaryBlur = () => {
                     </div>
 
                     {/* Horas Feriado */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Horas Feriado</label>
                         <input 
                             type="number" 
@@ -935,7 +941,7 @@ const handleBaseSalaryBlur = () => {
                     </div>
                     
                     {/* Bonificaciones */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Bonos / Incentivos</label>
                         <input 
                             type="number" 
@@ -948,7 +954,7 @@ const handleBaseSalaryBlur = () => {
                     </div>
 
                     {/* Adelantos */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Adelantos de Salario</label>
                         <input 
                             type="number" 
@@ -961,7 +967,7 @@ const handleBaseSalaryBlur = () => {
                     </div>
 
                     {/* Embargos Legales */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Embargos Legales</label>
                         <input 
                             type="number" 
@@ -974,7 +980,7 @@ const handleBaseSalaryBlur = () => {
                     </div>
 
                     {/* Viáticos */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Viáticos</label>
                         <input 
                             type="number" 
@@ -987,7 +993,7 @@ const handleBaseSalaryBlur = () => {
                     </div>
 
                     {/* Disponibilidad */}
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Plus Disponibilidad</label>
                         <input 
                             type="number" 
@@ -1567,7 +1573,7 @@ const handleBaseSalaryBlur = () => {
               <p className="text-xs font-bold text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
                 ✔️ Los salarios base e individuales de cada colaborador permanecerán intactos. Solo se copiarán los parámetros de configuración de cálculo y se recalcularán sus deducciones de CCSS de forma individual.
               </p>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-52 overflow-y-auto text-xs space-y-1.5 custom-scrollbar">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1.5">
                 <div className="font-bold text-slate-800 border-b border-slate-200 pb-1 mb-2 uppercase tracking-wide text-[10px]">Parámetros que serán copiados:</div>
                 <div className="flex justify-between"><span className="text-slate-500">Horas base mensuales:</span> <span className="font-semibold text-slate-800">{configSalaryDivisor}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">Multiplicador ordinario:</span> <span className="font-semibold text-slate-800">{configOrdinaryMultiplier}</span></div>

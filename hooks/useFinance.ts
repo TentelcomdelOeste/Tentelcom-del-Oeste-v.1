@@ -303,11 +303,10 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
 
       const docId = id || `${stubData.employeeId}_${stubData.year}_${stubData.month}_${stubData.fortnight}`;
       
-      let employee = data.employees.find(e => e.id === stubData.employeeId);
+      let employee = await financeRepository.getEmployeeById(stubData.employeeId);
       
       if (!employee) {
-          // Fallback: Consultar repositorio directamente si no está en caché local
-          employee = await financeRepository.getEmployeeById(stubData.employeeId) || undefined;
+          employee = data.employees.find(e => e.id === stubData.employeeId) || undefined;
       }
 
       if (!employee) throw new Error("Colaborador no encontrado. No se pudo obtener la información salarial.");
