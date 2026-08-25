@@ -436,6 +436,8 @@ const handleBaseSalaryBlur = () => {
           manualValHoraBase: isManualValHoraBase ? (manualValHoraBaseNum ?? undefined) : undefined,
           isManualValHoraOrg: isManualValHoraOrg,
           manualValHoraOrg: isManualValHoraOrg ? (manualValHoraOrgNum ?? undefined) : undefined,
+          isManualValHoraRecargos: isManualValHoraRecargos,
+          manualValHoraRecargos: isManualValHoraRecargos ? (manualValHoraRecargosNum ?? undefined) : undefined,
         }
       }, selectedEmployee.id);
       setShowConfigModal(false);
