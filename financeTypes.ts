@@ -80,7 +80,7 @@ export interface Employee {
 
 export interface SalaryConfiguration {
   salaryDivisor: number;
-  ordinaryHours: number;
+  ordinaryHours?: number;
   ordinaryMultiplier: number;
   extraHours: number;
   extraMultiplier: number;
@@ -93,6 +93,8 @@ export interface SalaryConfiguration {
   manualValHoraBase?: number;
   isManualValHoraOrg?: boolean;
   manualValHoraOrg?: number;
+  isManualValHoraRecargos?: boolean;
+  manualValHoraRecargos?: number;
 }
 
 export interface AbsenceRecord {

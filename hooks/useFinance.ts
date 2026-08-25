@@ -314,7 +314,6 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
 
       const salaryConfig = employee.salaryConfiguration || {
         salaryDivisor: 300,
-        ordinaryHours: 150,
         ordinaryMultiplier: 1,
         extraHours: 0,
         extraMultiplier: 1.5,
@@ -324,10 +323,16 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
 
       const valHoraBase = (employee.baseSalary || 0) / salaryConfig.salaryDivisor;
       const valHoraOrg = valHoraBase * salaryConfig.ordinaryMultiplier;
-      const valHoraExt = valHoraBase * salaryConfig.extraMultiplier;
-      const valHoraFeriado = valHoraBase * salaryConfig.holidayMultiplier;
       
-      const ordinaryHours = stubData.ordinaryHours !== undefined ? stubData.ordinaryHours : (salaryConfig.ordinaryHours || 150);
+      const autoValHoraRecargos = valHoraBase;
+      const valHoraRecargos = (salaryConfig.isManualValHoraRecargos && typeof salaryConfig.manualValHoraRecargos === 'number')
+        ? salaryConfig.manualValHoraRecargos
+        : autoValHoraRecargos;
+
+      const valHoraExt = valHoraRecargos * salaryConfig.extraMultiplier;
+      const valHoraFeriado = valHoraRecargos * salaryConfig.holidayMultiplier;
+      
+      const ordinaryHours = stubData.ordinaryHours !== undefined ? stubData.ordinaryHours : 150;
       const extraHoursCount = stubData.extraHoursCount !== undefined ? stubData.extraHoursCount : (salaryConfig.extraHours || 0);
       const holidayHoursCount = stubData.holidayHoursCount !== undefined ? stubData.holidayHoursCount : (salaryConfig.holidayHours || 0);
 

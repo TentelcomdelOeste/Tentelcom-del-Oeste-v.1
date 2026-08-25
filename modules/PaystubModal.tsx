@@ -55,7 +55,6 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [configOrdinaryHours, setConfigOrdinaryHours] = useState('150');
   const [configSalaryDivisor, setConfigSalaryDivisor] = useState('300');
   const [configOrdinaryMultiplier, setConfigOrdinaryMultiplier] = useState('1');
   const [configExtraMultiplier, setConfigExtraMultiplier] = useState('1.5');
@@ -85,6 +84,14 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
   const [showValHoraOrgConfirm1, setShowValHoraOrgConfirm1] = useState(false);
   const [showValHoraOrgConfirm2, setShowValHoraOrgConfirm2] = useState(false);
   const [pendingValHoraOrg, setPendingValHoraOrg] = useState<number | null>(null);
+
+  const [isManualValHoraRecargos, setIsManualValHoraRecargos] = useState(false);
+  const [manualValHoraRecargosNum, setManualValHoraRecargosNum] = useState<number | null>(null);
+  const [configValHoraRecargosStr, setConfigValHoraRecargosStr] = useState('');
+  const [prevValHoraRecargosStr, setPrevValHoraRecargosStr] = useState('');
+  const [showValHoraRecargosConfirm1, setShowValHoraRecargosConfirm1] = useState(false);
+  const [showValHoraRecargosConfirm2, setShowValHoraRecargosConfirm2] = useState(false);
+  const [pendingValHoraRecargos, setPendingValHoraRecargos] = useState<number | null>(null);
   
   const [showSalaryConfirmModal1, setShowSalaryConfirmModal1] = useState(false);
   const [showSalaryConfirmModal2, setShowSalaryConfirmModal2] = useState(false);
@@ -103,7 +110,6 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
   const salaryConfig = useMemo(() => {
     return selectedEmployee?.salaryConfiguration || {
       salaryDivisor: 300,
-      ordinaryHours: 150,
       ordinaryMultiplier: 1,
       extraHours: 0,
       extraMultiplier: 1.5,
@@ -124,8 +130,13 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
     ? manualValHoraOrgNum
     : autoValHoraOrg;
 
-  const configValHoraExt = configValHoraBase * (parseFloat(configExtraMultiplier) || 1.5);
-  const configValHoraFeriado = configValHoraBase * (parseFloat(configHolidayMultiplier) || 2);
+  const autoValHoraRecargos = configValHoraBase;
+  const configValHoraRecargos = (isManualValHoraRecargos && manualValHoraRecargosNum !== null)
+    ? manualValHoraRecargosNum
+    : autoValHoraRecargos;
+
+  const configValHoraExt = configValHoraRecargos * (parseFloat(configExtraMultiplier) || 1.5);
+  const configValHoraFeriado = configValHoraRecargos * (parseFloat(configHolidayMultiplier) || 2);
 
   const parsedReportado = parseFloat(configReportadoCCSS) || 0;
   const parsedPercentage = parseFloat(configCcssPercentage) || 0;
@@ -142,7 +153,6 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
   const handleOpenConfigModal = () => {
     if (selectedEmployee) {
       const config = selectedEmployee.salaryConfiguration || {};
-      setConfigOrdinaryHours((config.ordinaryHours ?? 150).toString());
       setConfigSalaryDivisor((config.salaryDivisor ?? 300).toString());
       setConfigOrdinaryMultiplier((config.ordinaryMultiplier ?? 1).toString());
       setConfigExtraMultiplier((config.extraMultiplier ?? 1.5).toString());
@@ -167,8 +177,16 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
       setConfigValHoraOrgStr(activeOrg.toFixed(2));
       setPrevValHoraOrgStr(activeOrg.toFixed(2));
 
-      setConfigExtraValueStr((activeBase * (config.extraMultiplier ?? 1.5)).toFixed(2));
-      setConfigHolidayValueStr((activeBase * (config.holidayMultiplier ?? 2)).toFixed(2));
+      const autoRecargos = activeBase;
+      const hasManualRecargos = Boolean(config.isManualValHoraRecargos && typeof config.manualValHoraRecargos === 'number');
+      const activeRecargos = hasManualRecargos ? config.manualValHoraRecargos! : autoRecargos;
+      setIsManualValHoraRecargos(hasManualRecargos);
+      setManualValHoraRecargosNum(hasManualRecargos ? config.manualValHoraRecargos! : null);
+      setConfigValHoraRecargosStr(activeRecargos.toFixed(2));
+      setPrevValHoraRecargosStr(activeRecargos.toFixed(2));
+
+      setConfigExtraValueStr((activeRecargos * (config.extraMultiplier ?? 1.5)).toFixed(2));
+      setConfigHolidayValueStr((activeRecargos * (config.holidayMultiplier ?? 2)).toFixed(2));
       
       setConfigBaseSalary(baseSal.toString());
       setConfigReportadoCCSS((selectedEmployee.reportadoCCSS || baseSal).toString());
@@ -183,28 +201,28 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
   const handleConfigExtraMultiplierChange = (val: string) => {
     setConfigExtraMultiplier(val);
     const m = parseFloat(val) || 0;
-    setConfigExtraValueStr((configValHoraBase * m).toFixed(2));
+    setConfigExtraValueStr((configValHoraRecargos * m).toFixed(2));
   };
   
   const handleConfigExtraValueChange = (val: string) => {
     setConfigExtraValueStr(val);
     const v = parseFloat(val) || 0;
-    if (configValHoraBase > 0) {
-      setConfigExtraMultiplier((v / configValHoraBase).toString());
+    if (configValHoraRecargos > 0) {
+      setConfigExtraMultiplier((v / configValHoraRecargos).toString());
     }
   };
 
   const handleConfigHolidayMultiplierChange = (val: string) => {
     setConfigHolidayMultiplier(val);
     const m = parseFloat(val) || 0;
-    setConfigHolidayValueStr((configValHoraBase * m).toFixed(2));
+    setConfigHolidayValueStr((configValHoraRecargos * m).toFixed(2));
   };
   
   const handleConfigHolidayValueChange = (val: string) => {
     setConfigHolidayValueStr(val);
     const v = parseFloat(val) || 0;
-    if (configValHoraBase > 0) {
-      setConfigHolidayMultiplier((v / configValHoraBase).toString());
+    if (configValHoraRecargos > 0) {
+      setConfigHolidayMultiplier((v / configValHoraRecargos).toString());
     }
   };
 
@@ -221,12 +239,17 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
         setConfigValHoraOrgStr(str);
         setPrevValHoraOrgStr(str);
       }
-      if (configValHoraBase > 0) {
-        setConfigExtraValueStr((configValHoraBase * (parseFloat(configExtraMultiplier) || 0)).toFixed(2));
-        setConfigHolidayValueStr((configValHoraBase * (parseFloat(configHolidayMultiplier) || 0)).toFixed(2));
+      if (!isManualValHoraRecargos) {
+        const str = autoValHoraRecargos.toFixed(2);
+        setConfigValHoraRecargosStr(str);
+        setPrevValHoraRecargosStr(str);
+      }
+      if (configValHoraRecargos > 0) {
+        setConfigExtraValueStr((configValHoraRecargos * (parseFloat(configExtraMultiplier) || 0)).toFixed(2));
+        setConfigHolidayValueStr((configValHoraRecargos * (parseFloat(configHolidayMultiplier) || 0)).toFixed(2));
       }
     }
-  }, [configValHoraBase, showConfigModal, isManualValHoraBase, isManualValHoraOrg, autoValHoraBase, autoValHoraOrg, configExtraMultiplier, configHolidayMultiplier]);
+  }, [configValHoraBase, configValHoraRecargos, showConfigModal, isManualValHoraBase, isManualValHoraOrg, isManualValHoraRecargos, autoValHoraBase, autoValHoraOrg, autoValHoraRecargos, configExtraMultiplier, configHolidayMultiplier]);
 
   const handleValHoraBaseBlur = () => {
     const currentVal = parseFloat(configValHoraBaseStr);
@@ -328,6 +351,55 @@ export const PaystubModal: React.FC<PaystubModalProps> = ({
     setPrevValHoraOrgStr(str);
   };
 
+  const handleValHoraRecargosBlur = () => {
+    const currentVal = parseFloat(configValHoraRecargosStr);
+    const currentActive = isManualValHoraRecargos && manualValHoraRecargosNum !== null
+      ? manualValHoraRecargosNum
+      : autoValHoraRecargos;
+
+    if (!isNaN(currentVal) && Math.abs(currentVal - currentActive) > 0.001) {
+      setPendingValHoraRecargos(currentVal);
+      setShowValHoraRecargosConfirm1(true);
+    } else if (isNaN(currentVal)) {
+      setConfigValHoraRecargosStr(currentActive.toFixed(2));
+    }
+  };
+
+  const handleCancelValHoraRecargosConfirm = () => {
+    setShowValHoraRecargosConfirm1(false);
+    setShowValHoraRecargosConfirm2(false);
+    setPendingValHoraRecargos(null);
+    setConfigValHoraRecargosStr(prevValHoraRecargosStr);
+  };
+
+  const handleConfirmValHoraRecargos1 = () => {
+    setShowValHoraRecargosConfirm1(false);
+    setShowValHoraRecargosConfirm2(true);
+  };
+
+  const handleConfirmValHoraRecargos2 = () => {
+    if (pendingValHoraRecargos !== null) {
+      setIsManualValHoraRecargos(true);
+      setManualValHoraRecargosNum(pendingValHoraRecargos);
+      const str = pendingValHoraRecargos.toFixed(2);
+      setConfigValHoraRecargosStr(str);
+      setPrevValHoraRecargosStr(str);
+
+      setConfigExtraValueStr((pendingValHoraRecargos * (parseFloat(configExtraMultiplier) || 1.5)).toFixed(2));
+      setConfigHolidayValueStr((pendingValHoraRecargos * (parseFloat(configHolidayMultiplier) || 2)).toFixed(2));
+    }
+    setShowValHoraRecargosConfirm2(false);
+    setPendingValHoraRecargos(null);
+  };
+
+  const handleResetValHoraRecargos = () => {
+    setIsManualValHoraRecargos(false);
+    setManualValHoraRecargosNum(null);
+    const str = autoValHoraRecargos.toFixed(2);
+    setConfigValHoraRecargosStr(str);
+    setPrevValHoraRecargosStr(str);
+  };
+
 const handleBaseSalaryBlur = () => {
     if (!selectedEmployee) return;
     const isSalaryChanged = parsedConfigBaseSalary !== (selectedEmployee.baseSalary || 0);
@@ -352,7 +424,6 @@ const handleBaseSalaryBlur = () => {
         ccssDeductionQuincenal: calculatedCcssFortnightly,
         salaryConfiguration: {
           salaryDivisor: parseFloat(configSalaryDivisor) || 300,
-          ordinaryHours: parseFloat(configOrdinaryHours) || 150,
           ordinaryMultiplier: parseFloat(configOrdinaryMultiplier) || 1,
           extraHours: parseFloat(extraHoursCount) || 0,
           extraMultiplier: parseFloat(configExtraMultiplier) || 1.5,
@@ -391,7 +462,6 @@ const handleBaseSalaryBlur = () => {
     try {
       const newSalaryConfig = {
         salaryDivisor: parseFloat(configSalaryDivisor) || 300,
-        ordinaryHours: parseFloat(configOrdinaryHours) || 150,
         ordinaryMultiplier: parseFloat(configOrdinaryMultiplier) || 1,
         extraHours: parseFloat(extraHoursCount) || 0,
         extraMultiplier: parseFloat(configExtraMultiplier) || 1.5,
@@ -404,6 +474,8 @@ const handleBaseSalaryBlur = () => {
         manualValHoraBase: isManualValHoraBase ? (manualValHoraBaseNum ?? undefined) : undefined,
         isManualValHoraOrg: isManualValHoraOrg,
         manualValHoraOrg: isManualValHoraOrg ? (manualValHoraOrgNum ?? undefined) : undefined,
+        isManualValHoraRecargos: isManualValHoraRecargos,
+        manualValHoraRecargos: isManualValHoraRecargos ? (manualValHoraRecargosNum ?? undefined) : undefined,
       };
 
       let successCount = 0;
@@ -477,7 +549,6 @@ const handleBaseSalaryBlur = () => {
   useEffect(() => {
     if (show && !payStubToEdit && selectedEmployee) {
       const config = selectedEmployee.salaryConfiguration;
-      setOrdinaryHours(config?.ordinaryHours?.toString() || '150');
       setExtraHoursCount(config?.extraHours?.toString() || '0');
       setHolidayHoursCount(config?.holidayHours?.toString() || '0');
     }
@@ -1077,10 +1148,6 @@ const handleBaseSalaryBlur = () => {
                       {/* Campos de Configuración */}
                       <div className="space-y-3">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">Horas por quincena:</label>
-                          <input type="number" value={configOrdinaryHours} onChange={e => setConfigOrdinaryHours(e.target.value)} className="w-full text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors p-2" />
-                        </div>
-                        <div>
                           <label className="block text-xs font-semibold text-slate-700 mb-1">Horas base mensuales:</label>
                           <input type="number" value={configSalaryDivisor} onChange={e => setConfigSalaryDivisor(e.target.value)} className="w-full text-sm border-slate-200 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors p-2" />
                         </div>
@@ -1167,8 +1234,45 @@ const handleBaseSalaryBlur = () => {
                   </div>
                 </div>
 
-                {/* Panel 2: Horas Extra, Feriado & Resumen */}
+                {/* Panel 2: Valor Hora Recargos, Horas Extra, Feriado & Resumen */}
                 <div className="space-y-5 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+                  <div>
+                    <h4 className="text-[11px] font-bold text-amber-600 mb-3 border-b border-amber-100 pb-2 uppercase tracking-wider flex items-center gap-2">
+                      <span>Valor Hora para Recargos</span>
+                    </h4>
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs font-semibold text-slate-700">Valor hora para recargos:</label>
+                        {isManualValHoraRecargos && (
+                          <button
+                            type="button"
+                            onClick={handleResetValHoraRecargos}
+                            className="text-[10px] font-bold text-amber-600 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded transition-colors"
+                            title="Restaurar a valor hora base"
+                          >
+                            Autocalcular
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">₡</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={configValHoraRecargosStr}
+                          onChange={e => setConfigValHoraRecargosStr(e.target.value)}
+                          onBlur={handleValHoraRecargosBlur}
+                          className={`w-full pl-7 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-amber-400 bg-slate-50 focus:bg-white transition-colors ${
+                            isManualValHoraRecargos ? 'border-amber-400 text-amber-900 bg-amber-50/30' : 'border-slate-200 text-slate-800'
+                          }`}
+                        />
+                      </div>
+                      {isManualValHoraRecargos && (
+                        <span className="text-[9px] text-amber-700 font-medium block mt-1">⚠️ Valor fijado manualmente</span>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
                     <h4 className="text-[11px] font-bold text-amber-600 mb-3 border-b border-amber-100 pb-2 uppercase tracking-wider flex items-center gap-2">
                       <span>Horas Extra</span>
@@ -1221,6 +1325,10 @@ const handleBaseSalaryBlur = () => {
                       <div className="flex justify-between items-center pt-1.5 border-t border-slate-200/60">
                         <span className="text-slate-600">Valor hora ordinaria:</span>
                         <span className="font-bold text-blue-700">₡{configValHoraOrg.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Valor hora para recargos:</span>
+                        <span className="font-bold text-amber-800">₡{configValHoraRecargos.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-slate-600">Valor hora extra:</span>
@@ -1421,6 +1529,26 @@ const handleBaseSalaryBlur = () => {
           variant="danger"
       />
 
+      {/* Modales de Confirmación para Valor Hora para Recargos */}
+      <ConfirmModal
+          show={showValHoraRecargosConfirm1}
+          onClose={handleCancelValHoraRecargosConfirm}
+          onConfirm={handleConfirmValHoraRecargos1}
+          title="¿MODIFICAR VALOR HORA PARA RECARGOS?"
+          description={`Has cambiado manualmente el Valor Hora para Recargos.\n\nAnterior: ₡${(isManualValHoraRecargos && manualValHoraRecargosNum !== null ? manualValHoraRecargosNum : autoValHoraRecargos).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nNuevo: ₡${(pendingValHoraRecargos || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\nEste valor manual reemplazará el cálculo automático (Valor Hora Base) para recargos. ¿Deseas continuar?`}
+          confirmLabel="CONTINUAR"
+          variant="warning"
+      />
+      <ConfirmModal
+          show={showValHoraRecargosConfirm2}
+          onClose={handleCancelValHoraRecargosConfirm}
+          onConfirm={handleConfirmValHoraRecargos2}
+          title="CONFIRMACIÓN FINAL - VALOR HORA PARA RECARGOS"
+          description={`Esta es la confirmación definitiva para establecer manualmente el Valor Hora para Recargos en ₡${(pendingValHoraRecargos || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\n\n¿Confirmas que deseas aplicar este cambio personalizado?`}
+          confirmLabel="CONFIRMAR Y APLICAR"
+          variant="danger"
+      />
+
       <ConfirmModal
           show={showBulkConfirmModal1}
           onClose={() => setShowBulkConfirmModal1(false)}
@@ -1439,7 +1567,6 @@ const handleBaseSalaryBlur = () => {
               </p>
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-52 overflow-y-auto text-xs space-y-1.5 custom-scrollbar">
                 <div className="font-bold text-slate-800 border-b border-slate-200 pb-1 mb-2 uppercase tracking-wide text-[10px]">Parámetros que serán copiados:</div>
-                <div className="flex justify-between"><span className="text-slate-500">Horas por quincena:</span> <span className="font-semibold text-slate-800">{configOrdinaryHours}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">Horas base mensuales:</span> <span className="font-semibold text-slate-800">{configSalaryDivisor}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">Multiplicador ordinario:</span> <span className="font-semibold text-slate-800">{configOrdinaryMultiplier}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">Valor hora base:</span> <span className="font-bold text-slate-800">₡{configValHoraBase.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
