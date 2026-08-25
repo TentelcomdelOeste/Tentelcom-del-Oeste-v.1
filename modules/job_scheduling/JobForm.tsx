@@ -377,7 +377,6 @@ export const JobForm: React.FC<JobFormProps> = ({
     else if (!formData.hora_inicio || !formData.hora_fin) validationError = 'Las horas son obligatorias';
     else if (!formData.ubicacion?.trim()) validationError = 'La ubicación es obligatoria';
     else if (!formData.cuadrilla || formData.cuadrilla.length === 0) validationError = "Debe asignar al menos una persona en la cuadrilla";
-    else if (!formData.unidades || formData.unidades.length === 0) validationError = "Debe asignar al menos una unidad";
 
     if (validationError) {
       setError(validationError);
