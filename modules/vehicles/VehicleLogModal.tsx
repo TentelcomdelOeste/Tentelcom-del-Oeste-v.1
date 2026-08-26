@@ -862,7 +862,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     {/* SECCIÓN DE FOTOGRAFÍA Y REVISIÓN DE UNIDAD */}
                     {(() => {
                         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-                        const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotoUrls.length > 0 || selectedPhotoFiles.length > 0);
+                        const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotos.length > 0 || selectedPhotoFiles.length > 0);
                         const shouldShowPhotoAndInspection = isPhotoRequired || hasExistingPhotoOrInspection || manualPhotoRequested;
 
                         if (!shouldShowPhotoAndInspection) {
@@ -899,7 +899,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                             <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title={initialData.oneDriveSyncError}>
                                                 ⚠️ Error OneDrive
                                             </span>
-                                        ) : (initialData?.photoStoragePath || initialData?.photoTimestamp || existingPhotoUrls.length > 0) ? (
+                                        ) : (initialData?.photoStoragePath || initialData?.photoTimestamp || existingPhotos.length > 0) ? (
                                             <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Guardada en Storage, pendiente de sincronización secundaria">
                                                 ☁️ Sincronizando OneDrive...
                                             </span>
@@ -924,7 +924,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                             onClick={() => galleryInputRef.current?.click()}
                                             className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg"
                                         />
-                                        {!isPhotoRequired && !initialData?.photoStoragePath && !initialData?.photoTimestamp && !initialData?.revisionUnidad && existingPhotoUrls.length === 0 && selectedPhotoFiles.length === 0 && manualPhotoRequested && (
+                                        {!isPhotoRequired && !initialData?.photoStoragePath && !initialData?.photoTimestamp && !initialData?.revisionUnidad && existingPhotos.length === 0 && selectedPhotoFiles.length === 0 && manualPhotoRequested && (
                                             <IconButton
                                                 icon={<FiX size={14} />}
                                                 onClick={() => setManualPhotoRequested(false)}
@@ -1347,7 +1347,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     />
                     {(() => {
                         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotoUrls.length === 0;
+                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotos.length === 0;
                         const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
                         return (
                             <ActionButton
