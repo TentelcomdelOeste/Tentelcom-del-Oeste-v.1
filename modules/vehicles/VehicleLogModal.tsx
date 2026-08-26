@@ -99,7 +99,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
     const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
-    const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
+    const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]);
     const [photoLoading, setPhotoLoading] = useState(false);
     const takePhotoInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -107,37 +107,47 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     useEffect(() => {
         const loadExistingPhoto = async () => {
             if (!initialData) return;
-            const path = initialData.photoStoragePath || 
-                (initialData.photoTimestamp && (initialData.unidad || formData.unidad) 
-                    ? `vehicle_photos/${initialData.unidad || formData.unidad}/${initialData.photoTimestamp}_0.jpg` 
-                    : null);
+            
+            // Usar photoStoragePaths si existe (array de todas), sino caer a la primera
+            const paths = initialData.photoStoragePaths && initialData.photoStoragePaths.length > 0
+                ? initialData.photoStoragePaths
+                : initialData.photoStoragePath 
+                    ? [initialData.photoStoragePath]
+                    : [];
 
-            if (!path) {
+            if (paths.length === 0) {
                 if (initialData.oneDriveUrl) {
-                    setExistingPhotoUrl(initialData.oneDriveUrl);
+                    setExistingPhotoUrls([initialData.oneDriveUrl]);
                 }
                 return;
             }
 
             setPhotoLoading(true);
             try {
-                if (networkProbe.isOnline()) {
-                    const { storage } = await import('../../firebase');
-                    const { ref, getDownloadURL } = await import('firebase/storage');
-                    const url = await getDownloadURL(ref(storage, path));
-                    setExistingPhotoUrl(url);
-                } else {
-                    const { getBlob } = await import('../../services/offlineMediaStore');
-                    const blob = await getBlob(path);
-                    if (blob) {
-                        const url = URL.createObjectURL(blob);
-                        setExistingPhotoUrl(url);
+                const urls: string[] = [];
+                for (const path of paths) {
+                    try {
+                        if (networkProbe.isOnline()) {
+                            const { storage } = await import('../../firebase');
+                            const { ref, getDownloadURL } = await import('firebase/storage');
+                            const url = await getDownloadURL(ref(storage, path));
+                            urls.push(url);
+                        } else {
+                            const { getBlob } = await import('../../services/offlineMediaStore');
+                            const blob = await getBlob(path);
+                            if (blob) {
+                                urls.push(URL.createObjectURL(blob));
+                            }
+                        }
+                    } catch (err) {
+                        console.warn(`Could not load photo ${path}:`, err);
                     }
                 }
+                setExistingPhotoUrls(urls);
             } catch (err) {
-                console.warn("Could not load existing photo from Storage, trying oneDriveUrl fallback:", err);
+                console.error("Error loading photos:", err);
                 if (initialData.oneDriveUrl) {
-                    setExistingPhotoUrl(initialData.oneDriveUrl);
+                    setExistingPhotoUrls([initialData.oneDriveUrl]);
                 }
             } finally {
                 setPhotoLoading(false);
@@ -571,7 +581,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         };
 
         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && !existingPhotoUrl) {
+        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotoUrls.length === 0) {
             setIsLoading(false);
             await confirm({
                 title: 'Fotografía de Bitácora Requerida',
@@ -791,7 +801,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title={initialData.oneDriveSyncError}>
                                         ⚠️ Error al Sincronizar con OneDrive
                                     </span>
-                                ) : (initialData?.photoStoragePath || initialData?.photoTimestamp || existingPhotoUrl) ? (
+                                ) : (initialData?.photoStoragePath || initialData?.photoTimestamp || existingPhotoUrls.length > 0) ? (
                                     <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Guardada en Storage, pendiente de sincronización secundaria con OneDrive">
                                         ☁️ Sincronizando con OneDrive...
                                     </span>
@@ -836,12 +846,20 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 </div>
                             )}
 
-                            {existingPhotoUrl && !photoLoading && selectedPhotoFiles.length === 0 && (
-                                <div className="relative w-28 h-28 rounded-xl overflow-hidden border-2 border-slate-300 shadow-md group">
-                                    <img src={existingPhotoUrl} alt="Bitácora" className="w-full h-full object-cover" />
-                                    <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[9px] text-center py-0.5 font-bold truncate px-1">
-                                        Firebase Storage
-                                    </div>
+                            {existingPhotoUrls.length > 0 && !photoLoading && selectedPhotoFiles.length === 0 && (
+                                <div className="flex gap-2 flex-wrap">
+                                    {existingPhotoUrls.map((url, idx) => (
+                                        <div key={idx} className="relative w-28 h-28 rounded-xl overflow-hidden border-2 border-slate-300 shadow-md group">
+                                            <img 
+                                                src={url} 
+                                                alt={`Foto ${idx + 1}`} 
+                                                className="w-full h-full object-cover" 
+                                            />
+                                            <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[9px] text-center py-0.5 font-bold truncate px-1">
+                                                Foto {idx + 1}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
 
@@ -864,7 +882,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 );
                             })}
 
-                            {!existingPhotoUrl && !photoLoading && selectedPhotoFiles.length === 0 && (
+                            {existingPhotoUrls.length === 0 && !photoLoading && selectedPhotoFiles.length === 0 && (
                                 <div className="w-full py-6 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 bg-white">
                                     <span className="text-xs font-semibold">No se ha seleccionado ninguna fotografía</span>
                                     <span className="text-[10px] text-slate-400 mt-1">Utilice los botones superiores para capturar o seleccionar una imagen</span>
@@ -1118,7 +1136,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     />
                     {(() => {
                         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && !existingPhotoUrl;
+                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotoUrls.length === 0;
                         const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
                         return (
                             <ActionButton
