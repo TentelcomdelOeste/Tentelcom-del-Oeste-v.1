@@ -6,6 +6,65 @@ export interface VehiclePhotoPolicyOverride {
   disabled?: boolean;
 }
 
+/**
+ * Calculates deadline adding a specific number of BUSINESS DAYS (Monday to Friday).
+ * If startDate is on a weekend (Saturday/Sunday), counting starts on the next Monday.
+ * If businessDays is 0, the deadline is the current date (or next Monday if weekend).
+ * The resulting deadline will ALWAYS fall on a weekday (Monday to Friday).
+ */
+export function calculateBusinessDaysDeadline(startDate: Date, businessDays: number): Date {
+  const result = new Date(startDate.getTime());
+  
+  if (businessDays <= 0) {
+    // If weekend, move to next Monday
+    const dow = result.getDay();
+    if (dow === 6) {
+      result.setDate(result.getDate() + 2);
+    } else if (dow === 0) {
+      result.setDate(result.getDate() + 1);
+    }
+    return result;
+  }
+
+  let added = 0;
+  while (added < businessDays) {
+    result.setDate(result.getDate() + 1);
+    const dow = result.getDay();
+    // Monday(1) to Friday(5) are business days. Saturday(6) and Sunday(0) are skipped.
+    if (dow !== 0 && dow !== 6) {
+      added++;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Counts the number of remaining BUSINESS DAYS between two dates (fromDate -> toDate).
+ * Excludes weekends. Returns 0 if fromDate is already past or equal to toDate.
+ */
+export function calculateRemainingBusinessDays(fromDate: Date, toDate: Date): number {
+  if (fromDate.getTime() >= toDate.getTime()) {
+    return 0;
+  }
+  
+  const current = new Date(fromDate.getTime());
+  // Normalize current date to start of next day for counting
+  current.setHours(0, 0, 0, 0);
+  const target = new Date(toDate.getTime());
+  target.setHours(0, 0, 0, 0);
+
+  let businessDays = 0;
+  while (current < target) {
+    current.setDate(current.getDate() + 1);
+    const dow = current.getDay();
+    if (dow !== 0 && dow !== 6) {
+      businessDays++;
+    }
+  }
+  return businessDays;
+}
+
 export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
   vencida: boolean;
   intervalDays: number;
@@ -108,16 +167,7 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
     }
 
     const ultimaFotoDate = new Date(ultimaFotoMs);
-    const fechaLimite = new Date(ultimaFotoMs);
-    fechaLimite.setDate(fechaLimite.getDate() + effectiveInterval);
-
-    // If fechaLimite falls on Saturday (6) or Sunday (0), adjust to next Monday
-    const dayOfWeek = fechaLimite.getDay();
-    if (dayOfWeek === 6) {
-      fechaLimite.setDate(fechaLimite.getDate() + 2);
-    } else if (dayOfWeek === 0) {
-      fechaLimite.setDate(fechaLimite.getDate() + 1);
-    }
+    const fechaLimite = calculateBusinessDaysDeadline(ultimaFotoDate, effectiveInterval);
 
     const today = new Date();
     const vencida = today.getTime() >= fechaLimite.getTime();

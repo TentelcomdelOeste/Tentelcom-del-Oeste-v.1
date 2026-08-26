@@ -829,7 +829,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 <div className="flex items-center justify-between bg-slate-50 p-2.5 px-3 rounded-xl border border-slate-200 text-xs">
                                     <div className="flex items-center gap-2 text-slate-500">
                                         <span className="text-[11px] font-bold uppercase text-slate-700">📷 Fotografía y Revisión de Unidad</span>
-                                        <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-semibold">Al día ({photoPolicyStatus.intervalDays} días)</span>
+                                        <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-semibold">Al día ({photoPolicyStatus.intervalDays} días laborales)</span>
                                     </div>
                                     <ActionButton
                                         type="button"
