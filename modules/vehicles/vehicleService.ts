@@ -167,9 +167,22 @@ export const saveVehicleLog = async (
         sanitizedData.photoTimestamp = timestamp;
         const paths: string[] = [];
 
+        const rawUserName = currentUser.name || currentUser.email || currentUser.id || 'Usuario';
+        const userName = rawUserName
+            .trim()
+            .replace(/[^a-zA-Z0-9À-ÿ]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'Usuario';
+        const date = new Date(timestamp);
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const hh = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+
         for (let i = 0; i < photoFiles.length; i++) {
             const photoFile = photoFiles[i];
-            const storagePath = `vehicle_photos/${unidadName}/${timestamp}_${i}.jpg`;
+            const photoFileName = `${yyyy}-${mm}-${dd}_${userName}_${hh}${min}_${timestamp}_${i}.jpg`;
+            const storagePath = `vehicle_photos/${unidadName}/${photoFileName}`;
             paths.push(storagePath);
             if (i === 0) {
                 sanitizedData.photoStoragePath = storagePath;
@@ -191,7 +204,7 @@ export const saveVehicleLog = async (
                     const checksum = await calculateBlobChecksum(compressedBlob);
                     await pdfOfflineQueue.enqueuePdfUpload(
                         storagePath,
-                        `${unidadName}_${timestamp}_${i}.jpg`,
+                        photoFileName,
                         'image/jpeg',
                         'vehicles',
                         'bitacora_vehiculos',

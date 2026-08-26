@@ -133,25 +133,6 @@ exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
         functions.logger.warn(`Could not resolve unit name for ${unidadId}, using ID:`, e);
     }
     nombreUnidad = nombreUnidad.replace(/[/\\?%*:|"<>]/g, "-");
-    let fileDate = new Date();
-    if (object.timeCreated) {
-        fileDate = new Date(object.timeCreated);
-    }
-    else {
-        const tsMatch = fileName.match(/^(\d+)/);
-        if (tsMatch) {
-            const num = parseInt(tsMatch[1], 10);
-            if (!isNaN(num)) {
-                fileDate = new Date(num > 1e12 ? num : num * 1000);
-            }
-        }
-    }
-    const yyyy = fileDate.getFullYear();
-    const mm = String(fileDate.getMonth() + 1).padStart(2, "0");
-    const dd = String(fileDate.getDate()).padStart(2, "0");
-    const hh = String(fileDate.getHours()).padStart(2, "0");
-    const min = String(fileDate.getMinutes()).padStart(2, "0");
-    const formattedFileName = `${yyyy}-${mm}-${dd}_${hh}${min}.jpg`;
     let fileBuffer;
     try {
         const [buffer] = await bucket.file(filePath).download();
@@ -161,7 +142,7 @@ exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
         functions.logger.error(`Error downloading file ${filePath} from storage:`, err);
         return;
     }
-    const graphEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(formattedFileName)}:/content`;
+    const graphEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(fileName)}:/content`;
     while (attempts < maxRetries && !success) {
         attempts++;
         try {
@@ -191,7 +172,7 @@ exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
         }
     }
     if (success) {
-        functions.logger.info(`Successfully synced ${filePath} to OneDrive (${nombreUnidad}/${formattedFileName})`);
+        functions.logger.info(`Successfully synced ${filePath} to OneDrive (${nombreUnidad}/${fileName})`);
         try {
             const nowIso = new Date().toISOString();
             const logsQuery = await db
