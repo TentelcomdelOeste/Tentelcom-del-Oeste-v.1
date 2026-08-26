@@ -637,9 +637,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             totalLitros = validRecargas.reduce((sum, r) => sum + (r.litros || 0), 0);
         }
 
-        const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
+        const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
         const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotos.length > 0 || selectedPhotoFiles.length > 0);
-        const shouldSaveInspection = isPhotoRequired || manualPhotoRequested || hasExistingPhotoOrInspection;
+        const shouldSaveInspection = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested || hasExistingPhotoOrInspection);
 
         const dataToSave = {
             ...formData,
@@ -861,7 +861,13 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
                     {/* SECCIÓN DE FOTOGRAFÍA Y REVISIÓN DE UNIDAD */}
                     {(() => {
-                        const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
+                        // REGLA ABSOLUTA: Si la política global está desactivada (o la unidad está excluida / disabled),
+                        // NO mostrar Fotografía ni Revisión de Unidad bajo ninguna condición.
+                        if (photoPolicyStatus.disabled) {
+                            return null;
+                        }
+
+                        const isPhotoRequired = photoPolicyStatus.vencida;
                         const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotos.length > 0 || selectedPhotoFiles.length > 0);
                         const shouldShowPhotoAndInspection = isPhotoRequired || hasExistingPhotoOrInspection || manualPhotoRequested;
 
@@ -1346,7 +1352,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         className="flex-1 !py-3 !text-[10px] !font-bold !uppercase !rounded-xl"
                     />
                     {(() => {
-                        const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
+                        const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
                         const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotos.length === 0;
                         const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
                         return (
