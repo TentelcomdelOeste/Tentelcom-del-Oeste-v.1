@@ -1,5 +1,5 @@
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
 import { db, storage } from '../../firebase';
 import { pdfOfflineQueue } from './pdfOfflineQueue';
 import { pdfFileEngine } from './pdfFileEngine';
@@ -133,6 +133,21 @@ export async function runPdfSyncCycle(): Promise<void> {
                 let finalDownloadUrl = alreadyUploadedUrl;
 
                 if (!alreadyUploadedPath) {
+                    // Para fotos de vehículos, recuperamos el nombre completo de la unidad
+                    // (ej. "U1 - NISSAN PATHFINDER - 532995") desde el registro de bitácora,
+                    // para que la función de sincronización a OneDrive nombre la carpeta correctamente.
+                    let unidadCompleta: string | undefined;
+                    if (entry.module === 'vehicles' && entry.targetDocId && entry.targetDocId !== 'temp_id') {
+                        try {
+                            const bitacoraSnap = await getDoc(doc(db, 'bitacora_vehiculos', entry.targetDocId));
+                            if (bitacoraSnap.exists()) {
+                                unidadCompleta = bitacoraSnap.data()?.unidadId as string | undefined;
+                            }
+                        } catch (e) {
+                            console.warn('[PdfStorageSync] No se pudo resolver unidadCompleta para metadata:', e);
+                        }
+                    }
+
                     // Subir archivo real con protección de timeout estricto
                     console.log(`[PdfStorageSync] Subiendo archivo "${entry.fileName}" a "${firebasePath}"...`);
                     const uploadPromise = uploadBytes(storageRef, blob, {
@@ -140,7 +155,8 @@ export async function runPdfSyncCycle(): Promise<void> {
                         customMetadata: {
                             checksum: entry.checksum,
                             module: entry.module,
-                            targetDocId: entry.targetDocId
+                            targetDocId: entry.targetDocId,
+                            ...(unidadCompleta ? { unidadCompleta } : {})
                         }
                     });
 

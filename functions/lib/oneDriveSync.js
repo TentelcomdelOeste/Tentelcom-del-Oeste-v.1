@@ -8,6 +8,14 @@ const params_1 = require("firebase-functions/params");
 const secret_manager_1 = require("@google-cloud/secret-manager");
 const onedriveClientId = (0, params_1.defineSecret)("ONEDRIVE_CLIENT_ID");
 const onedriveRefreshToken = (0, params_1.defineSecret)("ONEDRIVE_REFRESH_TOKEN");
+// Carpeta compartida "UNIDADES DE TRANSPORTE" (cuenta distinta a la autenticada,
+// compartida con el usuario de la app). Resuelto vía /me/drive/sharedWithMe.
+const SHARED_DRIVE_ID = "451f019285d318ef";
+const SHARED_FOLDER_ITEM_ID = "451F019285D318EF!sa1c0bdf02d4546d28609a3ad961ce0b6";
+const MESES_ES = [
+    "01-Enero", "02-Febrero", "03-Marzo", "04-Abril", "05-Mayo", "06-Junio",
+    "07-Julio", "08-Agosto", "09-Septiembre", "10-Octubre", "11-Noviembre", "12-Diciembre",
+];
 const secretManagerClient = new secret_manager_1.SecretManagerServiceClient();
 let cachedAccessToken = null;
 let tokenExpiresAt = 0;
@@ -105,34 +113,42 @@ exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
     let lastError = null;
     let webUrl = "";
     let nombreUnidad = unidadId;
-    try {
-        const vehDoc = await db.collection("vehiculos").doc(unidadId).get();
-        if (vehDoc.exists) {
-            const vData = vehDoc.data();
+    // 1. Preferir el nombre completo de la unidad tal como se ve en el sistema
+    // (ej. "U1 - NISSAN PATHFINDER - 532995"), enviado como metadato al subir la foto.
+    const metadataUnidadCompleta = object.metadata?.unidadCompleta;
+    if (metadataUnidadCompleta) {
+        nombreUnidad = metadataUnidadCompleta;
+    }
+    else {
+        // 2. Fallback: resolver contra la colección 'vehiculos' (puede estar desactualizada).
+        try {
+            const vehDoc = await db.collection("vehiculos").doc(unidadId).get();
+            let vData = vehDoc.exists ? vehDoc.data() : undefined;
+            if (!vData) {
+                const qVeh = await db
+                    .collection("vehiculos")
+                    .where("unidad", "==", unidadId)
+                    .limit(1)
+                    .get();
+                if (!qVeh.empty) {
+                    vData = qVeh.docs[0].data();
+                }
+            }
             if (vData) {
                 const uCode = vData.unidad || unidadId;
+                const uModelo = vData.modelo || "";
                 const uPlaca = vData.placa || "";
-                nombreUnidad = uPlaca ? `${uCode} - ${uPlaca}` : uCode;
+                nombreUnidad = [uCode, uModelo, uPlaca].filter(Boolean).join(" - ");
             }
         }
-        else {
-            const qVeh = await db
-                .collection("vehiculos")
-                .where("unidad", "==", unidadId)
-                .limit(1)
-                .get();
-            if (!qVeh.empty) {
-                const vData = qVeh.docs[0].data();
-                const uCode = vData.unidad || unidadId;
-                const uPlaca = vData.placa || "";
-                nombreUnidad = uPlaca ? `${uCode} - ${uPlaca}` : uCode;
-            }
+        catch (e) {
+            functions.logger.warn(`Could not resolve unit name for ${unidadId}, using ID:`, e);
         }
-    }
-    catch (e) {
-        functions.logger.warn(`Could not resolve unit name for ${unidadId}, using ID:`, e);
     }
     nombreUnidad = nombreUnidad.replace(/[/\\?%*:|"<>]/g, "-");
+    // Subcarpeta por año-mes (ej. "2026-08-Agosto"), basada en la fecha de subida del archivo.
+    const uploadDate = object.timeCreated ? new Date(object.timeCreated) : new Date();
+    const anioMes = `${uploadDate.getFullYear()}-${MESES_ES[uploadDate.getMonth()]}`;
     let fileBuffer;
     try {
         const [buffer] = await bucket.file(filePath).download();
@@ -142,7 +158,7 @@ exports.syncVehiclePhotoToOneDrive = (0, storage_1.onObjectFinalized)({
         functions.logger.error(`Error downloading file ${filePath} from storage:`, err);
         return;
     }
-    const graphEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:/Documentos/UNIDADES TENTELCOM/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(fileName)}:/content`;
+    const graphEndpoint = `https://graph.microsoft.com/v1.0/drives/${SHARED_DRIVE_ID}/items/${SHARED_FOLDER_ITEM_ID}:/${encodeURIComponent(nombreUnidad)}/${encodeURIComponent(anioMes)}/${encodeURIComponent(fileName)}:/content`;
     while (attempts < maxRetries && !success) {
         attempts++;
         try {

@@ -164,6 +164,9 @@ export const saveVehicleLog = async (
     if (photoFiles && photoFiles.length > 0) {
         const timestamp = Date.now();
         const unidadName = sanitizedData.unidad || 'unidad';
+        // Nombre completo de la unidad tal como se ve en el selector del sistema
+        // (ej. "U1 - NISSAN PATHFINDER - 532995"), usado para nombrar la carpeta en OneDrive.
+        const unidadCompleta = sanitizedData.unidadId || unidadName;
         sanitizedData.photoTimestamp = timestamp;
         const paths: string[] = [];
 
@@ -194,7 +197,12 @@ export const saveVehicleLog = async (
                     const { storage } = await import("../../firebase");
                     const { ref, uploadBytes } = await import("firebase/storage");
                     const storageRef = ref(storage, storagePath);
-                    await uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
+                    await uploadBytes(storageRef, compressedBlob, {
+                        contentType: 'image/jpeg',
+                        customMetadata: {
+                            unidadCompleta,
+                        },
+                    });
                     console.log("[vehicleService] Vehicle photo uploaded successfully to Storage:", storagePath);
                 } else {
                     console.log("[vehicleService] Offline detected, storing vehicle photo locally in offlineMediaStore & queue:", storagePath);
