@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { User } from '../../utils/types';
-import { VehicleLog, VehicleRecharge, VehicleExpense } from '../../types/vehicle.types';
+import { VehicleLog, VehicleRecharge, VehicleExpense, INSPECTION_ITEMS, getDefaultVehicleInspection, InspectionOption } from '../../types/vehicle.types';
 import { db } from '../../firebase';
 import { collection, query, getDocs, orderBy, where, limit, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { localDocStore } from '../../core/offline/localDocStore';
@@ -101,8 +101,23 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
     const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]);
     const [photoLoading, setPhotoLoading] = useState(false);
+    const [manualPhotoRequested, setManualPhotoRequested] = useState(false);
+    const [revisionUnidad, setRevisionUnidad] = useState<Record<string, InspectionOption>>(() => {
+        const defaults = getDefaultVehicleInspection();
+        if (initialData?.revisionUnidad) {
+            return { ...defaults, ...initialData.revisionUnidad };
+        }
+        return defaults;
+    });
     const takePhotoInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
+
+    const handleInspectionChange = (id: string, value: InspectionOption) => {
+        setRevisionUnidad(prev => ({
+            ...prev,
+            [id]: value
+        }));
+    };
 
     useEffect(() => {
         const loadExistingPhoto = async () => {
@@ -155,6 +170,17 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         };
 
         loadExistingPhoto();
+    }, [initialData]);
+
+    useEffect(() => {
+        if (initialData) {
+            const defaults = getDefaultVehicleInspection();
+            if (initialData.revisionUnidad) {
+                setRevisionUnidad({ ...defaults, ...initialData.revisionUnidad });
+            } else {
+                setRevisionUnidad(defaults);
+            }
+        }
     }, [initialData]);
 
     useEffect(() => {
@@ -570,8 +596,13 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             totalLitros = validRecargas.reduce((sum, r) => sum + (r.litros || 0), 0);
         }
 
+        const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
+        const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotoUrls.length > 0 || selectedPhotoFiles.length > 0);
+        const shouldSaveInspection = isPhotoRequired || manualPhotoRequested || hasExistingPhotoOrInspection;
+
         const dataToSave = {
             ...formData,
+            ...(shouldSaveInspection ? { revisionUnidad } : (initialData?.revisionUnidad ? { revisionUnidad: initialData.revisionUnidad } : {})),
             recargas: validRecargas,
             monto: validRecargas.length > 0 ? totalMonto : null,
             litros: validRecargas.length > 0 ? totalLitros : null,
@@ -580,7 +611,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             gasolinera: validRecargas.length > 0 ? validRecargas.map(r => r.gasolinera).filter(Boolean).join(', ') : '',
         };
 
-        const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
         if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotoUrls.length === 0) {
             setIsLoading(false);
             await confirm({
@@ -788,137 +818,270 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         </div>
                     </div>
 
-                    {/* SECCIÓN DE FOTOGRAFÍA DE BITÁCORA */}
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs font-black text-slate-700 uppercase">Fotografía de Bitácora</span>
-                                {initialData?.oneDriveUrl || initialData?.oneDriveSyncedAt ? (
-                                    <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Sincronizado correctamente con OneDrive">
-                                        ✅ Foto Sincronizada con OneDrive
-                                    </span>
-                                ) : initialData?.oneDriveSyncError ? (
-                                    <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title={initialData.oneDriveSyncError}>
-                                        ⚠️ Error al Sincronizar con OneDrive
-                                    </span>
-                                ) : (initialData?.photoStoragePath || initialData?.photoTimestamp || existingPhotoUrls.length > 0) ? (
-                                    <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Guardada en Storage, pendiente de sincronización secundaria con OneDrive">
-                                        ☁️ Sincronizando con OneDrive...
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                        📷 Sin foto adjunta
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex gap-2">
-                                <ActionButton
-                                    type="button"
-                                    variant="primary"
-                                    label="Tomar foto"
-                                    onClick={() => takePhotoInputRef.current?.click()}
-                                    className="!py-1.5 !px-3 !text-[10px] !font-bold !uppercase !rounded-lg"
-                                />
-                                <ActionButton
-                                    type="button"
-                                    variant="secondary"
-                                    label="Galería"
-                                    onClick={() => galleryInputRef.current?.click()}
-                                    className="!py-1.5 !px-3 !text-[10px] !font-bold !uppercase !rounded-lg"
-                                />
-                            </div>
-                        </div>
+                    {/* SECCIÓN DE FOTOGRAFÍA Y REVISIÓN DE UNIDAD */}
+                    {(() => {
+                        const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
+                        const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotoUrls.length > 0 || selectedPhotoFiles.length > 0);
+                        const shouldShowPhotoAndInspection = isPhotoRequired || hasExistingPhotoOrInspection || manualPhotoRequested;
 
-                        {photoPolicyStatus.vencida && !photoPolicyStatus.disabled && (
-                            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 flex items-start gap-2 text-amber-800 text-xs">
-                                <FiAlertTriangle className="text-base shrink-0 text-amber-600 mt-0.5" />
-                                <div>
-                                    <span className="font-bold uppercase">Fotografía Obligatoria Requerida:</span> Han pasado más de {photoPolicyStatus.intervalDays} días desde la última fotografía de bitácora para esta unidad.
+                        if (!shouldShowPhotoAndInspection) {
+                            return (
+                                <div className="flex items-center justify-between bg-slate-50 p-2.5 px-3 rounded-xl border border-slate-200 text-xs">
+                                    <div className="flex items-center gap-2 text-slate-500">
+                                        <span className="text-[11px] font-bold uppercase text-slate-700">📷 Fotografía y Revisión de Unidad</span>
+                                        <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-semibold">Al día ({photoPolicyStatus.intervalDays} días)</span>
+                                    </div>
+                                    <ActionButton
+                                        type="button"
+                                        variant="secondary"
+                                        label="+ Adjuntar Foto / Revisión"
+                                        onClick={() => setManualPhotoRequested(true)}
+                                        className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg !text-blue-700"
+                                    />
                                 </div>
-                            </div>
-                        )}
+                            );
+                        }
 
-                        {/* Visor de Fotos Existentes y Nuevas */}
-                        <div className="flex flex-wrap gap-3">
-                            {photoLoading && (
-                                <div className="w-28 h-28 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-xs text-slate-500 animate-pulse">
-                                    Cargando foto...
-                                </div>
-                            )}
-
-                            {existingPhotoUrls.length > 0 && !photoLoading && selectedPhotoFiles.length === 0 && (
-                                <div className="flex gap-2 flex-wrap">
-                                    {existingPhotoUrls.map((url, idx) => (
-                                        <div key={idx} className="relative w-28 h-28 rounded-xl overflow-hidden border-2 border-slate-300 shadow-md group">
-                                            <img 
-                                                src={url} 
-                                                alt={`Foto ${idx + 1}`} 
-                                                className="w-full h-full object-cover" 
-                                            />
-                                            <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[9px] text-center py-0.5 font-bold truncate px-1">
-                                                Foto {idx + 1}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {selectedPhotoFiles.map((file, idx) => {
-                                const previewUrl = URL.createObjectURL(file);
-                                return (
-                                    <div key={idx} className="relative w-28 h-28 rounded-xl overflow-hidden border-2 border-blue-500 shadow-md">
-                                        <img src={previewUrl} alt={`Nueva ${idx + 1}`} className="w-full h-full object-cover" />
-                                        <IconButton
-                                            icon={<FiX size={12} />}
-                                            onClick={() => {
-                                                setSelectedPhotoFiles(prev => prev.filter((_, i) => i !== idx));
-                                            }}
-                                            className="absolute top-1 right-1 !bg-red-600 !text-white !p-1 hover:!bg-red-700 transition-colors shadow rounded-full"
+                        return (
+                            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-3">
+                                {/* Encabezado de la Sección Integrada */}
+                                <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/80">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                                            Fotografía de Bitácora
+                                        </span>
+                                        {initialData?.oneDriveUrl || initialData?.oneDriveSyncedAt ? (
+                                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Sincronizado correctamente con OneDrive">
+                                                ✅ Sincronizada con OneDrive
+                                            </span>
+                                        ) : initialData?.oneDriveSyncError ? (
+                                            <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title={initialData.oneDriveSyncError}>
+                                                ⚠️ Error OneDrive
+                                            </span>
+                                        ) : (initialData?.photoStoragePath || initialData?.photoTimestamp || existingPhotoUrls.length > 0) ? (
+                                            <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Guardada en Storage, pendiente de sincronización secundaria">
+                                                ☁️ Sincronizando OneDrive...
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                📷 Sin foto adjunta
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <ActionButton
+                                            type="button"
+                                            variant="primary"
+                                            label="Tomar foto"
+                                            onClick={() => takePhotoInputRef.current?.click()}
+                                            className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg"
                                         />
-                                        <div className="absolute inset-x-0 bottom-0 bg-blue-600 text-white text-[9px] text-center py-0.5 font-bold">
-                                            Nueva (Lista)
+                                        <ActionButton
+                                            type="button"
+                                            variant="secondary"
+                                            label="Galería"
+                                            onClick={() => galleryInputRef.current?.click()}
+                                            className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg"
+                                        />
+                                        {!isPhotoRequired && !initialData?.photoStoragePath && !initialData?.photoTimestamp && !initialData?.revisionUnidad && existingPhotoUrls.length === 0 && selectedPhotoFiles.length === 0 && manualPhotoRequested && (
+                                            <IconButton
+                                                icon={<FiX size={14} />}
+                                                onClick={() => setManualPhotoRequested(false)}
+                                                className="!p-1 text-slate-400 hover:text-slate-700"
+                                                title="Ocultar sección opcional"
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+
+                                {photoPolicyStatus.vencida && !photoPolicyStatus.disabled && (
+                                    <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-start gap-2 text-amber-800 text-xs">
+                                        <FiAlertTriangle className="text-sm shrink-0 text-amber-600 mt-0.5" />
+                                        <div>
+                                            <span className="font-bold uppercase">Fotografía Obligatoria Requerida:</span> Han pasado más de {photoPolicyStatus.intervalDays} días desde la última fotografía de bitácora para esta unidad.
                                         </div>
                                     </div>
-                                );
-                            })}
+                                )}
 
-                            {existingPhotoUrls.length === 0 && !photoLoading && selectedPhotoFiles.length === 0 && (
-                                <div className="w-full py-6 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 bg-white">
-                                    <span className="text-xs font-semibold">No se ha seleccionado ninguna fotografía</span>
-                                    <span className="text-[10px] text-slate-400 mt-1">Utilice los botones superiores para capturar o seleccionar una imagen</span>
+                                {/* Visor de Fotos (Tira Horizontal Compacta) */}
+                                {(photoLoading || existingPhotoUrls.length > 0 || selectedPhotoFiles.length > 0) && (
+                                    <div className="flex flex-wrap gap-2 py-1">
+                                        {photoLoading && (
+                                            <div className="w-20 h-20 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-[10px] text-slate-500 animate-pulse">
+                                                Cargando...
+                                            </div>
+                                        )}
+
+                                        {existingPhotoUrls.map((url, idx) => (
+                                            <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-slate-300 shadow-xs group shrink-0">
+                                                <img 
+                                                    src={url} 
+                                                    alt={`Foto ${idx + 1}`} 
+                                                    className="w-full h-full object-cover" 
+                                                />
+                                                <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[8px] text-center py-0.5 font-bold truncate px-0.5">
+                                                    Foto {idx + 1}
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {selectedPhotoFiles.map((file, idx) => {
+                                            const previewUrl = URL.createObjectURL(file);
+                                            return (
+                                                <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-500 shadow-xs shrink-0">
+                                                    <img src={previewUrl} alt={`Nueva ${idx + 1}`} className="w-full h-full object-cover" />
+                                                    <IconButton
+                                                        icon={<FiX size={10} />}
+                                                        onClick={() => {
+                                                            setSelectedPhotoFiles(prev => prev.filter((_, i) => i !== idx));
+                                                        }}
+                                                        className="absolute top-0.5 right-0.5 !bg-red-600 !text-white !p-0.5 hover:!bg-red-700 transition-colors shadow rounded-full"
+                                                    />
+                                                    <div className="absolute inset-x-0 bottom-0 bg-blue-600 text-white text-[8px] text-center py-0.5 font-bold">
+                                                        Nueva
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* REVISIÓN DE UNIDAD */}
+                                <div className="pt-2 border-t border-slate-200/80">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                                                Revisión de Unidad
+                                            </span>
+                                            <span className="text-[10px] text-slate-500 font-medium">
+                                                (Inspección rápida del vehículo)
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* 2 Columnas Lado a Lado en Pantallas Medianas/Grandes */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                        {/* UNIDAD APAGADA */}
+                                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/90 shadow-xs">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2 py-1 rounded mb-1.5 flex items-center justify-between border border-slate-200/50">
+                                                <span>Unidad Apagada</span>
+                                                <span className="text-[9px] text-slate-500 font-bold">10 puntos</span>
+                                            </div>
+                                            <div className="divide-y divide-slate-100">
+                                                {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD APAGADA').map((item) => {
+                                                    const val = revisionUnidad[item.id] || item.defaultValue;
+                                                    return (
+                                                        <div key={item.id} className="py-1 flex items-center justify-between gap-2">
+                                                            <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
+                                                                {item.label}
+                                                            </span>
+                                                            <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
+                                                                {(['SI', 'NO', 'N/A'] as const).map((opt) => (
+                                                                    <span
+                                                                        key={opt}
+                                                                        role="button"
+                                                                        tabIndex={0}
+                                                                        onClick={() => handleInspectionChange(item.id, opt)}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                                                handleInspectionChange(item.id, opt);
+                                                                            }
+                                                                        }}
+                                                                        className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
+                                                                            val === opt 
+                                                                                ? (opt === 'SI' 
+                                                                                    ? 'bg-emerald-600 text-white shadow-xs font-black' 
+                                                                                    : (opt === 'NO' ? 'bg-rose-600 text-white shadow-xs font-black' : 'bg-slate-700 text-white shadow-xs font-black'))
+                                                                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                                                                        }`}
+                                                                    >
+                                                                        {opt}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* UNIDAD ENCENDIDA */}
+                                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/90 shadow-xs">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2 py-1 rounded mb-1.5 flex items-center justify-between border border-slate-200/50">
+                                                <span>Unidad Encendida</span>
+                                                <span className="text-[9px] text-slate-500 font-bold">9 puntos</span>
+                                            </div>
+                                            <div className="divide-y divide-slate-100">
+                                                {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD ENCENDIDA').map((item) => {
+                                                    const val = revisionUnidad[item.id] || item.defaultValue;
+                                                    return (
+                                                        <div key={item.id} className="py-1 flex items-center justify-between gap-2">
+                                                            <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
+                                                                {item.label}
+                                                            </span>
+                                                            <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
+                                                                {(['SI', 'NO', 'N/A'] as const).map((opt) => (
+                                                                    <span
+                                                                        key={opt}
+                                                                        role="button"
+                                                                        tabIndex={0}
+                                                                        onClick={() => handleInspectionChange(item.id, opt)}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                                                handleInspectionChange(item.id, opt);
+                                                                            }
+                                                                        }}
+                                                                        className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
+                                                                            val === opt 
+                                                                                ? (opt === 'SI' 
+                                                                                    ? 'bg-emerald-600 text-white shadow-xs font-black' 
+                                                                                    : (opt === 'NO' ? 'bg-rose-600 text-white shadow-xs font-black' : 'bg-slate-700 text-white shadow-xs font-black'))
+                                                                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                                                                        }`}
+                                                                    >
+                                                                        {opt}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        );
+                    })()}
 
-                        <input
-                            ref={takePhotoInputRef}
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            className="hidden"
-                            onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                    setSelectedPhotoFiles(prev => [...prev, file]);
-                                }
-                                e.target.value = '';
-                            }}
-                        />
-                        <input
-                            ref={galleryInputRef}
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            onChange={(e) => {
-                                const files = Array.from(e.target.files || []);
-                                if (files.length > 0) {
-                                    setSelectedPhotoFiles(prev => [...prev, ...files]);
-                                }
-                                e.target.value = '';
-                            }}
-                        />
-                    </div>
+                    <input
+                        ref={takePhotoInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                                setSelectedPhotoFiles(prev => [...prev, file]);
+                            }
+                            e.target.value = '';
+                        }}
+                    />
+                    <input
+                        ref={galleryInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                            const files = Array.from(e.target.files || []);
+                            if (files.length > 0) {
+                                setSelectedPhotoFiles(prev => [...prev, ...files]);
+                            }
+                            e.target.value = '';
+                        }}
+                    />
 
                     {/* CONTROL DE COMBUSTIBLE */}
                     <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100 space-y-6">

@@ -62,7 +62,50 @@ export interface VehicleLog {
     oneDriveUrl?: string;
     oneDriveSyncedAt?: string;
     oneDriveSyncError?: string;
+    revisionUnidad?: Record<string, 'SI' | 'NO' | 'N/A'>;
 }
+
+export type InspectionOption = 'SI' | 'NO' | 'N/A';
+
+export interface InspectionItemDef {
+    id: string;
+    label: string;
+    category: 'UNIDAD APAGADA' | 'UNIDAD ENCENDIDA';
+    defaultValue: InspectionOption;
+}
+
+export const INSPECTION_ITEMS: InspectionItemDef[] = [
+    // UNIDAD APAGADA
+    { id: 'llantas', label: '1. Llantas', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'lucesBuenEstado', label: '2. Luces en buen estado', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'espejosRetrovisores', label: '3. Espejos/retrovisores', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'presentaFuga', label: '4. Presenta alguna fuga', category: 'UNIDAD APAGADA', defaultValue: 'NO' },
+    { id: 'frenoMano', label: '5. Buen estado del freno de mano', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'kitCarretera', label: '6. Kit obligatorio para carretera', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'llantaRefaccion', label: '7. Llanta de refacción en buen estado', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'cuentaExtintor', label: '8. Cuenta con extintor', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'vencimientoExtintor', label: '9. Fecha de vencimiento del extintor', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'terminalesBateriaAjustados', label: '10. Terminales de batería ajustados', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+
+    // UNIDAD ENCENDIDA
+    { id: 'enciendeCorreBien', label: '11. La unidad enciende y corre bien', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'indicadoresTablero', label: '12. Indicadores del tablero en buen estado (luces, termostato, combustible, velocímetro)', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'lucesEmergencia', label: '13. Luces de emergencia', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'nivelCombustibleCarga', label: '14. Nivel de Combustible/Carga', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'claxonPito', label: '15. Claxon/Pito', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'frenosPedal', label: '16. Frenos de pedal funcionan', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'marchasBuenEstado', label: '17. Marchas en buen estado', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'aireAcondicionado', label: '18. Aire acondicionado en buen estado', category: 'UNIDAD ENCENDIDA', defaultValue: 'NO' },
+    { id: 'terminalesBateriaCorrosion', label: '19. Terminales de batería con corrosión', category: 'UNIDAD ENCENDIDA', defaultValue: 'NO' }
+];
+
+export const getDefaultVehicleInspection = (): Record<string, InspectionOption> => {
+    const defaults: Record<string, InspectionOption> = {};
+    INSPECTION_ITEMS.forEach(item => {
+        defaults[item.id] = item.defaultValue;
+    });
+    return defaults;
+};
 
 export const extraerUnidad = (unidadId?: string): string => {
     if (!unidadId) return '';
