@@ -12,7 +12,7 @@ import { Select, ActionButton, IconButton, useConfirm } from '../../design-syste
 import { SignaturePad } from '../../components/SignaturePad';
 import { FiX, FiAlertTriangle, FiCreditCard, FiPlus, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import { isAdmin as checkIsAdmin } from '../../utils/permissions';
-import { saveVehicleLog } from './vehicleService';
+import { saveVehicleLog, deleteVehicleLogPhoto } from './vehicleService';
 import { VehicleExpenseModal } from './components/VehicleExpenseModal';
 import { checkVehiclePhotoPolicy } from '../../core/photoPolicy';
 import { networkProbe } from '../../core/offline/networkProbe';
@@ -99,7 +99,8 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
     const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
-    const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]);
+    const [existingPhotos, setExistingPhotos] = useState<{ url: string; path?: string }[]>([]);
+    const [deletingPhotoIndex, setDeletingPhotoIndex] = useState<number | null>(null);
     const [photoLoading, setPhotoLoading] = useState(false);
     const [manualPhotoRequested, setManualPhotoRequested] = useState(false);
     const [revisionUnidad, setRevisionUnidad] = useState<Record<string, InspectionOption>>(() => {
@@ -132,37 +133,37 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
             if (paths.length === 0) {
                 if (initialData.oneDriveUrl) {
-                    setExistingPhotoUrls([initialData.oneDriveUrl]);
+                    setExistingPhotos([{ url: initialData.oneDriveUrl }]);
                 }
                 return;
             }
 
             setPhotoLoading(true);
             try {
-                const urls: string[] = [];
+                const photos: { url: string; path?: string }[] = [];
                 for (const path of paths) {
                     try {
                         if (networkProbe.isOnline()) {
                             const { storage } = await import('../../firebase');
                             const { ref, getDownloadURL } = await import('firebase/storage');
                             const url = await getDownloadURL(ref(storage, path));
-                            urls.push(url);
+                            photos.push({ url, path });
                         } else {
                             const { getBlob } = await import('../../services/offlineMediaStore');
                             const blob = await getBlob(path);
                             if (blob) {
-                                urls.push(URL.createObjectURL(blob));
+                                photos.push({ url: URL.createObjectURL(blob), path });
                             }
                         }
                     } catch (err) {
                         console.warn(`Could not load photo ${path}:`, err);
                     }
                 }
-                setExistingPhotoUrls(urls);
+                setExistingPhotos(photos);
             } catch (err) {
                 console.error("Error loading photos:", err);
                 if (initialData.oneDriveUrl) {
-                    setExistingPhotoUrls([initialData.oneDriveUrl]);
+                    setExistingPhotos([{ url: initialData.oneDriveUrl }]);
                 }
             } finally {
                 setPhotoLoading(false);
@@ -171,6 +172,46 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
         loadExistingPhoto();
     }, [initialData]);
+
+    const handleDeleteExistingPhoto = async (idx: number) => {
+        const photoToDelete = existingPhotos[idx];
+        if (!photoToDelete) return;
+
+        const confirmed = await confirm({
+            title: "¿Eliminar fotografía?",
+            description: "¿Estás seguro de que deseas eliminar esta fotografía de la bitácora? Esta acción la borrará permanentemente de los registros.",
+            confirmLabel: "ELIMINAR",
+            cancelLabel: "CANCELAR",
+            variant: "danger"
+        });
+
+        if (!confirmed) return;
+
+        if (initialData?.id && photoToDelete.path) {
+            try {
+                setDeletingPhotoIndex(idx);
+                await deleteVehicleLogPhoto(initialData.id, photoToDelete.path, currentUser);
+                setExistingPhotos(prev => prev.filter((_, i) => i !== idx));
+                
+                // Actualizar initialData local en memoria si existe
+                if (initialData.photoStoragePaths) {
+                    initialData.photoStoragePaths = initialData.photoStoragePaths.filter(p => p !== photoToDelete.path);
+                }
+                if (initialData.photoStoragePath === photoToDelete.path) {
+                    initialData.photoStoragePath = initialData.photoStoragePaths && initialData.photoStoragePaths.length > 0 
+                        ? initialData.photoStoragePaths[0] 
+                        : undefined;
+                }
+            } catch (err: any) {
+                alert("Error al eliminar la fotografía: " + (err.message || 'Error desconocido'));
+            } finally {
+                setDeletingPhotoIndex(null);
+            }
+        } else {
+            // Si solo es una URL externa o temporal
+            setExistingPhotos(prev => prev.filter((_, i) => i !== idx));
+        }
+    };
 
     useEffect(() => {
         if (initialData) {
@@ -597,7 +638,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
 
         const isPhotoRequired = photoPolicyStatus.vencida && !photoPolicyStatus.disabled;
-        const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotoUrls.length > 0 || selectedPhotoFiles.length > 0);
+        const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotos.length > 0 || selectedPhotoFiles.length > 0);
         const shouldSaveInspection = isPhotoRequired || manualPhotoRequested || hasExistingPhotoOrInspection;
 
         const dataToSave = {
@@ -611,7 +652,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             gasolinera: validRecargas.length > 0 ? validRecargas.map(r => r.gasolinera).filter(Boolean).join(', ') : '',
         };
 
-        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotoUrls.length === 0) {
+        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotos.length === 0) {
             setIsLoading(false);
             await confirm({
                 title: 'Fotografía de Bitácora Requerida',
@@ -904,7 +945,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 )}
 
                                 {/* Visor de Fotos (Tira Horizontal Compacta) */}
-                                {(photoLoading || existingPhotoUrls.length > 0 || selectedPhotoFiles.length > 0) && (
+                                {(photoLoading || existingPhotos.length > 0 || selectedPhotoFiles.length > 0) && (
                                     <div className="flex flex-wrap gap-2 py-1">
                                         {photoLoading && (
                                             <div className="w-20 h-20 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-[10px] text-slate-500 animate-pulse">
@@ -912,15 +953,22 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                             </div>
                                         )}
 
-                                        {existingPhotoUrls.map((url, idx) => (
+                                        {existingPhotos.map((photo, idx) => (
                                             <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-slate-300 shadow-xs group shrink-0">
                                                 <img 
-                                                    src={url} 
+                                                    src={photo.url} 
                                                     alt={`Foto ${idx + 1}`} 
                                                     className="w-full h-full object-cover" 
                                                 />
+                                                <IconButton
+                                                    icon={<FiTrash2 size={11} />}
+                                                    disabled={deletingPhotoIndex === idx}
+                                                    onClick={() => handleDeleteExistingPhoto(idx)}
+                                                    className="absolute top-0.5 right-0.5 !bg-rose-600 !text-white !p-1 hover:!bg-rose-700 transition-all shadow-md rounded-full opacity-90 group-hover:opacity-100 disabled:opacity-50"
+                                                    title="Eliminar esta foto"
+                                                />
                                                 <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[8px] text-center py-0.5 font-bold truncate px-0.5">
-                                                    Foto {idx + 1}
+                                                    {deletingPhotoIndex === idx ? 'Borrando...' : `Foto ${idx + 1}`}
                                                 </div>
                                             </div>
                                         ))}

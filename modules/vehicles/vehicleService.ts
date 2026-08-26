@@ -692,34 +692,131 @@ export const deleteVehicleExpense = async (id: string, expenseData: VehicleExpen
  */
 export const getVehicleExpenses = async (unidad: string): Promise<VehicleExpense[]> => {
     try {
-        // 1. Intentar obtener de Firestore si hay red
-        let remoteExpenses: VehicleExpense[] = [];
         if (networkProbe.isOnline()) {
             const q = query(
-                collection(db, 'vehicle_expenses'),
-                where('unidad', '==', unidad),
-                where('isDeleted', '==', false)
+                collection(db, "vehicle_expenses"),
+                where("unidad", "==", unidad)
             );
-            const snap = await getDocs(q);
-            remoteExpenses = snap.docs.map(d => ({ ...d.data(), id: d.id } as VehicleExpense));
+            const snapshot = await getDocs(q);
+            const docs = snapshot.docs.map(doc => ({
+                ...doc.data(),
+                id: doc.id
+            } as VehicleExpense)).filter(e => !e.isDeleted);
+            
+            // Save to local cache
+            await localDocStore.saveLocalDocsBatch("vehicle_expenses", docs);
+            return docs.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+        } else {
+            const local = await localDocStore.getLocalDocs("vehicle_expenses");
+            return local
+                .map(d => ({ ...d.data, id: d.docId } as VehicleExpense))
+                .filter(e => e.unidad === unidad && !e.isDeleted)
+                .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
         }
-
-        // 2. Obtener de LocalDB
-        const localDocs = await localDocStore.getLocalCollection('vehicle_expenses');
-        const localExpenses = localDocs
-            .filter(d => d.data?.unidad === unidad && !d.data?.isDeleted)
-            .map(d => ({ ...d.data, id: d.docId } as VehicleExpense));
-
-        // 3. Mezclar (preferir local si es dirty)
-        const expenseMap = new Map<string, VehicleExpense>();
-        remoteExpenses.forEach(e => expenseMap.set(e.id, e));
-        localExpenses.forEach(e => expenseMap.set(e.id, e));
-
-        const result = Array.from(expenseMap.values());
-        result.sort((a, b) => b.fecha.localeCompare(a.fecha));
-        return result;
     } catch (error) {
-        console.error("[vehicleService] Error getting vehicle expenses:", error);
-        return [];
+        console.error("Error fetching vehicle expenses, falling back to local store:", error);
+        const local = await localDocStore.getLocalDocs("vehicle_expenses");
+        return local
+            .map(d => ({ ...d.data, id: d.docId } as VehicleExpense))
+            .filter(e => e.unidad === unidad && !e.isDeleted)
+            .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
     }
 };
+
+/**
+ * Elimina una fotografía individual de la bitácora:
+ * 1. Elimina físicamente el archivo de Firebase Storage si existe (y maneja storage/object-not-found de forma segura).
+ * 2. Si la eliminación de Storage falla con un error no recuperable, lanza excepción y no borra de Firestore.
+ * 3. Actualiza el documento en Firestore y en el cache offline quitando la referencia del array/campos correspondientes.
+ */
+export const deleteVehicleLogPhoto = async (
+    logId: string,
+    photoStoragePath: string,
+    currentUser: User
+): Promise<{ success: boolean; remainingPaths: string[] }> => {
+    console.log(`[vehicleService] Deleting photo ${photoStoragePath} from vehicle log ${logId}...`);
+
+    // 1. Eliminar físicamente de Firebase Storage si hay red
+    if (networkProbe.isOnline() && photoStoragePath) {
+        try {
+            const { storage } = await import("../../firebase");
+            const { ref, deleteObject } = await import("firebase/storage");
+            const storageRef = ref(storage, photoStoragePath);
+            await deleteObject(storageRef);
+            console.log(`[vehicleService] Successfully deleted photo from Firebase Storage: ${photoStoragePath}`);
+        } catch (storageErr: any) {
+            // Si el objeto ya no existe físicamente en Storage (storage/object-not-found), permitir limpiar la referencia de Firestore sin romper.
+            const errorCode = storageErr?.code || '';
+            if (errorCode === 'storage/object-not-found' || storageErr?.message?.includes('does not exist') || storageErr?.message?.includes('object-not-found')) {
+                console.warn(`[vehicleService] Photo did not exist in Storage (${photoStoragePath}), cleaning Firestore reference anyway:`, storageErr);
+            } else {
+                console.error(`[vehicleService] Fatal error deleting photo from Storage (${photoStoragePath}):`, storageErr);
+                throw new Error(`No se pudo eliminar la fotografía de Firebase Storage: ${storageErr.message || 'Error desconocido'}`);
+            }
+        }
+    }
+
+    // 2. Obtener registro actual de Firestore o local
+    let currentLog: VehicleLog | null = null;
+    const logDocRef = doc(db, 'bitacora_vehiculos', logId);
+    try {
+        const snap = await getDoc(logDocRef);
+        if (snap.exists()) {
+            currentLog = { ...snap.data() as VehicleLog, id: snap.id };
+        }
+    } catch (e) {
+        console.warn("[vehicleService] Could not fetch remote log during photo deletion, trying local:", e);
+    }
+
+    if (!currentLog) {
+        const local = await localDocStore.getLocalDoc('bitacora_vehiculos', logId);
+        if (local && local.data) {
+            currentLog = { ...local.data, id: logId } as VehicleLog;
+        }
+    }
+
+    if (!currentLog) {
+        throw new Error("No se encontró el registro de bitácora para actualizar.");
+    }
+
+    // 3. Filtrar rutas
+    const originalPaths: string[] = currentLog.photoStoragePaths && currentLog.photoStoragePaths.length > 0
+        ? currentLog.photoStoragePaths
+        : currentLog.photoStoragePath
+            ? [currentLog.photoStoragePath]
+            : [];
+
+    const updatedPaths = originalPaths.filter(p => p !== photoStoragePath);
+    const newPrimaryPath = updatedPaths.length > 0 ? updatedPaths[0] : null;
+
+    const dataToUpdate: any = {
+        photoStoragePaths: updatedPaths,
+        photoStoragePath: newPrimaryPath,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.id,
+    };
+
+    // Si ya no quedan fotos, limpiar photoTimestamp si apuntaba a este grupo
+    if (updatedPaths.length === 0) {
+        dataToUpdate.photoTimestamp = null;
+    }
+
+    // 4. Actualizar versión y persistencia unificada
+    await updateVersionedDocOffline('bitacora_vehiculos', logId, {
+        ...currentLog,
+        ...dataToUpdate
+    });
+
+    auditService.logEvent({
+        action: 'delete_photo',
+        module: 'Bitácora de Vehículos',
+        submodule: 'Registro de Bitácora',
+        route: '/bitacoras',
+        recordId: logId,
+        recordCode: currentLog.unidad || currentLog.unidadName || 'Vehículo',
+        details: { deletedPath: photoStoragePath, remainingCount: updatedPaths.length }
+    });
+
+    return { success: true, remainingPaths: updatedPaths };
+};
+

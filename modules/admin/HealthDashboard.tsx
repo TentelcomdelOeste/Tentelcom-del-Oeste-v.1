@@ -12,9 +12,11 @@ const AuditDashboard = lazy(() => import('./AuditDashboard'));
 
 function PhotoPolicySettings() {
     const confirm = useConfirm();
+    const [policyEnabled, setPolicyEnabled] = useState<boolean>(true);
     const [globalInterval, setGlobalInterval] = useState<number>(15);
     const [vehicles, setVehicles] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
+    const [togglingPolicy, setTogglingPolicy] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
 
     useEffect(() => {
@@ -25,6 +27,9 @@ function PhotoPolicySettings() {
                     const data = configSnap.data();
                     if (typeof data.intervalDays === 'number') {
                         setGlobalInterval(data.intervalDays);
+                    }
+                    if (typeof data.enabled === 'boolean') {
+                        setPolicyEnabled(data.enabled);
                     }
                 }
 
@@ -49,6 +54,47 @@ function PhotoPolicySettings() {
         (typeof v.photoPolicy?.intervalDaysOverride === 'number' && v.photoPolicy?.intervalDaysOverride >= 0) || 
         Boolean(v.photoPolicy?.disabled)
     );
+
+    const handleTogglePolicy = async () => {
+        const targetState = !policyEnabled;
+
+        if (targetState === false) {
+            // Confirming ACTIVADA -> DESACTIVADA
+            const confirmed = await confirm({
+                title: "¿Desactivar la política global?",
+                description: "Mientras la política esté desactivada, ninguna unidad tendrá obligación de enviar fotografías ni realizar la revisión vehicular mediante esta política.",
+                confirmLabel: "DESACTIVAR POLÍTICA",
+                cancelLabel: "CANCELAR",
+                variant: "danger"
+            });
+            if (!confirmed) return;
+        } else {
+            // Confirming DESACTIVADA -> ACTIVADA
+            const confirmed = await confirm({
+                title: "¿Activar la política global?",
+                description: "Al activarla volverán a aplicarse el intervalo global y las configuraciones individuales actualmente guardadas.",
+                confirmLabel: "ACTIVAR POLÍTICA",
+                cancelLabel: "CANCELAR",
+                variant: "primary"
+            });
+            if (!confirmed) return;
+        }
+
+        try {
+            setTogglingPolicy(true);
+            await setDoc(doc(db, 'config', 'photo_policy'), { enabled: targetState }, { merge: true });
+            setPolicyEnabled(targetState);
+            setMessage(targetState 
+                ? "Política global de fotos y revisión activada exitosamente." 
+                : "Política global de fotos y revisión desactivada exitosamente."
+            );
+            setTimeout(() => setMessage(null), 4000);
+        } catch (err: any) {
+            alert("Error al cambiar estado de la política: " + err.message);
+        } finally {
+            setTogglingPolicy(false);
+        }
+    };
 
     const handleSaveGlobal = async () => {
         const newInterval = Number(globalInterval);
@@ -150,10 +196,73 @@ function PhotoPolicySettings() {
                     {message}
                 </div>
             )}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
+
+            {/* INTERRUPTOR GENERAL DE LA POLÍTICA */}
+            <div className={`p-6 rounded-2xl border transition-all ${
+                policyEnabled 
+                    ? 'bg-blue-50/50 border-blue-200' 
+                    : 'bg-slate-100 border-slate-300'
+            }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase tracking-wider text-slate-500">CONTROL GENERAL</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                policyEnabled 
+                                    ? 'bg-emerald-500 text-white' 
+                                    : 'bg-slate-400 text-white'
+                            }`}>
+                                {policyEnabled ? 'ACTIVADA' : 'DESACTIVADA'}
+                            </span>
+                        </div>
+                        <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase">
+                            HABILITAR POLÍTICA GLOBAL DE FOTOS Y REVISIÓN VEHICULAR
+                        </h3>
+                        <p className="text-xs text-slate-600 font-medium max-w-2xl">
+                            {policyEnabled 
+                                ? "La política está activa. Se exigen fotografías e inspección según el intervalo global y las excepciones configuradas."
+                                : "No se solicitarán fotografías ni revisión vehicular automáticamente. Todas las configuraciones se conservan intactas."
+                            }
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={handleTogglePolicy}
+                        disabled={togglingPolicy}
+                        className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                            policyEnabled ? 'bg-blue-600' : 'bg-slate-300'
+                        } ${togglingPolicy ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        role="switch"
+                        aria-checked={policyEnabled}
+                    >
+                        <span className="sr-only">Habilitar política global de fotos y revisión vehicular</span>
+                        <span
+                            aria-hidden="true"
+                            className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                policyEnabled ? 'translate-x-8' : 'translate-x-0'
+                            }`}
+                        />
+                    </button>
+                </div>
+            </div>
+
+            {!policyEnabled && (
+                <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 flex items-start gap-3 text-amber-900 text-xs">
+                    <FiAlertTriangle className="text-amber-600 text-lg shrink-0 mt-0.5" />
+                    <div>
+                        <span className="font-black uppercase tracking-wide block text-sm mb-0.5">POLÍTICA DESACTIVADA</span>
+                        <p className="font-medium text-amber-800">
+                            No se solicitarán fotografías ni revisión vehicular automáticamente. Los controles de intervalo y excepciones se muestran a continuación con sus valores guardados y volverán a tener efecto de inmediato al reactivar la política.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            <div className={`bg-white p-6 rounded-xl border border-slate-200 space-y-4 ${!policyEnabled ? 'opacity-70' : ''}`}>
                 <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
                     <FiCamera className="text-blue-600" />
-                    POLÍTICA GLOBAL DE FOTOS Y REVISIÓN VEHICULAR
+                    CONFIGURACIÓN DEL INTERVALO GLOBAL
                 </h2>
                 <p className="text-xs text-slate-600 font-medium leading-relaxed">
                     Define cada cuántos días laborales todas las unidades deberán realizar nuevamente la fotografía y la revisión de la unidad.
@@ -168,8 +277,9 @@ function PhotoPolicySettings() {
                             min="1"
                             max="365"
                             value={globalInterval}
+                            disabled={!policyEnabled}
                             onChange={(e) => setGlobalInterval(Number(e.target.value))}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
                         />
                         <span className="block text-[11px] text-slate-500 mt-1 font-normal">
                             Ejemplo: 10 = solicitar nuevamente cada 10 días laborales. Sábados y domingos no cuentan.
@@ -180,13 +290,13 @@ function PhotoPolicySettings() {
                         variant="primary"
                         label={saving ? "Guardando..." : "Guardar Global"}
                         onClick={handleSaveGlobal}
-                        disabled={saving}
+                        disabled={saving || !policyEnabled}
                         className="!py-2.5 !px-5 !text-xs !font-black !uppercase !tracking-wider w-full sm:w-auto shrink-0"
                     />
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden space-y-2">
+            <div className={`bg-white rounded-xl border border-slate-200 overflow-hidden space-y-2 ${!policyEnabled ? 'opacity-70' : ''}`}>
                 <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                         <h2 className="text-sm font-bold text-slate-800">Excepciones y Overrides por Unidad</h2>
@@ -230,6 +340,7 @@ function PhotoPolicySettings() {
                                     key={`${veh.id}-${veh.photoPolicy?.intervalDaysOverride ?? 'g'}-${veh.photoPolicy?.disabled ? 'd' : 'a'}`} 
                                     veh={veh} 
                                     globalInterval={globalInterval}
+                                    policyEnabled={policyEnabled}
                                     isDuplicate={isDuplicate(veh.unidad)} 
                                     onSave={handleUpdateVehiclePolicy} 
                                 />
@@ -250,11 +361,13 @@ function PhotoPolicySettings() {
 function VehiclePolicyRow({ 
     veh, 
     globalInterval,
+    policyEnabled,
     isDuplicate, 
     onSave 
 }: { 
     veh: any; 
     globalInterval: number;
+    policyEnabled: boolean;
     isDuplicate: boolean; 
     onSave: (id: string, override: any, disabled: boolean) => Promise<void> 
 }) {
@@ -297,7 +410,7 @@ function VehiclePolicyRow({
         };
         fetchStatus();
         return () => { isMounted = false; };
-    }, [veh.unidad, veh.photoPolicy, globalInterval]);
+    }, [veh.unidad, veh.photoPolicy, globalInterval, policyEnabled]);
 
     // Determine configuration type (GLOBAL, PERSONALIZADO, EXCLUIDA)
     const isCustomOverride = typeof veh.photoPolicy?.intervalDaysOverride === 'number' && veh.photoPolicy?.intervalDaysOverride >= 0;
@@ -323,17 +436,19 @@ function VehiclePolicyRow({
                     min="1"
                     placeholder="Global"
                     value={override}
+                    disabled={!policyEnabled}
                     onChange={(e) => setOverride(e.target.value)}
-                    className="w-32 px-2 py-1.5 border border-slate-300 rounded text-xs font-bold focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    className="w-32 px-2 py-1.5 border border-slate-300 rounded text-xs font-bold focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
                 />
             </td>
             <td className="p-3">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
+                <label className={`flex items-center gap-2 select-none ${policyEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <input
                         type="checkbox"
                         checked={disabled}
+                        disabled={!policyEnabled}
                         onChange={(e) => setDisabled(e.target.checked)}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
                     />
                     <span className={disabled ? "text-rose-600 font-bold" : "text-slate-600"}>
                         {disabled ? "Excluida" : "Activo"}
@@ -341,7 +456,11 @@ function VehiclePolicyRow({
                 </label>
             </td>
             <td className="p-3">
-                {loadingStatus ? (
+                {!policyEnabled ? (
+                    <span className="inline-flex items-center px-2 py-1 bg-slate-100 text-slate-500 rounded text-[11px] font-bold">
+                        POLÍTICA INACTIVA
+                    </span>
+                ) : loadingStatus ? (
                     <span className="text-[11px] text-slate-400">Calculando...</span>
                 ) : isExcluded || policyStatus?.disabled ? (
                     <span className="inline-flex items-center px-2 py-1 bg-slate-100 text-slate-600 rounded text-[11px] font-bold">
@@ -388,7 +507,7 @@ function VehiclePolicyRow({
                                 setIsSaving(false);
                             }
                         }}
-                        disabled={isSaving}
+                        disabled={isSaving || !policyEnabled}
                         className="!py-1.5 !px-3 !text-[11px] !font-black !uppercase !tracking-wider !rounded-lg"
                     />
                     {saveError && <span className="text-[10px] text-rose-600 font-bold">{saveError}</span>}

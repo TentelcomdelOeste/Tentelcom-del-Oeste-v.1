@@ -75,6 +75,7 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
   try {
     // 1. Get global config /config/photo_policy
     let intervalDays = 15;
+    let policyEnabled = true;
     try {
       const configDoc = await getDoc(doc(db, "config", "photo_policy"));
       if (configDoc.exists()) {
@@ -82,9 +83,17 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
         if (typeof data.intervalDays === "number") {
           intervalDays = data.intervalDays;
         }
+        if (typeof data.enabled === "boolean") {
+          policyEnabled = data.enabled;
+        }
       }
     } catch (e) {
       console.warn("[photoPolicy] Could not load config/photo_policy, using default 15:", e);
+    }
+
+    // If global policy is disabled, vehicle never expires and photo is not mandatory
+    if (!policyEnabled) {
+      return { vencida: false, intervalDays, disabled: true, ultimaFotoDate: null, fechaLimite: null };
     }
 
     // 2. Get vehicle document
