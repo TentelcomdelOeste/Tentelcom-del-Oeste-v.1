@@ -124,13 +124,18 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     const renderInspectionItem = (item: InspectionItemDef) => {
         const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
+        const isLaborCheckpoint = item.category === 'INICIO DE LABORES' || item.category === 'FINAL DE LABORES';
+        const options: readonly InspectionOption[] = isLaborCheckpoint 
+            ? (['SI', 'NO'] as const)
+            : (['SI', 'NO', 'N/A'] as const);
+
         return (
             <div key={item.id} className="py-1.5 flex items-center justify-between gap-2.5">
                 <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
                     {item.label}
                 </span>
                 <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
-                    {(['SI', 'NO', 'N/A'] as const).map((opt) => (
+                    {options.map((opt) => (
                         <span
                             key={opt}
                             role="button"
@@ -674,11 +679,54 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
 
         const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
-        const isFulfillingCycle = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested || (isEditing && !!initialData?.revisionUnidad));
+        const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
+            initialData.revisionUnidad.estadoLlantas !== undefined ||
+            initialData.revisionUnidad.llantas !== undefined ||
+            initialData.revisionUnidad.inspeccionGolpesDanos !== undefined ||
+            initialData.revisionUnidad.nivelAceite !== undefined ||
+            initialData.revisionUnidad.extintorVigente !== undefined ||
+            initialData.revisionUnidad.cuentaExtintor !== undefined ||
+            initialData.revisionUnidad.terminalesBateriaBuenEstado !== undefined ||
+            initialData.revisionUnidad.enciendeCorreBien !== undefined ||
+            initialData.revisionUnidad.aireAcondicionado !== undefined ||
+            !!initialData.photoStoragePath ||
+            !!initialData.oneDriveUrl
+        );
+        const isFulfillingCycle = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested || hasHistoricalInspection);
         const shouldSaveInspection = isFulfillingCycle;
 
+        // Validación obligatoria para Inicio de Labores (SI o NO)
+        const llenadoBoleta = revisionUnidad?.llenadoBoletaRecorrido;
+        if (!llenadoBoleta || !['SI', 'NO'].includes(llenadoBoleta)) {
+            setIsLoading(false);
+            await confirm({
+                title: 'Inicio de Labores Incompleto',
+                description: 'Debe responder obligatoriamente el punto "1. Llenado de boleta de recorrido" en Inicio de Labores seleccionando SI o NO.',
+                confirmLabel: 'ACEPTAR',
+                variant: 'warning'
+            });
+            return;
+        }
+
+        // Validación condicional para Final de Labores (OBLIGATORIO solo si se ingresa Kilometraje de Llegada)
+        const hasKmLlegada = formData.kmLlegada !== null && formData.kmLlegada !== undefined && formData.kmLlegada !== '' && !isNaN(Number(formData.kmLlegada));
+        if (hasKmLlegada) {
+            const inspParqueo = revisionUnidad?.inspeccionVisualParqueo;
+            const cerradoBoleta = revisionUnidad?.cerradoBoletaRecorrido;
+            if (!inspParqueo || !['SI', 'NO'].includes(inspParqueo) || !cerradoBoleta || !['SI', 'NO'].includes(cerradoBoleta)) {
+                setIsLoading(false);
+                await confirm({
+                    title: 'Final de Labores Incompleto',
+                    description: 'Al registrar el kilometraje de llegada, debe responder obligatoriamente los puntos de "Final de Labores" ("1. Inspección visual de la unidad en el parqueo" y "2. Cerrado de la boleta de recorrido") seleccionando SI o NO.',
+                    confirmLabel: 'ACEPTAR',
+                    variant: 'warning'
+                });
+                return;
+            }
+        }
+
         // Validación obligatoria especial para el punto de Aire acondicionado
-        if (shouldSaveInspection || (isEditing && initialData?.revisionUnidad)) {
+        if (shouldSaveInspection || hasHistoricalInspection) {
             const acValue = revisionUnidad?.aireAcondicionado;
             if (!acValue || !['SI', 'NO', 'N/A'].includes(acValue)) {
                 setIsLoading(false);
@@ -694,7 +742,10 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
         const dataToSave: any = {
             ...formData,
-            ...(shouldSaveInspection ? { revisionUnidad: { ...(initialData?.revisionUnidad || {}), ...revisionUnidad } } : (initialData?.revisionUnidad ? { revisionUnidad: initialData.revisionUnidad } : {})),
+            revisionUnidad: {
+                ...(initialData?.revisionUnidad || {}),
+                ...revisionUnidad
+            },
             ...(isFulfillingCycle && (selectedPhotoFiles.length > 0 || existingPhotos.length > 0)
                 ? { photoPolicyLastCompletedAt: new Date().toISOString() }
                 : (initialData?.photoPolicyLastCompletedAt ? { photoPolicyLastCompletedAt: initialData.photoPolicyLastCompletedAt } : {})),
@@ -967,7 +1018,20 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         // 2. Si la política está activada pero NO vencida y no hay solicitud manual:
                         // NO mostrar formulario, NO mostrar revisión, NO mostrar botón.
                         const isPhotoRequired = photoPolicyStatus.vencida;
-                        const shouldShowPhotoAndInspection = isPhotoRequired || manualPhotoRequested || (isEditing && !!initialData?.revisionUnidad);
+                        const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
+                            initialData.revisionUnidad.estadoLlantas !== undefined ||
+                            initialData.revisionUnidad.llantas !== undefined ||
+                            initialData.revisionUnidad.inspeccionGolpesDanos !== undefined ||
+                            initialData.revisionUnidad.nivelAceite !== undefined ||
+                            initialData.revisionUnidad.extintorVigente !== undefined ||
+                            initialData.revisionUnidad.cuentaExtintor !== undefined ||
+                            initialData.revisionUnidad.terminalesBateriaBuenEstado !== undefined ||
+                            initialData.revisionUnidad.enciendeCorreBien !== undefined ||
+                            initialData.revisionUnidad.aireAcondicionado !== undefined ||
+                            !!initialData.photoStoragePath ||
+                            !!initialData.oneDriveUrl
+                        );
+                        const shouldShowPhotoAndInspection = isPhotoRequired || manualPhotoRequested || hasHistoricalInspection;
 
                         if (!shouldShowPhotoAndInspection) {
                             return null;

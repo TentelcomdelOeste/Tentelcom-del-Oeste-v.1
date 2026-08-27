@@ -86,7 +86,7 @@ export interface InspectionItemDef {
 
 export const INSPECTION_ITEMS: InspectionItemDef[] = [
     // INICIO DE LABORES
-    { id: 'llenadoBoletaRecorrido', label: '1. Llenado de boleta de recorrido', category: 'INICIO DE LABORES', defaultValue: 'SI' },
+    { id: 'llenadoBoletaRecorrido', label: '1. Llenado de boleta de recorrido', category: 'INICIO DE LABORES' },
 
     // INSPECCIÓN EXTERIOR DEL VEHÍCULO
     { id: 'inspeccionGolpesDanos', label: '1. Revisar visualmente que no existan golpes, daños o piezas sueltas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
@@ -129,8 +129,8 @@ export const INSPECTION_ITEMS: InspectionItemDef[] = [
     { id: 'aireAcondicionado', label: '7. Aire acondicionado en buen estado', category: 'UNIDAD ENCENDIDA' },
 
     // FINAL DE LABORES
-    { id: 'inspeccionVisualParqueo', label: '1. Inspección visual de la unidad en el parqueo', category: 'FINAL DE LABORES', defaultValue: 'SI' },
-    { id: 'cerradoBoletaRecorrido', label: '2. Cerrado de la boleta de recorrido', category: 'FINAL DE LABORES', defaultValue: 'SI' }
+    { id: 'inspeccionVisualParqueo', label: '1. Inspección visual de la unidad en el parqueo', category: 'FINAL DE LABORES' },
+    { id: 'cerradoBoletaRecorrido', label: '2. Cerrado de la boleta de recorrido', category: 'FINAL DE LABORES' }
 ];
 
 export const getDefaultVehicleInspection = (): Record<string, InspectionOption> => {
@@ -176,7 +176,22 @@ export const normalizeVehicleInspection = (saved?: Record<string, any>): Record<
         }
     }
 
-    // Si aire acondicionado no estaba respondido en saved, no forzar ningún default
+    // Puntos sin valor por defecto que no deben forzar selección si no estaban en saved
+    if (saved.llenadoBoletaRecorrido === undefined) {
+        delete result.llenadoBoletaRecorrido;
+    } else {
+        result.llenadoBoletaRecorrido = saved.llenadoBoletaRecorrido;
+    }
+    if (saved.inspeccionVisualParqueo === undefined) {
+        delete result.inspeccionVisualParqueo;
+    } else {
+        result.inspeccionVisualParqueo = saved.inspeccionVisualParqueo;
+    }
+    if (saved.cerradoBoletaRecorrido === undefined) {
+        delete result.cerradoBoletaRecorrido;
+    } else {
+        result.cerradoBoletaRecorrido = saved.cerradoBoletaRecorrido;
+    }
     if (saved.aireAcondicionado === undefined) {
         delete result.aireAcondicionado;
     } else {
