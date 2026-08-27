@@ -88,7 +88,68 @@ export const recordBitacoraFinalizedEvent = async (timelineId: string, dataToSav
     }
 };
 
-export const compressImage = async (file: File, maxWidth = 1280, quality = 0.85): Promise<Blob> => {
+export interface SaveProgressInfo {
+    stage: 'preparing' | 'compressing' | 'uploading' | 'saving' | 'completed' | 'error';
+    current: number;
+    total: number;
+    message: string;
+    failedCount?: number;
+}
+
+export async function mapWithConcurrency<T, R>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+    if (items.length === 0) return [];
+    const results: R[] = new Array(items.length);
+    let index = 0;
+
+    const worker = async () => {
+        while (index < items.length) {
+            const currentIndex = index++;
+            results[currentIndex] = await fn(items[currentIndex], currentIndex);
+        }
+    };
+
+    const workerCount = Math.min(concurrency, items.length);
+    const workers = Array.from({ length: workerCount }, () => worker());
+    await Promise.all(workers);
+    return results;
+}
+
+export const compressImage = async (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.82): Promise<Blob> => {
+    // 1. Intentar createImageBitmap si está disponible (procesamiento más rápido fuera del hilo UI y manejo de orientación EXIF)
+    if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
+        try {
+            const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as any);
+            let w = bitmap.width;
+            let h = bitmap.height;
+
+            if (w > maxWidth || h > maxHeight) {
+                const ratio = Math.min(maxWidth / w, maxHeight / h);
+                w = Math.round(w * ratio);
+                h = Math.round(h * ratio);
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(bitmap, 0, 0, w, h);
+                bitmap.close();
+                const blob = await new Promise<Blob | null>((resolve) =>
+                    canvas.toBlob(resolve, 'image/jpeg', quality)
+                );
+                if (blob) return blob;
+            }
+        } catch (e) {
+            console.warn('[vehicleService] createImageBitmap no disponible o falló, usando FileReader canvas:', e);
+        }
+    }
+
+    // 2. Fallback estándar con HTMLImageElement
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -98,9 +159,10 @@ export const compressImage = async (file: File, maxWidth = 1280, quality = 0.85)
             img.onload = () => {
                 let w = img.width;
                 let h = img.height;
-                if (w > maxWidth) {
-                    h = Math.round((h * maxWidth) / w);
-                    w = maxWidth;
+                if (w > maxWidth || h > maxHeight) {
+                    const ratio = Math.min(maxWidth / w, maxHeight / h);
+                    w = Math.round(w * ratio);
+                    h = Math.round(h * ratio);
                 }
                 const canvas = document.createElement('canvas');
                 canvas.width = w;
@@ -132,9 +194,21 @@ export const saveVehicleLog = async (
     isEditing: boolean,
     initialData?: VehicleLog | null,
     trabajoId?: string,
-    photoFiles?: File[]
+    photoFiles?: File[],
+    existingPhotoPaths?: string[],
+    onProgress?: (info: SaveProgressInfo) => void,
+    alreadyUploadedMap?: Map<File, string>
 ) => {
-    console.log("[vehicleService] Starting saveVehicleLog pipeline (Unified Offline Architecture)...", { isEditing, trabajoId, photoCount: photoFiles?.length || 0 });
+    console.log("[vehicleService] Starting saveVehicleLog pipeline (Optimized Parallel Architecture)...", { isEditing, trabajoId, photoCount: photoFiles?.length || 0 });
+
+    if (onProgress) {
+        onProgress({
+            stage: 'preparing',
+            current: 0,
+            total: photoFiles?.length || 0,
+            message: 'Preparando y sanitizando datos del registro...'
+        });
+    }
 
     // 1. Sanitización y Preparación de Datos
     const totalKm = formData.kmLlegada ? Math.max(0, formData.kmLlegada - (formData.kmSalida || 0)) : 0;
@@ -161,15 +235,27 @@ export const saveVehicleLog = async (
         }
     }
 
-    if (photoFiles && photoFiles.length > 0) {
-        const timestamp = Date.now();
-        const unidadName = sanitizedData.unidad || 'unidad';
-        // Nombre completo de la unidad tal como se ve en el selector del sistema
-        // (ej. "U1 - NISSAN PATHFINDER - 532995"), usado para nombrar la carpeta en OneDrive.
-        const unidadCompleta = sanitizedData.unidadId || unidadName;
+    const newlyUploadedPathsMap = alreadyUploadedMap || new Map<File, string>();
+    const photoFilesToProcess = photoFiles || [];
+    const totalNewPhotos = photoFilesToProcess.length;
+
+    let completedUploadCount = 0;
+    let failedUploadCount = 0;
+
+    // Contar cuántas ya estaban subidas en un intento previo dentro del mismo modal
+    for (const f of photoFilesToProcess) {
+        if (newlyUploadedPathsMap.has(f)) {
+            completedUploadCount++;
+        }
+    }
+
+    if (totalNewPhotos > 0) {
+        const timestamp = sanitizedData.photoTimestamp || Date.now();
         sanitizedData.photoTimestamp = timestamp;
-        sanitizedData.photoPolicyLastCompletedAt = new Date(timestamp).toISOString();
-        const paths: string[] = [];
+        sanitizedData.photoPolicyLastCompletedAt = sanitizedData.photoPolicyLastCompletedAt || new Date(timestamp).toISOString();
+
+        const unidadName = sanitizedData.unidad || 'unidad';
+        const unidadCompleta = sanitizedData.unidadId || unidadName;
 
         const rawUserName = currentUser.name || currentUser.email || currentUser.id || 'Usuario';
         const userName = rawUserName
@@ -183,17 +269,41 @@ export const saveVehicleLog = async (
         const hh = String(date.getHours()).padStart(2, '0');
         const min = String(date.getMinutes()).padStart(2, '0');
 
-        for (let i = 0; i < photoFiles.length; i++) {
-            const photoFile = photoFiles[i];
-            const photoFileName = `${yyyy}-${mm}-${dd}_${userName}_${hh}${min}_${timestamp}_${i}.jpg`;
-            const storagePath = `vehicle_photos/${unidadName}/${photoFileName}`;
-            paths.push(storagePath);
-            if (i === 0) {
-                sanitizedData.photoStoragePath = storagePath;
+        if (onProgress) {
+            onProgress({
+                stage: 'uploading',
+                current: completedUploadCount,
+                total: totalNewPhotos,
+                message: `Iniciando subida de fotografías (${completedUploadCount}/${totalNewPhotos})...`
+            });
+        }
+
+        // Subida paralela controlada (máximo 3 concurrentes para optimizar velocidad sin saturar el móvil)
+        const CONCURRENCY_LIMIT = 3;
+
+        await mapWithConcurrency(photoFilesToProcess, CONCURRENCY_LIMIT, async (photoFile, i) => {
+            // Si la foto ya fue subida con éxito en un intento previo dentro del modal, reutilizar su path y NO volver a subir
+            if (newlyUploadedPathsMap.has(photoFile)) {
+                console.log(`[vehicleService] Reusing already uploaded photo ${i + 1}:`, newlyUploadedPathsMap.get(photoFile));
+                return;
             }
 
+            const photoFileName = `${yyyy}-${mm}-${dd}_${userName}_${hh}${min}_${timestamp}_${i}.jpg`;
+            const storagePath = `vehicle_photos/${unidadName}/${photoFileName}`;
+
             try {
+                if (onProgress) {
+                    onProgress({
+                        stage: 'compressing',
+                        current: completedUploadCount,
+                        total: totalNewPhotos,
+                        message: `Optimizando y subiendo foto ${i + 1} de ${totalNewPhotos}...`
+                    });
+                }
+
+                // Compresión optimizada en cliente (preservando EXIF y calidad)
                 const compressedBlob = await compressImage(photoFile);
+
                 if (networkProbe.isOnline()) {
                     const { storage } = await import("../../firebase");
                     const { ref, uploadBytes } = await import("firebase/storage");
@@ -204,9 +314,9 @@ export const saveVehicleLog = async (
                             unidadCompleta,
                         },
                     });
-                    console.log("[vehicleService] Vehicle photo uploaded successfully to Storage:", storagePath);
+                    console.log("[vehicleService] Photo uploaded successfully to Storage:", storagePath);
                 } else {
-                    console.log("[vehicleService] Offline detected, storing vehicle photo locally in offlineMediaStore & queue:", storagePath);
+                    console.log("[vehicleService] Offline detected, storing photo locally:", storagePath);
                     const { storeBlob } = await import("../../services/offlineMediaStore");
                     const { pdfOfflineQueue, calculateBlobChecksum } = await import("../../core/pdf/pdfOfflineQueue");
                     await storeBlob(storagePath, compressedBlob);
@@ -221,11 +331,58 @@ export const saveVehicleLog = async (
                         checksum
                     );
                 }
+
+                // Registrar en el mapa de subidas confirmadas
+                newlyUploadedPathsMap.set(photoFile, storagePath);
+                completedUploadCount++;
+
+                if (onProgress) {
+                    onProgress({
+                        stage: 'uploading',
+                        current: completedUploadCount,
+                        total: totalNewPhotos,
+                        message: `Fotografías subidas: ${completedUploadCount}/${totalNewPhotos}`
+                    });
+                }
             } catch (photoErr) {
-                console.error(`[vehicleService] Error processing/uploading vehicle photo ${i}:`, photoErr);
+                console.error(`[vehicleService] Error uploading photo ${i + 1}:`, photoErr);
+                failedUploadCount++;
+                if (onProgress) {
+                    onProgress({
+                        stage: 'uploading',
+                        current: completedUploadCount,
+                        total: totalNewPhotos,
+                        message: `Error al subir fotografía ${i + 1}. Se podrá reintentar.`,
+                        failedCount: failedUploadCount
+                    });
+                }
             }
+        });
+    }
+
+    // Consolidar fotografías finales (Fotografías previas existentes + Fotografías nuevas confirmadas)
+    const newlyUploadedPathsList: string[] = [];
+    for (const file of photoFilesToProcess) {
+        const path = newlyUploadedPathsMap.get(file);
+        if (path) {
+            newlyUploadedPathsList.push(path);
         }
-        sanitizedData.photoStoragePaths = paths;
+    }
+
+    const baseExistingPaths = existingPhotoPaths || (
+        initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0
+            ? initialData.photoStoragePaths
+            : initialData?.photoStoragePath
+                ? [initialData.photoStoragePath]
+                : []
+    );
+
+    // Evitar duplicados y conservar fotos previas + nuevas
+    const consolidatedPaths = Array.from(new Set([...baseExistingPaths, ...newlyUploadedPathsList]));
+
+    if (consolidatedPaths.length > 0) {
+        sanitizedData.photoStoragePaths = consolidatedPaths;
+        sanitizedData.photoStoragePath = consolidatedPaths[0];
     } else if (initialData) {
         if (initialData.photoStoragePath) {
             sanitizedData.photoStoragePath = initialData.photoStoragePath;
@@ -233,13 +390,9 @@ export const saveVehicleLog = async (
         if (initialData.photoStoragePaths) {
             sanitizedData.photoStoragePaths = initialData.photoStoragePaths;
         }
-        if (initialData.photoTimestamp) {
-            sanitizedData.photoTimestamp = initialData.photoTimestamp;
-            if (!sanitizedData.photoStoragePath) {
-                const unidadName = sanitizedData.unidad || initialData.unidad || 'unidad';
-                sanitizedData.photoStoragePath = `vehicle_photos/${unidadName}/${initialData.photoTimestamp}_0.jpg`;
-            }
-        }
+    }
+
+    if (initialData) {
         if (initialData.oneDriveUrl) {
             sanitizedData.oneDriveUrl = initialData.oneDriveUrl;
         }
@@ -609,9 +762,13 @@ export const saveVehicleLog = async (
         }, 0);
 
         return { 
-            success: true, 
+            success: failedUploadCount === 0, 
             timelineId: finalTimelineId, 
-            logDoc: resultLogDoc 
+            logDoc: resultLogDoc,
+            failedCount: failedUploadCount,
+            totalPhotos: totalNewPhotos,
+            uploadedCount: completedUploadCount,
+            alreadyUploadedMap: newlyUploadedPathsMap
         };
 
     } catch (err) {

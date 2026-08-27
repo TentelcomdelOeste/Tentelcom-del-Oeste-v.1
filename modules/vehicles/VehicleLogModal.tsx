@@ -12,7 +12,7 @@ import { Select, ActionButton, IconButton, useConfirm } from '../../design-syste
 import { SignaturePad } from '../../components/SignaturePad';
 import { FiX, FiAlertTriangle, FiCreditCard, FiPlus, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import { isAdmin as checkIsAdmin } from '../../utils/permissions';
-import { saveVehicleLog, deleteVehicleLogPhoto } from './vehicleService';
+import { saveVehicleLog, deleteVehicleLogPhoto, SaveProgressInfo } from './vehicleService';
 import { VehicleExpenseModal } from './components/VehicleExpenseModal';
 import { checkVehiclePhotoPolicy } from '../../core/photoPolicy';
 import { networkProbe } from '../../core/offline/networkProbe';
@@ -49,6 +49,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const confirm = useConfirm();
     const isEditing = !!initialData;
     const [isLoading, setIsLoading] = useState(false);
+    const [alreadyUploadedMap] = useState<Map<File, string>>(() => new Map());
+    const [saveProgress, setSaveProgress] = useState<SaveProgressInfo | null>(null);
+    const [failedUploadsInfo, setFailedUploadsInfo] = useState<{ failedCount: number; totalPhotos: number } | null>(null);
     const [employees, setEmployees] = useState<{id: string, name: string}[]>(initialEmployees);
     const [isSigned, setIsSigned] = useState(!!initialData?.firma);
     const [activeLogWarning, setActiveLogWarning] = useState<string | null>(null);
@@ -666,11 +669,37 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             return;
         }
 
-        // 2. Ejecutar Guardado Centralizado
-        // El servicio maneja: persistencia, resolución de timelineId, y disparo de eventos operativos.
+        // 2. Ejecutar Guardado Centralizado con arquitectura paralela y seguimiento de progreso
         try {
-            const result = await saveVehicleLog(dataToSave, currentUser, isEditing, initialData, trabajoId, selectedPhotoFiles);
-            onClose(result);
+            setFailedUploadsInfo(null);
+            const existingPaths = existingPhotos.map(p => p.path).filter(Boolean) as string[];
+
+            const result = await saveVehicleLog(
+                dataToSave,
+                currentUser,
+                isEditing,
+                initialData,
+                trabajoId,
+                selectedPhotoFiles,
+                existingPaths,
+                (progress) => setSaveProgress(progress),
+                alreadyUploadedMap
+            );
+
+            if (result.failedCount && result.failedCount > 0) {
+                setFailedUploadsInfo({
+                    failedCount: result.failedCount,
+                    totalPhotos: selectedPhotoFiles.length
+                });
+                await confirm({
+                    title: 'Registro Guardado con Fotos Pendientes',
+                    description: `El registro de la bitácora se guardó exitosamente, pero ${result.failedCount} de ${selectedPhotoFiles.length} fotografías no se pudieron subir por inestabilidad en la conexión. Las fotografías confirmadas se conservaron. Puede presionar "REINTENTAR SUBIDA" para enviar las fotos pendientes sin volver a subir las ya procesadas.`,
+                    confirmLabel: 'ENTENDIDO',
+                    variant: 'warning'
+                });
+            } else {
+                onClose(result);
+            }
         } catch (err: any) {
             console.error("Error saving vehicle log:", err);
             await confirm({
@@ -681,6 +710,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             });
         } finally {
             setIsLoading(false);
+            setSaveProgress(null);
         }
     };
 
@@ -711,6 +741,49 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                 </div>
 
                 <form onSubmit={handleSubmit} id="vehicle-log-form" className="p-4 sm:p-6 flex-1 overflow-y-auto custom-scrollbar space-y-6 min-h-0">
+                    {/* BANNER DE PROGRESO DE GUARDADO / SUBIDA */}
+                    {saveProgress && (
+                        <div className="bg-blue-50 border border-blue-200 p-3 sm:p-4 rounded-xl flex flex-col gap-2 animate-in fade-in">
+                            <div className="flex items-center justify-between text-xs font-black text-blue-900 uppercase">
+                                <span>{saveProgress.message}</span>
+                                {saveProgress.total > 0 && (
+                                    <span className="bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full text-[10px]">
+                                        {saveProgress.current} / {saveProgress.total}
+                                    </span>
+                                )}
+                            </div>
+                            {saveProgress.total > 0 && (
+                                <div className="w-full bg-blue-200 h-2 rounded-full overflow-hidden">
+                                    <div 
+                                        className="bg-blue-600 h-full transition-all duration-300 rounded-full"
+                                        style={{ width: `${Math.min(100, Math.round((saveProgress.current / saveProgress.total) * 100))}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* BANNER DE REINTENTO DE FOTOGRAFÍAS PENDIENTES */}
+                    {failedUploadsInfo && !isLoading && (
+                        <div className="bg-amber-50 border border-amber-300 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
+                            <div className="flex items-center gap-3">
+                                <FiAlertTriangle className="text-amber-600 text-2xl flex-shrink-0" />
+                                <div>
+                                    <p className="text-xs font-black text-amber-900 uppercase">Fotografías pendientes de subida</p>
+                                    <p className="text-[11px] text-amber-800 font-medium">
+                                        {failedUploadsInfo.failedCount} de {failedUploadsInfo.totalPhotos} fotografías no se pudieron subir. La bitácora ya fue guardada. Puedes reintentar sin volver a subir las ya procesadas.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={(e) => handleSubmit(e)}
+                                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-black uppercase px-4 py-2 rounded-xl transition-colors whitespace-nowrap shadow-xs shrink-0"
+                            >
+                                Reintentar Subida
+                            </button>
+                        </div>
+                    )}
                     {/* INFORMACIÓN GENERAL */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                         <h3 className="text-xs font-black text-blue-800 uppercase mb-3">Información General</h3>
@@ -971,18 +1044,22 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
                                         {selectedPhotoFiles.map((file, idx) => {
                                             const previewUrl = URL.createObjectURL(file);
+                                            const isAlreadyUploaded = alreadyUploadedMap.has(file);
                                             return (
-                                                <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-500 shadow-xs shrink-0">
+                                                <div key={idx} className={`relative w-20 h-20 rounded-lg overflow-hidden border-2 ${isAlreadyUploaded ? 'border-emerald-500' : 'border-blue-500'} shadow-xs shrink-0`}>
                                                     <img src={previewUrl} alt={`Nueva ${idx + 1}`} className="w-full h-full object-cover" />
                                                     <IconButton
                                                         icon={<FiX size={10} />}
+                                                        disabled={isLoading}
                                                         onClick={() => {
+                                                            alreadyUploadedMap.delete(file);
                                                             setSelectedPhotoFiles(prev => prev.filter((_, i) => i !== idx));
+                                                            setFailedUploadsInfo(null);
                                                         }}
-                                                        className="absolute top-0.5 right-0.5 !bg-red-600 !text-white !p-0.5 hover:!bg-red-700 transition-colors shadow rounded-full"
+                                                        className="absolute top-0.5 right-0.5 !bg-red-600 !text-white !p-0.5 hover:!bg-red-700 transition-colors shadow rounded-full disabled:opacity-50"
                                                     />
-                                                    <div className="absolute inset-x-0 bottom-0 bg-blue-600 text-white text-[8px] text-center py-0.5 font-bold">
-                                                        Nueva
+                                                    <div className={`absolute inset-x-0 bottom-0 ${isAlreadyUploaded ? 'bg-emerald-600' : 'bg-blue-600'} text-white text-[8px] text-center py-0.5 font-bold truncate px-0.5`}>
+                                                        {isAlreadyUploaded ? '✓ Subida' : `Nueva ${idx + 1}`}
                                                     </div>
                                                 </div>
                                             );
@@ -1338,19 +1415,32 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         type="button"
                         variant="secondary"
                         label="Cancelar"
+                        disabled={isLoading}
                         onClick={onClose}
-                        className="flex-1 !py-3 !text-[10px] !font-bold !uppercase !rounded-xl"
+                        className="flex-1 !py-3 !text-[10px] !font-bold !uppercase !rounded-xl disabled:opacity-50"
                     />
                     {(() => {
                         const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
                         const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotos.length === 0;
                         const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
+
+                        let buttonLabel = "Guardar Registro";
+                        if (isLoading) {
+                            if (saveProgress?.message) {
+                                buttonLabel = saveProgress.message;
+                            } else {
+                                buttonLabel = "Guardando...";
+                            }
+                        } else if (failedUploadsInfo && failedUploadsInfo.failedCount > 0) {
+                            buttonLabel = "Reintentar Subida Pendiente";
+                        }
+
                         return (
                             <ActionButton
                                 type="submit"
                                 form="vehicle-log-form"
                                 variant="primary"
-                                label={isLoading ? "Guardando..." : "Guardar Registro"}
+                                label={buttonLabel}
                                 disabled={isDisabled}
                                 className={`flex-1 !py-3 !text-[10px] !font-black !uppercase !tracking-wider !rounded-xl ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
