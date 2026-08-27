@@ -8,6 +8,7 @@ import { localDocStore } from '../../core/offline/localDocStore';
 import { offlineQueueEngine } from '../../core/offline/offlineQueueEngine';
 import { VEHICLES } from '../job_scheduling/JobForm';
 import { useAuditPermanence } from '../../hooks/useAuditPermanence';
+import { useHapticFeedback } from '../../hooks/useHapticFeedback';
 import { Select, ActionButton, IconButton, useConfirm } from '../../design-system';
 import { SignaturePad } from '../../components/SignaturePad';
 import { FiX, FiAlertTriangle, FiCreditCard, FiPlus, FiTrash2, FiEdit2 } from 'react-icons/fi';
@@ -112,6 +113,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
         return getDefaultVehicleInspection();
     });
+    const { triggerHaptic, hapticPatterns } = useHapticFeedback();
     const takePhotoInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -129,6 +131,24 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             ? (['SI', 'NO'] as const)
             : (['SI', 'NO', 'N/A'] as const);
 
+        const handleOptionSelect = (opt: InspectionOption) => {
+            // IMPORTANTE: Haptic SOLO en INICIO y FINAL de labores (patrones basados en Samsung EFFECT_SWITCH)
+            const isLaborSection = item.category === 'INICIO DE LABORES' || item.category === 'FINAL DE LABORES';
+
+            if (isLaborSection) {
+                if (opt === 'SI') {
+                    triggerHaptic(hapticPatterns.SI); // [8, 3, 8] - Confirmación positiva
+                } else if (opt === 'NO') {
+                    triggerHaptic(hapticPatterns.NO); // [12, 5, 12] - Negación
+                } else if (opt === 'N/A') {
+                    triggerHaptic(hapticPatterns.NA); // [15, 4, 15] - Neutral
+                }
+            }
+            // Si NO es labor section, no hay vibración
+
+            handleInspectionChange(item.id, opt);
+        };
+
         return (
             <div key={item.id} className="py-1.5 flex items-center justify-between gap-2.5">
                 <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
@@ -140,10 +160,10 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                             key={opt}
                             role="button"
                             tabIndex={0}
-                            onClick={() => handleInspectionChange(item.id, opt)}
+                            onClick={() => handleOptionSelect(opt)}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
-                                    handleInspectionChange(item.id, opt);
+                                    handleOptionSelect(opt);
                                 }
                             }}
                             className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
