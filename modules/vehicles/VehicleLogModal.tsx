@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { User } from '../../utils/types';
-import { VehicleLog, VehicleRecharge, VehicleExpense, INSPECTION_ITEMS, getDefaultVehicleInspection, InspectionOption } from '../../types/vehicle.types';
+import { VehicleLog, VehicleRecharge, VehicleExpense, INSPECTION_ITEMS, getDefaultVehicleInspection, normalizeVehicleInspection, InspectionOption, InspectionItemDef } from '../../types/vehicle.types';
 import { db } from '../../firebase';
 import { collection, query, getDocs, orderBy, where, limit, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { localDocStore } from '../../core/offline/localDocStore';
@@ -107,11 +107,10 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const [photoLoading, setPhotoLoading] = useState(false);
     const [manualPhotoRequested, setManualPhotoRequested] = useState(false);
     const [revisionUnidad, setRevisionUnidad] = useState<Record<string, InspectionOption>>(() => {
-        const defaults = getDefaultVehicleInspection();
         if (initialData?.revisionUnidad) {
-            return { ...defaults, ...initialData.revisionUnidad };
+            return normalizeVehicleInspection(initialData.revisionUnidad);
         }
-        return defaults;
+        return getDefaultVehicleInspection();
     });
     const takePhotoInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -121,6 +120,41 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             ...prev,
             [id]: value
         }));
+    };
+
+    const renderInspectionItem = (item: InspectionItemDef) => {
+        const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
+        return (
+            <div key={item.id} className="py-1.5 flex items-center justify-between gap-2.5">
+                <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
+                    {item.label}
+                </span>
+                <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
+                    {(['SI', 'NO', 'N/A'] as const).map((opt) => (
+                        <span
+                            key={opt}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => handleInspectionChange(item.id, opt)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    handleInspectionChange(item.id, opt);
+                                }
+                            }}
+                            className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
+                                val === opt 
+                                    ? (opt === 'SI' 
+                                        ? 'bg-emerald-600 text-white shadow-xs font-black' 
+                                        : (opt === 'NO' ? 'bg-rose-600 text-white shadow-xs font-black' : 'bg-slate-700 text-white shadow-xs font-black'))
+                                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                            }`}
+                        >
+                            {opt}
+                        </span>
+                    ))}
+                </div>
+            </div>
+        );
     };
 
     useEffect(() => {
@@ -218,11 +252,10 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     useEffect(() => {
         if (initialData) {
-            const defaults = getDefaultVehicleInspection();
             if (initialData.revisionUnidad) {
-                setRevisionUnidad({ ...defaults, ...initialData.revisionUnidad });
+                setRevisionUnidad(normalizeVehicleInspection(initialData.revisionUnidad));
             } else {
-                setRevisionUnidad(defaults);
+                setRevisionUnidad(getDefaultVehicleInspection());
             }
         }
     }, [initialData]);
@@ -644,14 +677,14 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         const isFulfillingCycle = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested || (isEditing && !!initialData?.revisionUnidad));
         const shouldSaveInspection = isFulfillingCycle;
 
-        // Validación obligatoria especial para el punto 18 (Aire acondicionado)
+        // Validación obligatoria especial para el punto de Aire acondicionado
         if (shouldSaveInspection || (isEditing && initialData?.revisionUnidad)) {
             const acValue = revisionUnidad?.aireAcondicionado;
             if (!acValue || !['SI', 'NO', 'N/A'].includes(acValue)) {
                 setIsLoading(false);
                 await confirm({
                     title: 'Revisión de Unidad Incompleta',
-                    description: 'Debe responder obligatoriamente el punto "18. Aire acondicionado en buen estado" seleccionando SI, NO o N/A.',
+                    description: 'Debe responder obligatoriamente el punto "Aire acondicionado en buen estado" seleccionando SI, NO o N/A.',
                     confirmLabel: 'ACEPTAR',
                     variant: 'warning'
                 });
@@ -661,7 +694,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
         const dataToSave: any = {
             ...formData,
-            ...(shouldSaveInspection ? { revisionUnidad } : (initialData?.revisionUnidad ? { revisionUnidad: initialData.revisionUnidad } : {})),
+            ...(shouldSaveInspection ? { revisionUnidad: { ...(initialData?.revisionUnidad || {}), ...revisionUnidad } } : (initialData?.revisionUnidad ? { revisionUnidad: initialData.revisionUnidad } : {})),
             ...(isFulfillingCycle && (selectedPhotoFiles.length > 0 || existingPhotos.length > 0)
                 ? { photoPolicyLastCompletedAt: new Date().toISOString() }
                 : (initialData?.photoPolicyLastCompletedAt ? { photoPolicyLastCompletedAt: initialData.photoPolicyLastCompletedAt } : {})),
@@ -870,87 +903,60 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* ANTES DE SALIR */}
-                        <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                            <h3 className="text-xs font-black text-blue-800 uppercase mb-3">Antes de Salir</h3>
-                            <div className="space-y-3 text-sm">
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Kilometraje Salida</label>
-                                    <input type="number" name="kmSalida" value={formData.kmSalida || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" required />
+                    {/* 1. INICIO DE LABORES */}
+                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-200/80 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-black text-blue-900 uppercase tracking-wide flex items-center gap-1.5">
+                                <span>Inicio de Labores</span>
+                            </h3>
+                            <span className="text-[10px] text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded-full">
+                                Control de Inicio
+                            </span>
+                        </div>
+                        <div className="bg-white p-3 rounded-lg border border-blue-100 divide-y divide-slate-100">
+                            {INSPECTION_ITEMS.filter(item => item.category === 'INICIO DE LABORES').map(renderInspectionItem)}
+                        </div>
+                    </div>
+
+                    {/* 2. ANTES DE SALIR */}
+                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 shadow-xs">
+                        <h3 className="text-xs font-black text-blue-800 uppercase mb-3">Antes de Salir</h3>
+                        <div className="space-y-3 text-sm">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Kilometraje Salida</label>
+                                <input type="number" name="kmSalida" value={formData.kmSalida || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" required />
+                            </div>
+                            <div className="flex items-end gap-2 w-full min-w-0 max-w-full">
+                                <div className="flex-[0.9] min-w-0 max-w-full">
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 truncate">Hora Salida</label>
+                                    <input type="time" name="horaSalida" value={formData.horaSalida || ''} onChange={handleChange} className="w-full py-[10px] px-[12px] text-[16px] md:text-sm border border-slate-200 rounded-lg bg-white min-w-0 max-w-full outline-none focus:ring-2 focus:ring-blue-100 appearance-none" required />
                                 </div>
-                                <div className="flex items-end gap-2 w-full min-w-0 max-w-full">
-                                    <div className="flex-[0.9] min-w-0 max-w-full">
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 truncate">Hora Salida</label>
-                                        <input type="time" name="horaSalida" value={formData.horaSalida || ''} onChange={handleChange} className="w-full py-[10px] px-[12px] text-[16px] md:text-sm border border-slate-200 rounded-lg bg-white min-w-0 max-w-full outline-none focus:ring-2 focus:ring-blue-100 appearance-none" required />
-                                    </div>
-                                    <div className="flex-[0.7] min-w-0 max-w-full">
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 truncate">Combustible</label>
-                                        <select name="combustible" value={formData.combustible || 'Full'} onChange={handleChange} className="w-full py-[10px] px-[12px] text-[16px] md:text-sm border border-slate-200 rounded-lg bg-white min-w-0 max-w-full outline-none focus:ring-2 focus:ring-blue-100 appearance-none" required>
-                                            <option value="Full">Full</option>
-                                            <option value="3/4">3/4</option>
-                                            <option value="1/2">1/2</option>
-                                            <option value="1/4">1/4</option>
-                                            <option value="Reserva">Reserva</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Destino</label>
-                                    <textarea
-                                        name="destino"
-                                        value={formData.destino || ''}
-                                        onChange={handleChange}
-                                        rows={2}
-                                        className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm resize-y leading-normal block whitespace-pre-wrap break-words"
-                                        required
-                                    />
+                                <div className="flex-[0.7] min-w-0 max-w-full">
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 truncate">Combustible</label>
+                                    <select name="combustible" value={formData.combustible || 'Full'} onChange={handleChange} className="w-full py-[10px] px-[12px] text-[16px] md:text-sm border border-slate-200 rounded-lg bg-white min-w-0 max-w-full outline-none focus:ring-2 focus:ring-blue-100 appearance-none" required>
+                                        <option value="Full">Full</option>
+                                        <option value="3/4">3/4</option>
+                                        <option value="1/2">1/2</option>
+                                        <option value="1/4">1/4</option>
+                                        <option value="Reserva">Reserva</option>
+                                    </select>
                                 </div>
                             </div>
-                        </div>
-
-                        {/* AL REGRESAR */}
-                        <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
-                            <h3 className="text-xs font-black text-emerald-800 uppercase mb-3">Al Regresar</h3>
-                            <div className="space-y-3 text-sm">
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Regreso</label>
-                                        <input type="date" name="fechaRegreso" value={formData.fechaRegreso || formData.fecha || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Hora Llegada</label>
-                                        <input type="time" name="horaLlegada" value={formData.horaLlegada || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Kilometraje Llegada</label>
-                                    <input type="number" name="kmLlegada" value={formData.kmLlegada || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Combustible Final</label>
-                                        <select name="combustibleFinal" value={formData.combustibleFinal || 'Full'} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none">
-                                            <option value="Full">Full</option>
-                                            <option value="3/4">3/4</option>
-                                            <option value="1/2">1/2</option>
-                                            <option value="1/4">1/4</option>
-                                            <option value="Reserva">Reserva</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Eventos en Carretera</label>
-                                        <select name="eventosCarretera" value={formData.eventosCarretera || 'No'} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none">
-                                            <option value="No">No</option>
-                                            <option value="Sí">Sí</option>
-                                        </select>
-                                    </div>
-                                </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Destino</label>
+                                <textarea
+                                    name="destino"
+                                    value={formData.destino || ''}
+                                    onChange={handleChange}
+                                    rows={2}
+                                    className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm resize-y leading-normal block whitespace-pre-wrap break-words"
+                                    required
+                                />
                             </div>
                         </div>
                     </div>
 
-                    {/* SECCIÓN DE FOTOGRAFÍA Y REVISIÓN DE UNIDAD */}
+                    {/* 3. REVISIÓN DE UNIDAD Y FOTOGRAFÍA */}
                     {(() => {
                         // 1. REGLA ABSOLUTA: Si la política global está desactivada (o la unidad está excluida / disabled),
                         // NO mostrar Fotografía ni Revisión de Unidad.
@@ -1082,106 +1088,74 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     </div>
                                 )}
 
-                                {/* REVISIÓN DE UNIDAD */}
+                                {/* REVISIÓN DE UNIDAD (4 CATEGORÍAS ORGANIZADAS) */}
                                 <div className="pt-2 border-t border-slate-200/80">
-                                    <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center justify-between mb-2.5">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
                                                 Revisión de Unidad
                                             </span>
                                             <span className="text-[10px] text-slate-500 font-medium">
-                                                (Inspección rápida del vehículo)
+                                                (Inspección técnica y operativa del vehículo)
                                             </span>
                                         </div>
                                     </div>
 
-                                    {/* 2 Columnas Lado a Lado en Pantallas Medianas/Grandes */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                                        {/* UNIDAD APAGADA */}
-                                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/90 shadow-xs">
-                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2 py-1 rounded mb-1.5 flex items-center justify-between border border-slate-200/50">
-                                                <span>Unidad Apagada</span>
-                                                <span className="text-[9px] text-slate-500 font-bold">10 puntos</span>
+                                    {/* Grid responsivo de tarjetas organizadas */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {/* 1. INSPECCIÓN EXTERIOR DEL VEHÍCULO */}
+                                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
+                                                <span className="truncate">1. Inspección Exterior</span>
+                                                <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">8 puntos</span>
                                             </div>
-                                            <div className="divide-y divide-slate-100">
-                                                {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD APAGADA').map((item) => {
-                                                    const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
-                                                    return (
-                                                        <div key={item.id} className="py-1 flex items-center justify-between gap-2">
-                                                            <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
-                                                                {item.label}
-                                                            </span>
-                                                            <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
-                                                                {(['SI', 'NO', 'N/A'] as const).map((opt) => (
-                                                                    <span
-                                                                        key={opt}
-                                                                        role="button"
-                                                                        tabIndex={0}
-                                                                        onClick={() => handleInspectionChange(item.id, opt)}
-                                                                        onKeyDown={(e) => {
-                                                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                                                handleInspectionChange(item.id, opt);
-                                                                            }
-                                                                        }}
-                                                                        className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
-                                                                            val === opt 
-                                                                                ? (opt === 'SI' 
-                                                                                    ? 'bg-emerald-600 text-white shadow-xs font-black' 
-                                                                                    : (opt === 'NO' ? 'bg-rose-600 text-white shadow-xs font-black' : 'bg-slate-700 text-white shadow-xs font-black'))
-                                                                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
-                                                                        }`}
-                                                                    >
-                                                                        {opt}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                            <div className="divide-y divide-slate-100 flex-1">
+                                                {INSPECTION_ITEMS.filter(item => item.category === 'INSPECCIÓN EXTERIOR').map(renderInspectionItem)}
                                             </div>
                                         </div>
 
-                                        {/* UNIDAD ENCENDIDA */}
-                                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/90 shadow-xs">
-                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2 py-1 rounded mb-1.5 flex items-center justify-between border border-slate-200/50">
-                                                <span>Unidad Encendida</span>
-                                                <span className="text-[9px] text-slate-500 font-bold">9 puntos</span>
+                                        {/* 2. REVISIÓN MECÁNICA BÁSICA */}
+                                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
+                                                <span className="truncate">2. Revisión Mecánica Básica</span>
+                                                <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">5 puntos</span>
                                             </div>
-                                            <div className="divide-y divide-slate-100">
-                                                {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD ENCENDIDA').map((item) => {
-                                                    const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
-                                                    return (
-                                                        <div key={item.id} className="py-1 flex items-center justify-between gap-2">
-                                                            <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
-                                                                {item.label}
-                                                            </span>
-                                                            <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
-                                                                {(['SI', 'NO', 'N/A'] as const).map((opt) => (
-                                                                    <span
-                                                                        key={opt}
-                                                                        role="button"
-                                                                        tabIndex={0}
-                                                                        onClick={() => handleInspectionChange(item.id, opt)}
-                                                                        onKeyDown={(e) => {
-                                                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                                                handleInspectionChange(item.id, opt);
-                                                                            }
-                                                                        }}
-                                                                        className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
-                                                                            val === opt 
-                                                                                ? (opt === 'SI' 
-                                                                                    ? 'bg-emerald-600 text-white shadow-xs font-black' 
-                                                                                    : (opt === 'NO' ? 'bg-rose-600 text-white shadow-xs font-black' : 'bg-slate-700 text-white shadow-xs font-black'))
-                                                                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
-                                                                        }`}
-                                                                    >
-                                                                        {opt}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                            <div className="divide-y divide-slate-100 flex-1">
+                                                {INSPECTION_ITEMS.filter(item => item.category === 'REVISIÓN MECÁNICA BÁSICA').map(renderInspectionItem)}
+                                            </div>
+                                        </div>
+
+                                        {/* 3. EQUIPAMIENTO DE SEGURIDAD */}
+                                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
+                                                <span className="truncate">3. Equipamiento de Seguridad</span>
+                                                <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">7 puntos</span>
+                                            </div>
+                                            <div className="divide-y divide-slate-100 flex-1">
+                                                {INSPECTION_ITEMS.filter(item => item.category === 'EQUIPAMIENTO DE SEGURIDAD').map(renderInspectionItem)}
+                                            </div>
+                                        </div>
+
+                                        {/* 4. REVISIÓN OPERATIVA (UNIDAD APAGADA Y ENCENDIDA) */}
+                                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col space-y-3">
+                                            <div>
+                                                <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-1.5 flex items-center justify-between border border-slate-200/60">
+                                                    <span className="truncate">4.1 Unidad Apagada</span>
+                                                    <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">3 puntos</span>
+                                                </div>
+                                                <div className="divide-y divide-slate-100">
+                                                    {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD APAGADA').map(renderInspectionItem)}
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-2 border-t border-slate-100">
+                                                <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-1.5 flex items-center justify-between border border-slate-200/60">
+                                                    <span className="truncate">4.2 Unidad Encendida</span>
+                                                    <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">7 puntos</span>
+                                                </div>
+                                                <div className="divide-y divide-slate-100">
+                                                    {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD ENCENDIDA').map(renderInspectionItem)}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1189,6 +1163,61 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                             </div>
                         );
                     })()}
+
+                    {/* 4. FINAL DE LABORES */}
+                    <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200/80 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-black text-emerald-900 uppercase tracking-wide flex items-center gap-1.5">
+                                <span>Final de Labores</span>
+                            </h3>
+                            <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
+                                Cierre de Recorrido
+                            </span>
+                        </div>
+                        <div className="bg-white p-3 rounded-lg border border-emerald-100 divide-y divide-slate-100">
+                            {INSPECTION_ITEMS.filter(item => item.category === 'FINAL DE LABORES').map(renderInspectionItem)}
+                        </div>
+                    </div>
+
+                    {/* 5. AL REGRESAR */}
+                    <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 shadow-xs">
+                        <h3 className="text-xs font-black text-emerald-800 uppercase mb-3">Al Regresar</h3>
+                        <div className="space-y-3 text-sm">
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Regreso</label>
+                                    <input type="date" name="fechaRegreso" value={formData.fechaRegreso || formData.fecha || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Hora Llegada</label>
+                                    <input type="time" name="horaLlegada" value={formData.horaLlegada || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Kilometraje Llegada</label>
+                                <input type="number" name="kmLlegada" value={formData.kmLlegada || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Combustible Final</label>
+                                    <select name="combustibleFinal" value={formData.combustibleFinal || 'Full'} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none">
+                                        <option value="Full">Full</option>
+                                        <option value="3/4">3/4</option>
+                                        <option value="1/2">1/2</option>
+                                        <option value="1/4">1/4</option>
+                                        <option value="Reserva">Reserva</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Eventos en Carretera</label>
+                                    <select name="eventosCarretera" value={formData.eventosCarretera || 'No'} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none">
+                                        <option value="No">No</option>
+                                        <option value="Sí">Sí</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <input
                         ref={takePhotoInputRef}

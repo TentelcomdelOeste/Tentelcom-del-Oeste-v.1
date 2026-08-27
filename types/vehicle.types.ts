@@ -68,36 +68,69 @@ export interface VehicleLog {
 
 export type InspectionOption = 'SI' | 'NO' | 'N/A';
 
+export type InspectionCategory = 
+    | 'INICIO DE LABORES'
+    | 'INSPECCIÓN EXTERIOR' 
+    | 'REVISIÓN MECÁNICA BÁSICA' 
+    | 'EQUIPAMIENTO DE SEGURIDAD' 
+    | 'UNIDAD APAGADA' 
+    | 'UNIDAD ENCENDIDA'
+    | 'FINAL DE LABORES';
+
 export interface InspectionItemDef {
     id: string;
     label: string;
-    category: 'UNIDAD APAGADA' | 'UNIDAD ENCENDIDA';
+    category: InspectionCategory;
     defaultValue?: InspectionOption;
 }
 
 export const INSPECTION_ITEMS: InspectionItemDef[] = [
-    // UNIDAD APAGADA
-    { id: 'llantas', label: '1. Llantas en buen estado', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'lucesBuenEstado', label: '2. Luces en buen estado', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'espejosRetrovisores', label: '3. Espejos/retrovisores', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'presentaFuga', label: '4. Presenta alguna fuga', category: 'UNIDAD APAGADA', defaultValue: 'NO' },
-    { id: 'frenoMano', label: '5. Buen estado del freno de mano', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'kitCarretera', label: '6. Kit obligatorio para carretera', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'llantaRefaccion', label: '7. Llanta de refacción en buen estado', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'cuentaExtintor', label: '8. Cuenta con extintor', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'vencimientoExtintor', label: '9. Fecha de vencimiento del extintor', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'terminalesBateriaAjustados', label: '10. Terminales de batería ajustados', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    // INICIO DE LABORES
+    { id: 'llenadoBoletaRecorrido', label: '1. Llenado de boleta de recorrido', category: 'INICIO DE LABORES', defaultValue: 'SI' },
 
-    // UNIDAD ENCENDIDA
-    { id: 'enciendeCorreBien', label: '11. La unidad enciende y corre bien', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'indicadoresTablero', label: '12. Indicadores del tablero en buen estado (luces, termostato, combustible, velocímetro)', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'lucesEmergencia', label: '13. Luces de emergencia', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'nivelCombustibleCarga', label: '14. Nivel de Combustible/Carga', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'claxonPito', label: '15. Claxon/Pito', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'frenosPedal', label: '16. Frenos de pedal funcionan', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'marchasBuenEstado', label: '17. Marchas en buen estado', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'aireAcondicionado', label: '18. Aire acondicionado en buen estado', category: 'UNIDAD ENCENDIDA' },
-    { id: 'terminalesBateriaCorrosion', label: '19. Terminales de batería con corrosión', category: 'UNIDAD ENCENDIDA', defaultValue: 'NO' }
+    // INSPECCIÓN EXTERIOR DEL VEHÍCULO
+    { id: 'inspeccionGolpesDanos', label: '1. Revisar visualmente que no existan golpes, daños o piezas sueltas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'estadoLlantas', label: '2. Revisar el estado de las llantas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'presionLlantas', label: '3. Presión de las llantas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'desgasteDanosLlantas', label: '4. Desgaste excesivo o daños visibles en las llantas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'NO' },
+    { id: 'llantaRepuesto', label: '5. Verificar estado de la llanta de repuesto', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'lucesCompletas', label: '6. Revisar funcionamiento de todas las luces, delanteras, traseras, de freno, direccionales, emergencia', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'espejosParabrisasVentanas', label: '7. Revisar espejos retrovisores, parabrisas y ventanas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'sinFugasLiquidos', label: '8. Verificar que no existan fugas de aceite, combustible, refrigerante u otros líquidos debajo del vehículo', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+
+    // REVISIÓN MECÁNICA BÁSICA DEL VEHÍCULO
+    { id: 'nivelAceite', label: '1. Nivel de aceite', category: 'REVISIÓN MECÁNICA BÁSICA', defaultValue: 'SI' },
+    { id: 'nivelRefrigerante', label: '2. Nivel de refrigerante', category: 'REVISIÓN MECÁNICA BÁSICA', defaultValue: 'SI' },
+    { id: 'nivelLiquidoFrenos', label: '3. Nivel de líquido de frenos', category: 'REVISIÓN MECÁNICA BÁSICA', defaultValue: 'SI' },
+    { id: 'nivelLimpiaparabrisas', label: '4. Nivel de líquido limpiaparabrisas', category: 'REVISIÓN MECÁNICA BÁSICA', defaultValue: 'SI' },
+    { id: 'verificarKmCambioAceite', label: '5. Verificar cantidad de kilómetros recorrido para el cambio de aceite de la unidad', category: 'REVISIÓN MECÁNICA BÁSICA', defaultValue: 'SI' },
+
+    // EQUIPAMIENTO DE SEGURIDAD
+    { id: 'extintorVigente', label: '1. Extintor disponible y vigente', category: 'EQUIPAMIENTO DE SEGURIDAD', defaultValue: 'SI' },
+    { id: 'triangulosSenalizacion', label: '2. Triángulos y dispositivos de señalización', category: 'EQUIPAMIENTO DE SEGURIDAD', defaultValue: 'SI' },
+    { id: 'gatoHidraulico', label: '3. Gato hidráulico', category: 'EQUIPAMIENTO DE SEGURIDAD', defaultValue: 'SI' },
+    { id: 'llaveRuedas', label: '4. Llave para ruedas', category: 'EQUIPAMIENTO DE SEGURIDAD', defaultValue: 'SI' },
+    { id: 'botiquin', label: '5. Botiquín de primeros auxilios', category: 'EQUIPAMIENTO DE SEGURIDAD', defaultValue: 'SI' },
+    { id: 'documentosVehiculo', label: '6. Documentos del vehículo', category: 'EQUIPAMIENTO DE SEGURIDAD', defaultValue: 'SI' },
+    { id: 'documentosConductor', label: '7. Documentos del conductor', category: 'EQUIPAMIENTO DE SEGURIDAD', defaultValue: 'SI' },
+
+    // UNIDAD APAGADA (Puntos mecánicos/funcionales conservados)
+    { id: 'terminalesBateriaBuenEstado', label: '1. Terminales de batería en buen estado (ajustados y sin corrosión)', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'kitCarretera', label: '2. Kit obligatorio para carretera', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'frenoMano', label: '3. Buen estado del freno de mano', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+
+    // UNIDAD ENCENDIDA (Puntos mecánicos/funcionales conservados)
+    { id: 'enciendeCorreBien', label: '1. La unidad enciende y corre bien', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'indicadoresTablero', label: '2. Indicadores del tablero en buen estado (luces, termostato, combustible, velocímetro)', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'nivelCombustibleCarga', label: '3. Nivel de Combustible/Carga', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'claxonPito', label: '4. Claxon/Pito', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'frenosPedal', label: '5. Frenos de pedal funcionan', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'marchasBuenEstado', label: '6. Marchas en buen estado', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
+    { id: 'aireAcondicionado', label: '7. Aire acondicionado en buen estado', category: 'UNIDAD ENCENDIDA' },
+
+    // FINAL DE LABORES
+    { id: 'inspeccionVisualParqueo', label: '1. Inspección visual de la unidad en el parqueo', category: 'FINAL DE LABORES', defaultValue: 'SI' },
+    { id: 'cerradoBoletaRecorrido', label: '2. Cerrado de la boleta de recorrido', category: 'FINAL DE LABORES', defaultValue: 'SI' }
 ];
 
 export const getDefaultVehicleInspection = (): Record<string, InspectionOption> => {
@@ -108,6 +141,49 @@ export const getDefaultVehicleInspection = (): Record<string, InspectionOption> 
         }
     });
     return defaults;
+};
+
+export const normalizeVehicleInspection = (saved?: Record<string, any>): Record<string, InspectionOption> => {
+    const defaults = getDefaultVehicleInspection();
+    if (!saved) return defaults;
+
+    const result: Record<string, InspectionOption> = { ...defaults, ...saved };
+
+    // Migración retrocompatible para registros históricos
+    if (saved.llantas && !saved.estadoLlantas) {
+        result.estadoLlantas = saved.llantas;
+    }
+    if (saved.lucesBuenEstado && !saved.lucesCompletas) {
+        result.lucesCompletas = saved.lucesBuenEstado;
+    }
+    if (saved.espejosRetrovisores && !saved.espejosParabrisasVentanas) {
+        result.espejosParabrisasVentanas = saved.espejosRetrovisores;
+    }
+    if (saved.presentaFuga && !saved.sinFugasLiquidos) {
+        result.sinFugasLiquidos = saved.presentaFuga === 'NO' ? 'SI' : (saved.presentaFuga === 'SI' ? 'NO' : 'N/A');
+    }
+    if (saved.llantaRefaccion && !saved.llantaRepuesto) {
+        result.llantaRepuesto = saved.llantaRefaccion;
+    }
+    if ((saved.cuentaExtintor || saved.vencimientoExtintor) && !saved.extintorVigente) {
+        result.extintorVigente = saved.cuentaExtintor || saved.vencimientoExtintor;
+    }
+    if ((saved.terminalesBateriaAjustados || saved.terminalesBateriaCorrosion) && !saved.terminalesBateriaBuenEstado) {
+        if (saved.terminalesBateriaAjustados === 'NO' || saved.terminalesBateriaCorrosion === 'SI') {
+            result.terminalesBateriaBuenEstado = 'NO';
+        } else {
+            result.terminalesBateriaBuenEstado = saved.terminalesBateriaAjustados || 'SI';
+        }
+    }
+
+    // Si aire acondicionado no estaba respondido en saved, no forzar ningún default
+    if (saved.aireAcondicionado === undefined) {
+        delete result.aireAcondicionado;
+    } else {
+        result.aireAcondicionado = saved.aireAcondicionado;
+    }
+
+    return result;
 };
 
 export const extraerUnidad = (unidadId?: string): string => {
