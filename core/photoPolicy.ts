@@ -7,6 +7,12 @@ export interface VehiclePhotoPolicyOverride {
   disabled?: boolean;
 }
 
+export interface PhotoPolicyConfig {
+  enabled: boolean;
+  intervalDays: number;
+  policyActivatedAt?: string;
+}
+
 /**
  * Calculates deadline adding a specific number of BUSINESS DAYS (Monday to Friday).
  * If startDate is on a weekend (Saturday/Sunday), counting starts on the next Monday.
@@ -72,11 +78,15 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
   disabled: boolean;
   ultimaFotoDate: Date | null;
   fechaLimite: Date | null;
+  policyEnabled: boolean;
+  policyActivatedAt: Date | null;
 }> {
   try {
     // 1. Get global config /config/photo_policy
     let intervalDays = 15;
     let policyEnabled = true;
+    let policyActivatedAtStr: string | null = null;
+
     try {
       const configDoc = await getDoc(doc(db, "config", "photo_policy"));
       if (configDoc.exists()) {
@@ -87,15 +97,32 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
         if (typeof data.enabled === "boolean") {
           policyEnabled = data.enabled;
         }
+        if (data.policyActivatedAt) {
+          policyActivatedAtStr = String(data.policyActivatedAt);
+        }
       }
     } catch (e) {
       console.warn("[photoPolicy] Could not load config/photo_policy, using default 15:", e);
     }
 
-    // If global policy is disabled, vehicle never expires and photo is not mandatory
+    // REGLA 1: Si la política global está desactivada (enabled = false),
+    // NINGUNA unidad está obligada, no se exigen fotos ni revisión.
     if (!policyEnabled) {
-      return { vencida: false, intervalDays, disabled: true, ultimaFotoDate: null, fechaLimite: null };
+      return {
+        vencida: false,
+        intervalDays,
+        disabled: true,
+        ultimaFotoDate: null,
+        fechaLimite: null,
+        policyEnabled: false,
+        policyActivatedAt: null,
+      };
     }
+
+    const policyActivatedAtDate = policyActivatedAtStr ? new Date(policyActivatedAtStr) : null;
+    const policyActivatedAtMs = policyActivatedAtDate && !isNaN(policyActivatedAtDate.getTime()) 
+      ? policyActivatedAtDate.getTime() 
+      : 0;
 
     // 2. Get vehicle document
     let vehicleData: any = null;
@@ -128,68 +155,65 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
       }
     }
 
+    // REGLA 8: Si la unidad individual está excluida, no participa en la política.
     if (disabled) {
-      return { vencida: false, intervalDays: effectiveInterval, disabled: true, ultimaFotoDate: null, fechaLimite: null };
+      return {
+        vencida: false,
+        intervalDays: effectiveInterval,
+        disabled: true,
+        ultimaFotoDate: null,
+        fechaLimite: null,
+        policyEnabled: true,
+        policyActivatedAt: policyActivatedAtDate,
+      };
     }
 
-    if (effectiveInterval === 0) {
-      return { vencida: true, intervalDays: 0, disabled: false, ultimaFotoDate: null, fechaLimite: new Date() };
-    }
-
-    // 3. Find most recent compliance date (photoPolicyLastCompletedAt, photoTimestamp, or oneDriveUrl)
+    // 3. Buscar fecha del último cumplimiento VÁLIDO (posterior o igual a policyActivatedAtMs)
     let ultimaFotoMs: number | null = null;
     const unitNamesToQuery = [unidadIdOrCode];
     if (vehicleData && vehicleData.unidad && vehicleData.unidad !== unidadIdOrCode) {
       unitNamesToQuery.push(vehicleData.unidad);
     }
 
-    // 3.1. Check vehicleData directly
-    if (vehicleData) {
-      if (vehicleData.photoPolicyLastCompletedAt) {
-        const ts = typeof vehicleData.photoPolicyLastCompletedAt === "number"
-          ? vehicleData.photoPolicyLastCompletedAt
-          : new Date(vehicleData.photoPolicyLastCompletedAt).getTime();
-        if (!isNaN(ts)) {
-          ultimaFotoMs = ts;
+    // Helper para verificar y registrar cumplimiento si es >= policyActivatedAtMs
+    const recordCandidateTimestamp = (rawTs: any) => {
+      if (!rawTs) return;
+      const ts = typeof rawTs === "number" ? rawTs : new Date(rawTs).getTime();
+      if (!isNaN(ts)) {
+        // Solo cuenta si ocurrió en o después de la última activación de la política
+        if (policyActivatedAtMs === 0 || ts >= policyActivatedAtMs) {
+          if (!ultimaFotoMs || ts > ultimaFotoMs) {
+            ultimaFotoMs = ts;
+          }
         }
       }
+    };
+
+    // 3.1. Verificar en vehicleData
+    if (vehicleData) {
+      recordCandidateTimestamp(vehicleData.photoPolicyLastCompletedAt);
     }
 
-    // 3.2. Check localDocStore (instant local reactivity)
+    // 3.2. Verificar en localDocStore (reactividad inmediata local)
     try {
       const localLogs = await localDocStore.getLocalCollection("bitacora_vehiculos");
       if (Array.isArray(localLogs)) {
         for (const entry of localLogs) {
           const lData = entry.data || entry;
           if (unitNamesToQuery.includes(lData.unidad) || unitNamesToQuery.includes(lData.unidadId)) {
-            if (lData.photoPolicyLastCompletedAt) {
-              const ts = typeof lData.photoPolicyLastCompletedAt === "number"
-                ? lData.photoPolicyLastCompletedAt
-                : new Date(lData.photoPolicyLastCompletedAt).getTime();
-              if (!isNaN(ts) && (!ultimaFotoMs || ts > ultimaFotoMs)) {
-                ultimaFotoMs = ts;
-              }
-            }
-            if (lData.photoTimestamp) {
-              const ts = typeof lData.photoTimestamp === "number" ? lData.photoTimestamp : new Date(lData.photoTimestamp).getTime();
-              if (!isNaN(ts) && (!ultimaFotoMs || ts > ultimaFotoMs)) {
-                ultimaFotoMs = ts;
-              }
-            }
+            recordCandidateTimestamp(lData.photoPolicyLastCompletedAt);
+            recordCandidateTimestamp(lData.photoTimestamp);
             if (lData.oneDriveUrl && lData.fecha) {
-              const fDate = new Date(lData.fecha).getTime();
-              if (!isNaN(fDate) && (!ultimaFotoMs || fDate > ultimaFotoMs)) {
-                ultimaFotoMs = fDate;
-              }
+              recordCandidateTimestamp(lData.fecha);
             }
           }
         }
       }
     } catch {
-      // Ignore localDocStore error
+      // Ignorar error de localDocStore
     }
 
-    // 3.3. Check remote Firestore bitacora_vehiculos
+    // 3.3. Verificar en Firestore remoto bitacora_vehiculos
     for (const uName of unitNamesToQuery) {
       try {
         const qLogs = query(
@@ -201,25 +225,10 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
         const logsSnap = await getDocs(qLogs);
         for (const d of logsSnap.docs) {
           const lData = d.data();
-          if (lData.photoPolicyLastCompletedAt) {
-            const ts = typeof lData.photoPolicyLastCompletedAt === "number"
-              ? lData.photoPolicyLastCompletedAt
-              : new Date(lData.photoPolicyLastCompletedAt).getTime();
-            if (!isNaN(ts) && (!ultimaFotoMs || ts > ultimaFotoMs)) {
-              ultimaFotoMs = ts;
-            }
-          }
-          if (lData.photoTimestamp) {
-            const ts = typeof lData.photoTimestamp === "number" ? lData.photoTimestamp : new Date(lData.photoTimestamp).getTime();
-            if (!isNaN(ts) && (!ultimaFotoMs || ts > ultimaFotoMs)) {
-              ultimaFotoMs = ts;
-            }
-          }
+          recordCandidateTimestamp(lData.photoPolicyLastCompletedAt);
+          recordCandidateTimestamp(lData.photoTimestamp);
           if (lData.oneDriveUrl && lData.fecha) {
-            const fDate = new Date(lData.fecha).getTime();
-            if (!isNaN(fDate) && (!ultimaFotoMs || fDate > ultimaFotoMs)) {
-              ultimaFotoMs = fDate;
-            }
+            recordCandidateTimestamp(lData.fecha);
           }
         }
       } catch (err) {
@@ -227,10 +236,21 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
       }
     }
 
+    // REGLA 2 y 5: Si no existe ningún cumplimiento válido después de la última activación,
+    // la unidad queda PENDIENTE inmediatamente.
     if (!ultimaFotoMs) {
-      return { vencida: true, intervalDays: effectiveInterval, disabled: false, ultimaFotoDate: null, fechaLimite: new Date() };
+      return {
+        vencida: true,
+        intervalDays: effectiveInterval,
+        disabled: false,
+        ultimaFotoDate: null,
+        fechaLimite: new Date(),
+        policyEnabled: true,
+        policyActivatedAt: policyActivatedAtDate,
+      };
     }
 
+    // Si tiene cumplimiento en el ciclo actual, calculamos la fecha límite sumando los días laborales
     const ultimaFotoDate = new Date(ultimaFotoMs);
     const fechaLimite = calculateBusinessDaysDeadline(ultimaFotoDate, effectiveInterval);
 
@@ -243,9 +263,19 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
       disabled: false,
       ultimaFotoDate,
       fechaLimite,
+      policyEnabled: true,
+      policyActivatedAt: policyActivatedAtDate,
     };
   } catch (e) {
     console.error("[photoPolicy] Error checking photo policy:", e);
-    return { vencida: false, intervalDays: 15, disabled: false, ultimaFotoDate: null, fechaLimite: null };
+    return {
+      vencida: false,
+      intervalDays: 15,
+      disabled: false,
+      ultimaFotoDate: null,
+      fechaLimite: null,
+      policyEnabled: true,
+      policyActivatedAt: null,
+    };
   }
 }

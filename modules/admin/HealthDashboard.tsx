@@ -82,10 +82,20 @@ function PhotoPolicySettings() {
 
         try {
             setTogglingPolicy(true);
-            await setDoc(doc(db, 'config', 'photo_policy'), { enabled: targetState }, { merge: true });
+            if (targetState) {
+                const nowIso = new Date().toISOString();
+                await setDoc(doc(db, 'config', 'photo_policy'), { 
+                    enabled: true,
+                    policyActivatedAt: nowIso
+                }, { merge: true });
+            } else {
+                await setDoc(doc(db, 'config', 'photo_policy'), { 
+                    enabled: false 
+                }, { merge: true });
+            }
             setPolicyEnabled(targetState);
             setMessage(targetState 
-                ? "Política global de fotos y revisión activada exitosamente." 
+                ? "Política global de fotos y revisión activada exitosamente (Iniciando nuevo ciclo global)." 
                 : "Política global de fotos y revisión desactivada exitosamente."
             );
             setTimeout(() => setMessage(null), 4000);
@@ -253,7 +263,7 @@ function PhotoPolicySettings() {
                     <div>
                         <span className="font-black uppercase tracking-wide block text-sm mb-0.5">POLÍTICA DESACTIVADA</span>
                         <p className="font-medium text-amber-800">
-                            No se solicitarán fotografías ni revisión vehicular automáticamente. Los controles de intervalo y excepciones se muestran a continuación con sus valores guardados y volverán a tener efecto de inmediato al reactivar la política.
+                            No se solicitarán fotografías ni revisión vehicular.
                         </p>
                     </div>
                 </div>
@@ -458,7 +468,7 @@ function VehiclePolicyRow({
             <td className="p-3">
                 {!policyEnabled ? (
                     <span className="inline-flex items-center px-2 py-1 bg-slate-100 text-slate-500 rounded text-[11px] font-bold">
-                        POLÍTICA INACTIVA
+                        POLÍTICA DESACTIVADA
                     </span>
                 ) : loadingStatus ? (
                     <span className="text-[11px] text-slate-400">Calculando...</span>
@@ -469,7 +479,7 @@ function VehiclePolicyRow({
                 ) : policyStatus?.vencida ? (
                     <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-rose-50 border border-rose-200 text-rose-700 rounded text-[11px] font-bold">
                         <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                        REQUERIDA AHORA
+                        {policyStatus?.ultimaFotoDate ? "VENCIDA — REQUERIDA" : "PENDIENTE (NUEVO CICLO)"}
                     </span>
                 ) : (
                     (() => {
