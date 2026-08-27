@@ -101,6 +101,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         return base;
     });
 
+    const [selectedVehicleData, setSelectedVehicleData] = useState<any>(null);
     const [policyStatus, setPolicyStatus] = useState<VehiclePolicyEvaluation | null>(null);
     const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
     const [existingPhotos, setExistingPhotos] = useState<{ url: string; path?: string }[]>([]);
@@ -334,7 +335,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                 return;
             }
             try {
-                const res = await checkVehiclePhotoPolicy(unidad);
+                const res = await checkVehiclePhotoPolicy(unidad, selectedVehicleData);
                 if (isMounted) {
                     setPolicyStatus(res);
                 }
@@ -348,7 +349,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         return () => {
             isMounted = false;
         };
-    }, [show, formData.unidadName, formData.unidad, initialData?.unidad]);
+    }, [show, formData.unidadName, formData.unidad, initialData?.unidad, selectedVehicleData]);
     
     
     const [recargas, setRecargas] = useState<VehicleRecharge[]>(() => {
@@ -1019,6 +1020,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     value={formData.unidadName}
                                     onChange={(val) => {
                                         const vehicle = VEHICLES.find(v => v.value === val);
+                                        setSelectedVehicleData(vehicle || null);
                                         setFormData(p => ({...p, unidadName: val, unidadId: vehicle?.label || ''}));
                                     }}
                                     placeholder="Buscar vehículo..."
