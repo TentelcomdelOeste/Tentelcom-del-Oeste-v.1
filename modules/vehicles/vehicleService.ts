@@ -168,6 +168,7 @@ export const saveVehicleLog = async (
         // (ej. "U1 - NISSAN PATHFINDER - 532995"), usado para nombrar la carpeta en OneDrive.
         const unidadCompleta = sanitizedData.unidadId || unidadName;
         sanitizedData.photoTimestamp = timestamp;
+        sanitizedData.photoPolicyLastCompletedAt = new Date(timestamp).toISOString();
         const paths: string[] = [];
 
         const rawUserName = currentUser.name || currentUser.email || currentUser.id || 'Usuario';
@@ -247,6 +248,9 @@ export const saveVehicleLog = async (
         }
         if (initialData.oneDriveSyncError) {
             sanitizedData.oneDriveSyncError = initialData.oneDriveSyncError;
+        }
+        if (initialData.photoPolicyLastCompletedAt && !sanitizedData.photoPolicyLastCompletedAt) {
+            sanitizedData.photoPolicyLastCompletedAt = initialData.photoPolicyLastCompletedAt;
         }
     }
 
@@ -575,6 +579,30 @@ export const saveVehicleLog = async (
                   recordId: resultLogDoc.id || 'new-log',
                   recordCode: dataToSave.unidad
                 });
+
+                // 4.5. Actualizar fecha de último cumplimiento en el vehículo
+                if (dataToSave.photoPolicyLastCompletedAt && (photoFiles && photoFiles.length > 0)) {
+                    const updateVehDoc = async () => {
+                        try {
+                            if (vehiculoId) {
+                                await updateVersionedDocOffline('vehiculos', vehiculoId, {
+                                    photoPolicyLastCompletedAt: dataToSave.photoPolicyLastCompletedAt
+                                });
+                            } else if (vUnidad) {
+                                const qVeh = query(collection(db, "vehiculos"), where("unidad", "==", vUnidad), limit(1));
+                                const qSnap = await getDocs(qVeh);
+                                if (!qSnap.empty) {
+                                    await updateVersionedDocOffline('vehiculos', qSnap.docs[0].id, {
+                                        photoPolicyLastCompletedAt: dataToSave.photoPolicyLastCompletedAt
+                                    });
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("[vehicleService] Could not update vehicle photoPolicyLastCompletedAt:", e);
+                        }
+                    };
+                    updateVehDoc().catch(() => {});
+                }
             } catch (secondaryError) {
                 console.error("[vehicleService] Error in secondary operations (ignored for main save):", secondaryError);
             }

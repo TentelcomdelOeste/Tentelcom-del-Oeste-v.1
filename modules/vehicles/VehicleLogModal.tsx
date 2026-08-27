@@ -638,12 +638,15 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
 
         const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
-        const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotos.length > 0 || selectedPhotoFiles.length > 0);
-        const shouldSaveInspection = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested || hasExistingPhotoOrInspection);
+        const isFulfillingCycle = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested);
+        const shouldSaveInspection = isFulfillingCycle;
 
-        const dataToSave = {
+        const dataToSave: any = {
             ...formData,
             ...(shouldSaveInspection ? { revisionUnidad } : (initialData?.revisionUnidad ? { revisionUnidad: initialData.revisionUnidad } : {})),
+            ...(isFulfillingCycle && (selectedPhotoFiles.length > 0 || existingPhotos.length > 0)
+                ? { photoPolicyLastCompletedAt: new Date().toISOString() }
+                : (initialData?.photoPolicyLastCompletedAt ? { photoPolicyLastCompletedAt: initialData.photoPolicyLastCompletedAt } : {})),
             recargas: validRecargas,
             monto: validRecargas.length > 0 ? totalMonto : null,
             litros: validRecargas.length > 0 ? totalLitros : null,
@@ -656,7 +659,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             setIsLoading(false);
             await confirm({
                 title: 'Fotografía de Bitácora Requerida',
-                description: `Esta unidad tiene la fotografía de bitácora vencida (más de ${photoPolicyStatus.intervalDays} días). Debe adjuntar al menos una foto actual para registrar o cerrar la boleta.`,
+                description: `Esta unidad tiene la fotografía de bitácora vencida (más de ${photoPolicyStatus.intervalDays} días laborales). Debe adjuntar al menos una foto actual para registrar o cerrar la boleta.`,
                 confirmLabel: 'ACEPTAR',
                 variant: 'warning'
             });
@@ -861,32 +864,19 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
                     {/* SECCIÓN DE FOTOGRAFÍA Y REVISIÓN DE UNIDAD */}
                     {(() => {
-                        // REGLA ABSOLUTA: Si la política global está desactivada (o la unidad está excluida / disabled),
-                        // NO mostrar Fotografía ni Revisión de Unidad bajo ninguna condición.
+                        // 1. REGLA ABSOLUTA: Si la política global está desactivada (o la unidad está excluida / disabled),
+                        // NO mostrar Fotografía ni Revisión de Unidad.
                         if (photoPolicyStatus.disabled) {
                             return null;
                         }
 
+                        // 2. Si la política está activada pero NO vencida y no hay solicitud manual:
+                        // NO mostrar formulario, NO mostrar revisión, NO mostrar botón.
                         const isPhotoRequired = photoPolicyStatus.vencida;
-                        const hasExistingPhotoOrInspection = Boolean(initialData?.photoStoragePath || initialData?.photoTimestamp || (initialData?.photoStoragePaths && initialData.photoStoragePaths.length > 0) || initialData?.oneDriveUrl || initialData?.revisionUnidad || existingPhotos.length > 0 || selectedPhotoFiles.length > 0);
-                        const shouldShowPhotoAndInspection = isPhotoRequired || hasExistingPhotoOrInspection || manualPhotoRequested;
+                        const shouldShowPhotoAndInspection = isPhotoRequired || manualPhotoRequested;
 
                         if (!shouldShowPhotoAndInspection) {
-                            return (
-                                <div className="flex items-center justify-between bg-slate-50 p-2.5 px-3 rounded-xl border border-slate-200 text-xs">
-                                    <div className="flex items-center gap-2 text-slate-500">
-                                        <span className="text-[11px] font-bold uppercase text-slate-700">📷 Fotografía y Revisión de Unidad</span>
-                                        <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-semibold">Al día ({photoPolicyStatus.intervalDays} días laborales)</span>
-                                    </div>
-                                    <ActionButton
-                                        type="button"
-                                        variant="secondary"
-                                        label="+ Adjuntar Foto / Revisión"
-                                        onClick={() => setManualPhotoRequested(true)}
-                                        className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg !text-blue-700"
-                                    />
-                                </div>
-                            );
+                            return null;
                         }
 
                         return (

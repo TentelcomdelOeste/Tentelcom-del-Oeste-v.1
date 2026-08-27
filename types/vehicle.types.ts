@@ -59,6 +59,7 @@ export interface VehicleLog {
     photoStoragePath?: string;
     photoStoragePaths?: string[];
     photoTimestamp?: number;
+    photoPolicyLastCompletedAt?: string;
     oneDriveUrl?: string;
     oneDriveSyncedAt?: string;
     oneDriveSyncError?: string;
@@ -126,6 +127,11 @@ export interface Vehicle {
     marca: string;
     modelo: string;
     isActive: boolean;
+    photoPolicy?: {
+        intervalDaysOverride?: number | null;
+        disabled?: boolean;
+    };
+    photoPolicyLastCompletedAt?: string;
 }
 
 export interface VehicleExpense {

@@ -1,5 +1,6 @@
 import { db } from "../firebase";
 import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
+import { localDocStore } from "./offline/localDocStore";
 
 export interface VehiclePhotoPolicyOverride {
   intervalDaysOverride?: number | null;
@@ -135,13 +136,60 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
       return { vencida: true, intervalDays: 0, disabled: false, ultimaFotoDate: null, fechaLimite: new Date() };
     }
 
-    // 3. Find most recent bitacora record with oneDriveUrl or photoTimestamp
+    // 3. Find most recent compliance date (photoPolicyLastCompletedAt, photoTimestamp, or oneDriveUrl)
     let ultimaFotoMs: number | null = null;
     const unitNamesToQuery = [unidadIdOrCode];
     if (vehicleData && vehicleData.unidad && vehicleData.unidad !== unidadIdOrCode) {
       unitNamesToQuery.push(vehicleData.unidad);
     }
 
+    // 3.1. Check vehicleData directly
+    if (vehicleData) {
+      if (vehicleData.photoPolicyLastCompletedAt) {
+        const ts = typeof vehicleData.photoPolicyLastCompletedAt === "number"
+          ? vehicleData.photoPolicyLastCompletedAt
+          : new Date(vehicleData.photoPolicyLastCompletedAt).getTime();
+        if (!isNaN(ts)) {
+          ultimaFotoMs = ts;
+        }
+      }
+    }
+
+    // 3.2. Check localDocStore (instant local reactivity)
+    try {
+      const localLogs = await localDocStore.getLocalCollection("bitacora_vehiculos");
+      if (Array.isArray(localLogs)) {
+        for (const entry of localLogs) {
+          const lData = entry.data || entry;
+          if (unitNamesToQuery.includes(lData.unidad) || unitNamesToQuery.includes(lData.unidadId)) {
+            if (lData.photoPolicyLastCompletedAt) {
+              const ts = typeof lData.photoPolicyLastCompletedAt === "number"
+                ? lData.photoPolicyLastCompletedAt
+                : new Date(lData.photoPolicyLastCompletedAt).getTime();
+              if (!isNaN(ts) && (!ultimaFotoMs || ts > ultimaFotoMs)) {
+                ultimaFotoMs = ts;
+              }
+            }
+            if (lData.photoTimestamp) {
+              const ts = typeof lData.photoTimestamp === "number" ? lData.photoTimestamp : new Date(lData.photoTimestamp).getTime();
+              if (!isNaN(ts) && (!ultimaFotoMs || ts > ultimaFotoMs)) {
+                ultimaFotoMs = ts;
+              }
+            }
+            if (lData.oneDriveUrl && lData.fecha) {
+              const fDate = new Date(lData.fecha).getTime();
+              if (!isNaN(fDate) && (!ultimaFotoMs || fDate > ultimaFotoMs)) {
+                ultimaFotoMs = fDate;
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore localDocStore error
+    }
+
+    // 3.3. Check remote Firestore bitacora_vehiculos
     for (const uName of unitNamesToQuery) {
       try {
         const qLogs = query(
@@ -153,6 +201,14 @@ export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
         const logsSnap = await getDocs(qLogs);
         for (const d of logsSnap.docs) {
           const lData = d.data();
+          if (lData.photoPolicyLastCompletedAt) {
+            const ts = typeof lData.photoPolicyLastCompletedAt === "number"
+              ? lData.photoPolicyLastCompletedAt
+              : new Date(lData.photoPolicyLastCompletedAt).getTime();
+            if (!isNaN(ts) && (!ultimaFotoMs || ts > ultimaFotoMs)) {
+              ultimaFotoMs = ts;
+            }
+          }
           if (lData.photoTimestamp) {
             const ts = typeof lData.photoTimestamp === "number" ? lData.photoTimestamp : new Date(lData.photoTimestamp).getTime();
             if (!isNaN(ts) && (!ultimaFotoMs || ts > ultimaFotoMs)) {
