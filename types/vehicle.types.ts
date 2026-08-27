@@ -90,13 +90,12 @@ export const INSPECTION_ITEMS: InspectionItemDef[] = [
 
     // INSPECCIÓN EXTERIOR DEL VEHÍCULO
     { id: 'inspeccionGolpesDanos', label: '1. Revisar visualmente que no existan golpes, daños o piezas sueltas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
-    { id: 'estadoLlantas', label: '2. Revisar el estado de las llantas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'estadoLlantas', label: '2. Revisar el estado de las llantas (desgaste excesivo o daños visibles en las llantas)', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
     { id: 'presionLlantas', label: '3. Presión de las llantas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
-    { id: 'desgasteDanosLlantas', label: '4. Desgaste excesivo o daños visibles en las llantas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'NO' },
-    { id: 'llantaRepuesto', label: '5. Verificar estado de la llanta de repuesto', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
-    { id: 'lucesCompletas', label: '6. Revisar funcionamiento de todas las luces, delanteras, traseras, de freno, direccionales, emergencia', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
-    { id: 'espejosParabrisasVentanas', label: '7. Revisar espejos retrovisores, parabrisas y ventanas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
-    { id: 'sinFugasLiquidos', label: '8. Verificar que no existan fugas de aceite, combustible, refrigerante u otros líquidos debajo del vehículo', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'llantaRepuesto', label: '4. Verificar estado de la llanta de repuesto', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'lucesCompletas', label: '5. Revisar funcionamiento de todas las luces, delanteras, traseras, de freno, direccionales, emergencia', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'espejosParabrisasVentanas', label: '6. Revisar espejos retrovisores, parabrisas y ventanas', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
+    { id: 'sinFugasLiquidos', label: '7. Verificar que no existan fugas de aceite, combustible, refrigerante u otros líquidos debajo del vehículo', category: 'INSPECCIÓN EXTERIOR', defaultValue: 'SI' },
 
     // REVISIÓN MECÁNICA BÁSICA DEL VEHÍCULO
     { id: 'nivelAceite', label: '1. Nivel de aceite', category: 'REVISIÓN MECÁNICA BÁSICA', defaultValue: 'SI' },
@@ -116,8 +115,7 @@ export const INSPECTION_ITEMS: InspectionItemDef[] = [
 
     // UNIDAD APAGADA (Puntos mecánicos/funcionales conservados)
     { id: 'terminalesBateriaBuenEstado', label: '1. Terminales de batería en buen estado (ajustados y sin corrosión)', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'kitCarretera', label: '2. Kit obligatorio para carretera', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
-    { id: 'frenoMano', label: '3. Buen estado del freno de mano', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'frenoMano', label: '2. Buen estado del freno de mano', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
 
     // UNIDAD ENCENDIDA (Puntos mecánicos/funcionales conservados)
     { id: 'enciendeCorreBien', label: '1. La unidad enciende y corre bien', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },

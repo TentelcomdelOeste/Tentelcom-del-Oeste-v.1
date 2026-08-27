@@ -113,9 +113,36 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
         return getDefaultVehicleInspection();
     });
+    const [highlightedFieldId, setHighlightedFieldId] = useState<string | null>(null);
+    const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const { triggerHaptic, hapticPatterns } = useHapticFeedback();
     const takePhotoInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
+
+    const scrollToAndHighlightField = (fieldId: string) => {
+        setHighlightedFieldId(fieldId);
+        if (highlightTimeoutRef.current) {
+            clearTimeout(highlightTimeoutRef.current);
+        }
+
+        // Pequeño retardo para asegurar que el modal de confirmación ha completado su cierre
+        setTimeout(() => {
+            const targetEl = document.getElementById(`field-container-${fieldId}`) ||
+                             document.getElementById(fieldId) ||
+                             document.querySelector(`[name="${fieldId}"]`);
+            if (targetEl) {
+                targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if ('focus' in targetEl && typeof (targetEl as HTMLElement).focus === 'function' && targetEl.tagName !== 'DIV') {
+                    (targetEl as HTMLElement).focus();
+                }
+            }
+        }, 120);
+
+        // Resaltado visual sutil y profesional durante 3.5 segundos
+        highlightTimeoutRef.current = setTimeout(() => {
+            setHighlightedFieldId(null);
+        }, 3500);
+    };
 
     const handleInspectionChange = (id: string, value: InspectionOption) => {
         setRevisionUnidad(prev => ({
@@ -130,6 +157,8 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         const options: readonly InspectionOption[] = isLaborCheckpoint 
             ? (['SI', 'NO'] as const)
             : (['SI', 'NO', 'N/A'] as const);
+
+        const isHighlighted = highlightedFieldId === item.id;
 
         const handleOptionSelect = (opt: InspectionOption) => {
             // IMPORTANTE: Haptic SOLO en INICIO y FINAL de labores (patrones basados en Samsung EFFECT_SWITCH)
@@ -150,8 +179,18 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         };
 
         return (
-            <div key={item.id} className="py-1.5 flex items-center justify-between gap-2.5">
-                <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
+            <div 
+                key={item.id} 
+                id={`field-container-${item.id}`}
+                className={`py-1.5 px-2 rounded-lg flex items-center justify-between gap-2.5 transition-all duration-300 ${
+                    isHighlighted 
+                        ? 'bg-amber-100/90 ring-2 ring-amber-400 border border-amber-300 shadow-xs scale-[1.01]' 
+                        : 'border border-transparent'
+                }`}
+            >
+                <span className={`text-[11px] font-medium leading-tight select-none transition-colors ${
+                    isHighlighted ? 'text-amber-950 font-bold' : 'text-slate-700'
+                }`}>
                     {item.label}
                 </span>
                 <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
@@ -168,10 +207,10 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                             }}
                             className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
                                 val === opt 
-                                    ? (opt === 'SI' 
-                                        ? 'bg-emerald-600 text-white shadow-xs font-black' 
-                                        : (opt === 'NO' ? 'bg-rose-600 text-white shadow-xs font-black' : 'bg-slate-700 text-white shadow-xs font-black'))
-                                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                                ? (opt === 'SI' 
+                                    ? 'bg-emerald-600 text-white shadow-xs font-black' 
+                                    : (opt === 'NO' ? 'bg-rose-600 text-white shadow-xs font-black' : 'bg-slate-700 text-white shadow-xs font-black'))
+                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
                         >
                             {opt}
@@ -652,52 +691,36 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         if (isLoading) return; 
         setIsLoading(true); 
 
-        // 1. Validaciones de Negocio (UI)
-        if (formData.kmLlegada && formData.kmSalida && formData.kmLlegada < formData.kmSalida) {
-             setIsLoading(false);
-             await confirm({
-                 title: 'Kilometraje Inválido',
-                 description: 'El kilometraje de llegada no puede ser menor al de salida.',
-                 confirmLabel: 'ACEPTAR',
-                 variant: 'warning'
-             });
-             return;
+        // 1. Validaciones de Negocio en orden visual estricto del formulario
+
+        // 1.1 Validación obligatoria para Inicio de Labores (SI o NO)
+        const llenadoBoleta = revisionUnidad?.llenadoBoletaRecorrido;
+        if (!llenadoBoleta || !['SI', 'NO'].includes(llenadoBoleta)) {
+            setIsLoading(false);
+            await confirm({
+                title: 'Inicio de Labores Incompleto',
+                description: 'Debe responder obligatoriamente el punto "1. Llenado de boleta de recorrido" en Inicio de Labores seleccionando SI o NO.',
+                confirmLabel: 'ACEPTAR',
+                variant: 'warning'
+            });
+            scrollToAndHighlightField('llenadoBoletaRecorrido');
+            return;
         }
 
+        // 1.2 Validación de Km Salida vs último kilometraje registrado
         if (lastKnownKmLlegada && formData.kmSalida && formData.kmSalida < lastKnownKmLlegada) {
             setIsLoading(false);
             await confirm({
                 title: 'Discrepancia de Kilometraje',
-                description: `El kilometraje de salida (${formData.kmSalida}) es menor al último kilometraje de llegada registrado parea esta unidad (${lastKnownKmLlegada}).`,
+                description: `El kilometraje de salida (${formData.kmSalida}) es menor al último kilometraje de llegada registrado para esta unidad (${lastKnownKmLlegada}).`,
                 confirmLabel: 'ACEPTAR',
                 variant: 'danger'
             });
+            scrollToAndHighlightField('kmSalida');
             return;
         }
-        
-        // Validations for recargas
-        const validRecargas = recargas.filter(r => r.monto || r.litros || r.kmRecarga || r.gasolinera);
-        for (const r of validRecargas) {
-            if (r.monto && (!r.litros || r.litros <= 0)) {
-                setIsLoading(false);
-                await confirm({
-                    title: 'Validación de Combustible',
-                    description: 'Si hay monto de recarga, debe especificar los litros en todas las recargas.',
-                    confirmLabel: 'ACEPTAR',
-                    variant: 'warning'
-                });
-                return;
-            }
-        }
 
-        let totalMonto = null;
-        let totalLitros = null;
-        
-        if (validRecargas.length > 0) {
-            totalMonto = validRecargas.reduce((sum, r) => sum + (r.monto || 0), 0);
-            totalLitros = validRecargas.reduce((sum, r) => sum + (r.litros || 0), 0);
-        }
-
+        // 1.3 Validación de Revisión de Unidad y Aire Acondicionado (si aplica política o registro histórico)
         const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
         const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
             initialData.revisionUnidad.estadoLlantas !== undefined ||
@@ -715,25 +738,49 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         const isFulfillingCycle = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested || hasHistoricalInspection);
         const shouldSaveInspection = isFulfillingCycle;
 
-        // Validación obligatoria para Inicio de Labores (SI o NO)
-        const llenadoBoleta = revisionUnidad?.llenadoBoletaRecorrido;
-        if (!llenadoBoleta || !['SI', 'NO'].includes(llenadoBoleta)) {
+        if (shouldSaveInspection || hasHistoricalInspection) {
+            // Verificar primer punto de revisión que pudiera estar pendiente
+            const unitInspectionItems = INSPECTION_ITEMS.filter(
+                it => it.category !== 'INICIO DE LABORES' && it.category !== 'FINAL DE LABORES'
+            );
+            for (const item of unitInspectionItems) {
+                const val = revisionUnidad?.[item.id];
+                if (!val || !['SI', 'NO', 'N/A'].includes(val)) {
+                    setIsLoading(false);
+                    await confirm({
+                        title: 'Revisión de Unidad Incompleta',
+                        description: `Debe responder obligatoriamente el punto "${item.label}" en la Revisión de Unidad seleccionando SI, NO o N/A.`,
+                        confirmLabel: 'ACEPTAR',
+                        variant: 'warning'
+                    });
+                    scrollToAndHighlightField(item.id);
+                    return;
+                }
+            }
+        }
+
+        // 1.4 Validación de Fotografía requerida
+        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotos.length === 0) {
             setIsLoading(false);
             await confirm({
-                title: 'Inicio de Labores Incompleto',
-                description: 'Debe responder obligatoriamente el punto "1. Llenado de boleta de recorrido" en Inicio de Labores seleccionando SI o NO.',
+                title: 'Fotografía de Bitácora Requerida',
+                description: `Esta unidad tiene la fotografía de bitácora vencida (más de ${photoPolicyStatus.intervalDays} días laborales). Debe adjuntar al menos una foto actual para registrar o cerrar la boleta.`,
                 confirmLabel: 'ACEPTAR',
                 variant: 'warning'
             });
+            scrollToAndHighlightField('photo-section');
             return;
         }
 
-        // Validación condicional para Final de Labores (OBLIGATORIO solo si se ingresa Kilometraje de Llegada)
+        // 1.5 Validación condicional para Final de Labores (OBLIGATORIO solo si se ingresa Kilometraje de Llegada)
         const hasKmLlegada = formData.kmLlegada !== null && formData.kmLlegada !== undefined && formData.kmLlegada !== '' && !isNaN(Number(formData.kmLlegada));
         if (hasKmLlegada) {
             const inspParqueo = revisionUnidad?.inspeccionVisualParqueo;
             const cerradoBoleta = revisionUnidad?.cerradoBoletaRecorrido;
-            if (!inspParqueo || !['SI', 'NO'].includes(inspParqueo) || !cerradoBoleta || !['SI', 'NO'].includes(cerradoBoleta)) {
+            const missingInsp = !inspParqueo || !['SI', 'NO'].includes(inspParqueo);
+            const missingCerrado = !cerradoBoleta || !['SI', 'NO'].includes(cerradoBoleta);
+
+            if (missingInsp || missingCerrado) {
                 setIsLoading(false);
                 await confirm({
                     title: 'Final de Labores Incompleto',
@@ -741,23 +788,47 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     confirmLabel: 'ACEPTAR',
                     variant: 'warning'
                 });
+                const targetField = missingInsp ? 'inspeccionVisualParqueo' : 'cerradoBoletaRecorrido';
+                scrollToAndHighlightField(targetField);
                 return;
             }
         }
 
-        // Validación obligatoria especial para el punto de Aire acondicionado
-        if (shouldSaveInspection || hasHistoricalInspection) {
-            const acValue = revisionUnidad?.aireAcondicionado;
-            if (!acValue || !['SI', 'NO', 'N/A'].includes(acValue)) {
+        // 1.6 Validación de Kilometraje Llegada vs Salida
+        if (formData.kmLlegada && formData.kmSalida && formData.kmLlegada < formData.kmSalida) {
+             setIsLoading(false);
+             await confirm({
+                 title: 'Kilometraje Inválido',
+                 description: 'El kilometraje de llegada no puede ser menor al de salida.',
+                 confirmLabel: 'ACEPTAR',
+                 variant: 'warning'
+             });
+             scrollToAndHighlightField('kmLlegada');
+             return;
+        }
+        
+        // 1.7 Validaciones para recargas
+        const validRecargas = recargas.filter(r => r.monto || r.litros || r.kmRecarga || r.gasolinera);
+        for (const r of validRecargas) {
+            if (r.monto && (!r.litros || r.litros <= 0)) {
                 setIsLoading(false);
                 await confirm({
-                    title: 'Revisión de Unidad Incompleta',
-                    description: 'Debe responder obligatoriamente el punto "Aire acondicionado en buen estado" seleccionando SI, NO o N/A.',
+                    title: 'Validación de Combustible',
+                    description: 'Si hay monto de recarga, debe especificar los litros en todas las recargas.',
                     confirmLabel: 'ACEPTAR',
                     variant: 'warning'
                 });
+                scrollToAndHighlightField(`litros-${r.id}`);
                 return;
             }
+        }
+
+        let totalMonto = null;
+        let totalLitros = null;
+        
+        if (validRecargas.length > 0) {
+            totalMonto = validRecargas.reduce((sum, r) => sum + (r.monto || 0), 0);
+            totalLitros = validRecargas.reduce((sum, r) => sum + (r.litros || 0), 0);
         }
 
         const dataToSave: any = {
@@ -993,9 +1064,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 shadow-xs">
                         <h3 className="text-xs font-black text-blue-800 uppercase mb-3">Antes de Salir</h3>
                         <div className="space-y-3 text-sm">
-                            <div>
+                            <div id="field-container-kmSalida" className={`p-1.5 rounded-lg transition-all duration-300 ${highlightedFieldId === 'kmSalida' ? 'bg-amber-100/90 ring-2 ring-amber-400' : ''}`}>
                                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Kilometraje Salida</label>
-                                <input type="number" name="kmSalida" value={formData.kmSalida || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" required />
+                                <input id="kmSalida" type="number" name="kmSalida" value={formData.kmSalida || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" required />
                             </div>
                             <div className="flex items-end gap-2 w-full min-w-0 max-w-full">
                                 <div className="flex-[0.9] min-w-0 max-w-full">
@@ -1058,7 +1129,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         }
 
                         return (
-                            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-3">
+                            <div id="field-container-photo-section" className={`p-3 sm:p-4 rounded-xl border space-y-3 transition-all duration-300 ${highlightedFieldId === 'photo-section' ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-50 border-slate-200'}`}>
                                 {/* Encabezado de la Sección Integrada */}
                                 <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/80">
                                     <div className="flex items-center gap-2 flex-wrap">
@@ -1191,7 +1262,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
                                             <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
                                                 <span className="truncate">1. Inspección Exterior</span>
-                                                <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">8 puntos</span>
+                                                <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">7 puntos</span>
                                             </div>
                                             <div className="divide-y divide-slate-100 flex-1">
                                                 {INSPECTION_ITEMS.filter(item => item.category === 'INSPECCIÓN EXTERIOR').map(renderInspectionItem)}
@@ -1225,7 +1296,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                             <div>
                                                 <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-1.5 flex items-center justify-between border border-slate-200/60">
                                                     <span className="truncate">4.1 Unidad Apagada</span>
-                                                    <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">3 puntos</span>
+                                                    <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">2 puntos</span>
                                                 </div>
                                                 <div className="divide-y divide-slate-100">
                                                     {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD APAGADA').map(renderInspectionItem)}
@@ -1277,9 +1348,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     <input type="time" name="horaLlegada" value={formData.horaLlegada || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
                                 </div>
                             </div>
-                            <div>
+                            <div id="field-container-kmLlegada" className={`p-1.5 rounded-lg transition-all duration-300 ${highlightedFieldId === 'kmLlegada' ? 'bg-amber-100/90 ring-2 ring-amber-400' : ''}`}>
                                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Kilometraje Llegada</label>
-                                <input type="number" name="kmLlegada" value={formData.kmLlegada || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
+                                <input id="kmLlegada" type="number" name="kmLlegada" value={formData.kmLlegada || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" />
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
