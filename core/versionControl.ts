@@ -7,6 +7,11 @@ import {
   DocumentData,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { localDB } from "./offline/localDB";
+import { localDocStore } from "./offline/localDocStore";
+import { offlineQueueEngine } from "./offline/offlineQueueEngine";
+import { syncEngine } from "./offline/syncEngine";
+import { networkProbe } from "./offline/networkProbe";
 
 /**
  * Agrega un documento con control de versiones inicial (v1)
@@ -86,11 +91,6 @@ export const setVersionedDoc = async (
     }, options || {});
   });
 };
-
-import { localDocStore } from "./offline/localDocStore";
-import { offlineQueueEngine } from "./offline/offlineQueueEngine";
-import { syncEngine } from "./offline/syncEngine";
-import { networkProbe } from "./offline/networkProbe";
 
 /**
  * Guarda un documento offline utilizando SQLite y encola la mutación para sync diferido.

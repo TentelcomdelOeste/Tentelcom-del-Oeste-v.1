@@ -72,12 +72,12 @@ export interface InspectionItemDef {
     id: string;
     label: string;
     category: 'UNIDAD APAGADA' | 'UNIDAD ENCENDIDA';
-    defaultValue: InspectionOption;
+    defaultValue?: InspectionOption;
 }
 
 export const INSPECTION_ITEMS: InspectionItemDef[] = [
     // UNIDAD APAGADA
-    { id: 'llantas', label: '1. Llantas', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
+    { id: 'llantas', label: '1. Llantas en buen estado', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
     { id: 'lucesBuenEstado', label: '2. Luces en buen estado', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
     { id: 'espejosRetrovisores', label: '3. Espejos/retrovisores', category: 'UNIDAD APAGADA', defaultValue: 'SI' },
     { id: 'presentaFuga', label: '4. Presenta alguna fuga', category: 'UNIDAD APAGADA', defaultValue: 'NO' },
@@ -96,14 +96,16 @@ export const INSPECTION_ITEMS: InspectionItemDef[] = [
     { id: 'claxonPito', label: '15. Claxon/Pito', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
     { id: 'frenosPedal', label: '16. Frenos de pedal funcionan', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
     { id: 'marchasBuenEstado', label: '17. Marchas en buen estado', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'aireAcondicionado', label: '18. Aire acondicionado en buen estado', category: 'UNIDAD ENCENDIDA', defaultValue: 'NO' },
+    { id: 'aireAcondicionado', label: '18. Aire acondicionado en buen estado', category: 'UNIDAD ENCENDIDA' },
     { id: 'terminalesBateriaCorrosion', label: '19. Terminales de batería con corrosión', category: 'UNIDAD ENCENDIDA', defaultValue: 'NO' }
 ];
 
 export const getDefaultVehicleInspection = (): Record<string, InspectionOption> => {
     const defaults: Record<string, InspectionOption> = {};
     INSPECTION_ITEMS.forEach(item => {
-        defaults[item.id] = item.defaultValue;
+        if (item.defaultValue) {
+            defaults[item.id] = item.defaultValue;
+        }
     });
     return defaults;
 };

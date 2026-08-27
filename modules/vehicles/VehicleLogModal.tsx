@@ -641,8 +641,23 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
 
         const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
-        const isFulfillingCycle = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested);
+        const isFulfillingCycle = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested || (isEditing && !!initialData?.revisionUnidad));
         const shouldSaveInspection = isFulfillingCycle;
+
+        // Validación obligatoria especial para el punto 18 (Aire acondicionado)
+        if (shouldSaveInspection || (isEditing && initialData?.revisionUnidad)) {
+            const acValue = revisionUnidad?.aireAcondicionado;
+            if (!acValue || !['SI', 'NO', 'N/A'].includes(acValue)) {
+                setIsLoading(false);
+                await confirm({
+                    title: 'Revisión de Unidad Incompleta',
+                    description: 'Debe responder obligatoriamente el punto "18. Aire acondicionado en buen estado" seleccionando SI, NO o N/A.',
+                    confirmLabel: 'ACEPTAR',
+                    variant: 'warning'
+                });
+                return;
+            }
+        }
 
         const dataToSave: any = {
             ...formData,
@@ -946,7 +961,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         // 2. Si la política está activada pero NO vencida y no hay solicitud manual:
                         // NO mostrar formulario, NO mostrar revisión, NO mostrar botón.
                         const isPhotoRequired = photoPolicyStatus.vencida;
-                        const shouldShowPhotoAndInspection = isPhotoRequired || manualPhotoRequested;
+                        const shouldShowPhotoAndInspection = isPhotoRequired || manualPhotoRequested || (isEditing && !!initialData?.revisionUnidad);
 
                         if (!shouldShowPhotoAndInspection) {
                             return null;
@@ -1090,7 +1105,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                             </div>
                                             <div className="divide-y divide-slate-100">
                                                 {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD APAGADA').map((item) => {
-                                                    const val = revisionUnidad[item.id] || item.defaultValue;
+                                                    const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
                                                     return (
                                                         <div key={item.id} className="py-1 flex items-center justify-between gap-2">
                                                             <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
@@ -1134,7 +1149,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                             </div>
                                             <div className="divide-y divide-slate-100">
                                                 {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD ENCENDIDA').map((item) => {
-                                                    const val = revisionUnidad[item.id] || item.defaultValue;
+                                                    const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
                                                     return (
                                                         <div key={item.id} className="py-1 flex items-center justify-between gap-2">
                                                             <span className="text-[11px] text-slate-700 font-medium leading-tight select-none">
