@@ -156,6 +156,12 @@ export const updateVersionedDocOffline = async (
   fallbackBaseData?: any
 ) => {
   try {
+    if (await localDB.isTombstoned(collectionName, docId)) {
+      console.warn(`[VersionControl] Intento de actualizar un documento eliminado (${collectionName}/${docId}). Cancelando.`);
+      await localDocStore.removeLocalDoc(collectionName, docId);
+      return null;
+    }
+
     const existing = await localDocStore.getLocalDoc(collectionName, docId);
     let nextVersion = 1;
     const base = existing && existing.data ? existing.data : (fallbackBaseData || {});
@@ -181,13 +187,17 @@ export const updateVersionedDocOffline = async (
       // Limpiar metadatos locales antes de enviar a Firestore
       const { isDirty, revision, docId: _, ...cleanData } = enrichedData as any;
 
-      import('firebase/firestore').then(({ setDoc, doc }) => {
+      import('firebase/firestore').then(({ updateDoc, doc }) => {
         import('../firebase').then(({ db }) => {
-          // Ensure updatedBy is preserved if possible
-          setDoc(doc(db, collectionName, docId), cleanData, { merge: true }).then(() => {
-            console.log(`[VersionControl] Documento ${docId} actualizado en Firestore de forma inmediata con merge.`);
-          }).catch((firestoreErr) => {
-            console.warn(`[VersionControl] Fallo la actualización inmediata en Firestore para ${docId}, el SyncEngine lo reintentará:`, firestoreErr);
+          updateDoc(doc(db, collectionName, docId), cleanData).then(() => {
+            console.log(`[VersionControl] Documento ${docId} actualizado en Firestore de forma inmediata con updateDoc.`);
+          }).catch((firestoreErr: any) => {
+            if (firestoreErr?.code === 'not-found' || firestoreErr?.message?.includes('No document to update') || firestoreErr?.message?.includes('not found')) {
+              console.warn(`[VersionControl] Documento ${docId} fue eliminado en Firestore. Purgando localmente:`, firestoreErr);
+              localDocStore.removeLocalDoc(collectionName, docId);
+            } else {
+              console.warn(`[VersionControl] Falló la actualización inmediata en Firestore para ${docId}, el SyncEngine lo reintentará:`, firestoreErr);
+            }
           });
         });
       });

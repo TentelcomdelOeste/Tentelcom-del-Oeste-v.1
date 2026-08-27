@@ -36,6 +36,17 @@ export const localDocStore = {
     },
 
     async saveLocalDoc(collection: string, docId: string, data: any, isDirty: boolean = false, incrementRevision: boolean = true): Promise<void> {
+        // Prevenir la resurrección de documentos eliminados (Lápida activa)
+        if (!isDirty) {
+            const isTomb = await localDB.isTombstoned(collection, docId);
+            if (isTomb) {
+                return;
+            }
+        } else {
+            // Si el usuario crea explícitamente un documento nuevo con el mismo ID, limpiar el tombstone
+            await localDB.clearTombstone(collection, docId);
+        }
+
         // Optimización: Evitar escrituras redundantes si la data no ha cambiado
         const existing = await localDB.getDoc(collection, docId);
         if (existing) {
@@ -64,6 +75,11 @@ export const localDocStore = {
 
         for (const doc of docs) {
             const docId = doc.docId || doc.id;
+            
+            // Evitar guardar si posee tombstone activo
+            const isTomb = await localDB.isTombstoned(collection, docId);
+            if (isTomb) continue;
+
             const existing = localMap.get(docId);
             
             let needsUpdate = true;
@@ -126,6 +142,23 @@ export const localDocStore = {
 
     async removeLocalDoc(collection: string, docId: string): Promise<void> {
         await localDB.deleteDoc(collection, docId);
+        await localDB.saveTombstone(collection, docId);
+        await localDB.cancelMutationsForDoc(collection, docId);
         this.notify(collection);
+    },
+
+    /**
+     * Reconcilia la colección local contra los IDs devueltos por un snapshot del servidor.
+     * Si un documento local no está sucio (isDirty === false) y ya no existe en el servidor, lo elimina.
+     */
+    async reconcileServerCollection(collection: string, serverDocIds: Set<string>): Promise<void> {
+        const localItems = await localDB.getCollection(collection);
+        for (const item of localItems) {
+            const docId = item.docId || item.id;
+            if (!item.isDirty && !serverDocIds.has(docId)) {
+                console.log(`[localDocStore] Reconciliación: Eliminando doc local ${collection}/${docId} ausente en servidor`);
+                await this.removeLocalDoc(collection, docId);
+            }
+        }
     }
 };

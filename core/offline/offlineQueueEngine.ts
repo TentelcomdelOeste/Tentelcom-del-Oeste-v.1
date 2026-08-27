@@ -34,5 +34,21 @@ export const offlineQueueEngine = {
 
     async purgeDeadEntries(): Promise<void> {
         await localDB.purgeDeadEntries();
+    },
+
+    async saveTombstone(collection: string, docId: string): Promise<void> {
+        await localDB.saveTombstone(collection, docId);
+    },
+
+    async isTombstoned(collection: string, docId: string): Promise<boolean> {
+        return await localDB.isTombstoned(collection, docId);
+    },
+
+    async clearTombstone(collection: string, docId: string): Promise<void> {
+        await localDB.clearTombstone(collection, docId);
+    },
+
+    async cancelMutationsForDoc(collection: string, docId: string): Promise<void> {
+        await localDB.cancelMutationsForDoc(collection, docId);
     }
 };

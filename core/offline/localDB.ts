@@ -100,6 +100,13 @@ export class LocalDB {
                             errorLog TEXT,
                             checksum TEXT NOT NULL
                         );
+
+                        CREATE TABLE IF NOT EXISTS deleted_tombstones (
+                            collection TEXT NOT NULL,
+                            docId TEXT NOT NULL,
+                            deletedAt INTEGER NOT NULL,
+                            PRIMARY KEY (collection, docId)
+                        );
                     `);
                     
                     this.isInitialized = true;
@@ -333,6 +340,106 @@ export class LocalDB {
             await this.initPromise;
             await this.db!.run(
                 `DELETE FROM offline_mutations WHERE status = 'dead' OR status = 'completed'`
+            );
+        }
+    }
+
+    /**
+     * Guarda un registro de lápida (tombstone) cuando un documento se confirma o marca como eliminado.
+     */
+    public async saveTombstone(collection: string, docId: string): Promise<void> {
+        const deletedAt = Date.now();
+        if (Capacitor.getPlatform() === 'web') {
+            await localforage.setItem(`tombstone:${collection}:${docId}`, { collection, docId, deletedAt });
+        } else {
+            await this.init();
+            await this.initPromise;
+            await this.db!.run(
+                `INSERT OR REPLACE INTO deleted_tombstones (collection, docId, deletedAt) VALUES (?, ?, ?)`,
+                [collection, docId, deletedAt]
+            );
+        }
+    }
+
+    /**
+     * Verifica si un documento posee un tombstone activo de eliminación.
+     */
+    public async isTombstoned(collection: string, docId: string): Promise<boolean> {
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        if (Capacitor.getPlatform() === 'web') {
+            const val = await localforage.getItem<any>(`tombstone:${collection}:${docId}`);
+            if (!val) return false;
+            if (Date.now() - (val.deletedAt || 0) > thirtyDaysMs) {
+                await localforage.removeItem(`tombstone:${collection}:${docId}`);
+                return false;
+            }
+            return true;
+        } else {
+            await this.init();
+            await this.initPromise;
+            const res = await this.db!.query(
+                `SELECT deletedAt FROM deleted_tombstones WHERE collection = ? AND docId = ?`,
+                [collection, docId]
+            );
+            if (res.values && res.values.length > 0) {
+                const deletedAt = res.values[0].deletedAt;
+                if (Date.now() - deletedAt > thirtyDaysMs) {
+                    await this.db!.run(
+                        `DELETE FROM deleted_tombstones WHERE collection = ? AND docId = ?`,
+                        [collection, docId]
+                    );
+                    return false;
+                }
+                return true;
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Elimina el tombstone cuando un documento es creado nuevamente con intención explícita.
+     */
+    public async clearTombstone(collection: string, docId: string): Promise<void> {
+        if (Capacitor.getPlatform() === 'web') {
+            await localforage.removeItem(`tombstone:${collection}:${docId}`);
+        } else {
+            await this.init();
+            await this.initPromise;
+            await this.db!.run(
+                `DELETE FROM deleted_tombstones WHERE collection = ? AND docId = ?`,
+                [collection, docId]
+            );
+        }
+    }
+
+    /**
+     * Cancela e invalida todas las mutaciones pendientes (create/update) de un documento eliminado.
+     * Evita que mutaciones offline antiguas resuciten un documento borrado.
+     */
+    public async cancelMutationsForDoc(collection: string, docId: string): Promise<void> {
+        if (Capacitor.getPlatform() === 'web') {
+            const keysToUpdate: string[] = [];
+            await localforage.iterate((value: any, key: string) => {
+                if (key.startsWith('mutation:') && value.collection === collection && value.docId === docId) {
+                    if (value.operation === 'create' || value.operation === 'update') {
+                        keysToUpdate.push(key);
+                    }
+                }
+            });
+            for (const key of keysToUpdate) {
+                const item = await localforage.getItem<any>(key);
+                if (item) {
+                    item.status = 'dead';
+                    item.error = 'Cancelado por eliminación confirmada del documento';
+                    await localforage.setItem(key, item);
+                }
+            }
+        } else {
+            await this.init();
+            await this.initPromise;
+            await this.db!.run(
+                `UPDATE offline_mutations SET status = 'dead', error = 'Cancelado por eliminación confirmada del documento' WHERE collection = ? AND docId = ? AND (operation = 'create' OR operation = 'update')`,
+                [collection, docId]
             );
         }
     }

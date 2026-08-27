@@ -274,6 +274,12 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
         
         // Caching optimizado por lote para evitar tormenta de renders
         await localDocStore.saveLocalDocsBatch("bitacora_vehiculos", remoteData);
+
+        // Reconciliar colección local con la versión autoritativa del servidor si no es cache
+        if (!snapshot.metadata.fromCache) {
+          const serverDocIds = new Set(snapshot.docs.map(d => d.id));
+          await localDocStore.reconcileServerCollection("bitacora_vehiculos", serverDocIds);
+        }
       },
       (err) => {
         console.error("Error fetching vehicle logs:", err);

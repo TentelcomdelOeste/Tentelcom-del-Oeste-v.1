@@ -2,7 +2,7 @@ import { networkProbe } from './networkProbe';
 import { offlineQueueEngine, PendingMutation } from './offlineQueueEngine';
 import { localDocStore } from './localDocStore';
 import { db } from '../../firebase';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { localDB } from './localDB';
 import { runPdfSyncCycle } from '../pdf/pdfStorageSync';
 
@@ -110,6 +110,17 @@ export class SyncEngine {
     private async processMutation(mutation: PendingMutation) {
         console.debug(`[SyncEngine] Processing mutation ${mutation.id} (Op: ${mutation.operation})`);
         try {
+            // Si el documento tiene un tombstone activo de eliminación y la mutación NO es 'delete', cancelar la mutación
+            if (mutation.operation !== 'delete') {
+                const isTomb = await localDB.isTombstoned(mutation.collection, mutation.docId);
+                if (isTomb) {
+                    console.log(`[SyncEngine] Omitiendo mutación ${mutation.id} (${mutation.operation}) para documento eliminado con tombstone: ${mutation.collection}/${mutation.docId}`);
+                    await localDocStore.removeLocalDoc(mutation.collection, mutation.docId);
+                    await offlineQueueEngine.markEntryStatus(mutation.id, 'completed');
+                    return;
+                }
+            }
+
             // Marcar como procesando
             await offlineQueueEngine.markEntryStatus(mutation.id, 'processing');
 
@@ -173,7 +184,10 @@ export class SyncEngine {
                 firestorePromise = setDoc(docRef, sanitizedPayload);
                 break;
             case 'update':
-                firestorePromise = setDoc(docRef, sanitizedPayload, { merge: true });
+                // IMPORTANTE: Usamos updateDoc en lugar de setDoc({ merge: true }).
+                // updateDoc falla si el documento no existe en Firestore (fue eliminado por otro usuario),
+                // previniendo que una mutación offline vieja recree un documento eliminado.
+                firestorePromise = updateDoc(docRef, sanitizedPayload);
                 break;
             case 'delete':
                 firestorePromise = deleteDoc(docRef);
@@ -184,7 +198,13 @@ export class SyncEngine {
 
         try {
             return await firestorePromise;
-        } catch (e) {
+        } catch (e: any) {
+            // Detectar si el error fue porque el documento no existe en Firestore durante un UPDATE
+            if (mutation.operation === 'update' && (e?.code === 'not-found' || e?.message?.includes('No document to update') || e?.message?.includes('not found'))) {
+                console.warn(`[SyncEngine] Documento ${mutation.collection}/${mutation.docId} fue eliminado en Firestore. Cancelando UPDATE y purgando estado local.`);
+                await localDocStore.removeLocalDoc(mutation.collection, mutation.docId);
+                return; // Considerar resuelto para evitar reintentos y limpiar la cola
+            }
             console.error(`[SyncEngine] Firestore Error in ${mutation.collection}/${mutation.docId}:`, e);
             throw e;
         }
