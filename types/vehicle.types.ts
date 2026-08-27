@@ -219,8 +219,12 @@ export interface Vehicle {
     modelo: string;
     isActive: boolean;
     photoPolicy?: {
-        intervalDaysOverride?: number | null;
         disabled?: boolean;
+        photosEnabled?: boolean | null;
+        photosDays?: ('monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday')[] | null;
+        inspectionEnabled?: boolean | null;
+        inspectionDays?: ('monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday')[] | null;
+        intervalDaysOverride?: number | null;
     };
     photoPolicyLastCompletedAt?: string;
 }

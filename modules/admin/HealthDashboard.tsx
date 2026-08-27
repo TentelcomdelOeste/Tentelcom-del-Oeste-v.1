@@ -6,358 +6,384 @@ import { useUserContext } from '../../contexts/UserContext';
 import { isAdmin } from '../../utils/permissions';
 import { DataTable, ActionButton, useConfirm } from '../../design-system';
 import { FiServer, FiShield, FiCamera, FiCheck, FiAlertTriangle } from 'react-icons/fi';
-import { checkVehiclePhotoPolicy, calculateRemainingBusinessDays } from '../../core/photoPolicy';
+import { 
+    checkVehiclePhotoPolicy, 
+    getGlobalPolicyConfig, 
+    saveGlobalPolicyConfig, 
+    WEEK_DAYS, 
+    WeekDay, 
+    getTodayWeekDay, 
+    getWeekDayLabel,
+    VehicleWeeklyPolicyConfig 
+} from '../../core/photoPolicy';
 
 const AuditDashboard = lazy(() => import('./AuditDashboard'));
 
 function PhotoPolicySettings() {
     const confirm = useConfirm();
-    const [policyEnabled, setPolicyEnabled] = useState<boolean>(true);
-    const [globalInterval, setGlobalInterval] = useState<number>(15);
+    const [policyConfig, setPolicyConfig] = useState<VehicleWeeklyPolicyConfig>({
+        enabled: true,
+        photos: {
+            enabled: true,
+            days: ['monday', 'friday'],
+        },
+        inspection: {
+            enabled: true,
+            days: ['monday', 'friday'],
+        },
+    });
     const [vehicles, setVehicles] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
-    const [togglingPolicy, setTogglingPolicy] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
 
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                const configSnap = await getDoc(doc(db, 'config', 'photo_policy'));
-                if (configSnap.exists()) {
-                    const data = configSnap.data();
-                    if (typeof data.intervalDays === 'number') {
-                        setGlobalInterval(data.intervalDays);
-                    }
-                    if (typeof data.enabled === 'boolean') {
-                        setPolicyEnabled(data.enabled);
-                    }
-                }
-
-                const vehSnap = await getDocs(collection(db, 'vehiculos'));
-                const vehList = vehSnap.docs.map(d => ({
-                    id: d.id,
-                    unidad: d.data().unidad || d.id,
-                    placa: d.data().placa || '',
-                    photoPolicy: d.data().photoPolicy || { intervalDaysOverride: null, disabled: false }
-                }));
-                vehList.sort((a, b) => a.unidad.localeCompare(b.unidad));
-                setVehicles(vehList);
-            } catch (err) {
-                console.error("Error loading photo policy settings:", err);
-            }
-        };
-        loadData();
-    }, []);
-
-    // Check if any vehicle currently has an exception (override or disabled)
-    const hasActiveExceptions = vehicles.some(v => 
-        (typeof v.photoPolicy?.intervalDaysOverride === 'number' && v.photoPolicy?.intervalDaysOverride >= 0) || 
-        Boolean(v.photoPolicy?.disabled)
-    );
-
-    const handleTogglePolicy = async () => {
-        const targetState = !policyEnabled;
-
-        if (targetState === false) {
-            // Confirming ACTIVADA -> DESACTIVADA
-            const confirmed = await confirm({
-                title: "¿Desactivar la política global?",
-                description: "Mientras la política esté desactivada, ninguna unidad tendrá obligación de enviar fotografías ni realizar la revisión vehicular mediante esta política.",
-                confirmLabel: "DESACTIVAR POLÍTICA",
-                cancelLabel: "CANCELAR",
-                variant: "danger"
-            });
-            if (!confirmed) return;
-        } else {
-            // Confirming DESACTIVADA -> ACTIVADA
-            const confirmed = await confirm({
-                title: "¿Activar la política global?",
-                description: "Al activarla volverán a aplicarse el intervalo global y las configuraciones individuales actualmente guardadas.",
-                confirmLabel: "ACTIVAR POLÍTICA",
-                cancelLabel: "CANCELAR",
-                variant: "primary"
-            });
-            if (!confirmed) return;
-        }
-
+    const loadData = async () => {
         try {
-            setTogglingPolicy(true);
-            if (targetState) {
-                const nowIso = new Date().toISOString();
-                await setDoc(doc(db, 'config', 'photo_policy'), { 
-                    enabled: true,
-                    policyActivatedAt: nowIso
-                }, { merge: true });
-            } else {
-                await setDoc(doc(db, 'config', 'photo_policy'), { 
-                    enabled: false 
-                }, { merge: true });
-            }
-            setPolicyEnabled(targetState);
-            setMessage(targetState 
-                ? "Política global de fotos y revisión activada exitosamente (Iniciando nuevo ciclo global)." 
-                : "Política global de fotos y revisión desactivada exitosamente."
-            );
-            setTimeout(() => setMessage(null), 4000);
-        } catch (err: any) {
-            alert("Error al cambiar estado de la política: " + err.message);
-        } finally {
-            setTogglingPolicy(false);
+            const config = await getGlobalPolicyConfig(true);
+            setPolicyConfig(config);
+
+            const vehSnap = await getDocs(collection(db, 'vehiculos'));
+            const vehList = vehSnap.docs.map(d => ({
+                id: d.id,
+                unidad: d.data().unidad || d.id,
+                placa: d.data().placa || '',
+                photoPolicy: d.data().photoPolicy || { disabled: false }
+            }));
+            vehList.sort((a, b) => a.unidad.localeCompare(b.unidad));
+            setVehicles(vehList);
+        } catch (err) {
+            console.error("Error loading photo policy settings:", err);
         }
     };
 
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    const togglePhotoDay = (dayId: WeekDay) => {
+        setPolicyConfig(prev => {
+            const currentDays = prev.photos.days || [];
+            const newDays = currentDays.includes(dayId)
+                ? currentDays.filter(d => d !== dayId)
+                : [...currentDays, dayId];
+            return {
+                ...prev,
+                photos: {
+                    ...prev.photos,
+                    days: newDays,
+                }
+            };
+        });
+    };
+
+    const toggleInspectionDay = (dayId: WeekDay) => {
+        setPolicyConfig(prev => {
+            const currentDays = prev.inspection.days || [];
+            const newDays = currentDays.includes(dayId)
+                ? currentDays.filter(d => d !== dayId)
+                : [...currentDays, dayId];
+            return {
+                ...prev,
+                inspection: {
+                    ...prev.inspection,
+                    days: newDays,
+                }
+            };
+        });
+    };
+
     const handleSaveGlobal = async () => {
-        const newInterval = Number(globalInterval);
-        if (isNaN(newInterval) || newInterval < 1) {
-            alert("Por favor ingrese un número válido de días laborales (mínimo 1).");
-            return;
-        }
-
-        // Check if confirmation is required due to existing overrides/exceptions
-        if (hasActiveExceptions) {
-            const confirmed = await confirm({
-                title: "¿Cambiar la política global y restablecer excepciones?",
-                description: "Al guardar el nuevo intervalo global, todas las unidades volverán a utilizar este valor. Se eliminarán los intervalos personalizados y las exclusiones actuales.",
-                confirmLabel: "CONFIRMAR Y GUARDAR",
-                cancelLabel: "CANCELAR",
-                type: "warning"
-            });
-            if (!confirmed) return;
-        }
-
         try {
             setSaving(true);
-            // 1. Update global config in Firestore
-            await setDoc(doc(db, 'config', 'photo_policy'), { intervalDays: newInterval }, { merge: true });
+            await saveGlobalPolicyConfig({
+                enabled: policyConfig.photos.enabled || policyConfig.inspection.enabled,
+                photos: policyConfig.photos,
+                inspection: policyConfig.inspection,
+            });
 
-            // 2. Reset photoPolicy on ALL vehicles in Firestore (clean overrides and disabled)
-            const vehsToReset = vehicles.filter(v => 
-                (typeof v.photoPolicy?.intervalDaysOverride === 'number' && v.photoPolicy?.intervalDaysOverride !== null) || 
-                v.photoPolicy?.disabled
-            );
-
-            if (vehsToReset.length > 0) {
-                // Batch updates in chunks of 450 (Firestore limit is 500)
-                const chunkSize = 450;
-                for (let i = 0; i < vehsToReset.length; i += chunkSize) {
-                    const chunk = vehsToReset.slice(i, i + chunkSize);
-                    const batch = writeBatch(db);
-                    for (const v of chunk) {
-                        batch.update(doc(db, 'vehiculos', v.id), {
-                            photoPolicy: {
-                                intervalDaysOverride: null,
-                                disabled: false
-                            }
-                        });
-                    }
-                    await batch.commit();
-                }
-            }
-
-            // 3. Update local state immediately so all vehicles reflect Global
-            setVehicles(prev => prev.map(v => ({
-                ...v,
-                photoPolicy: {
-                    intervalDaysOverride: null,
-                    disabled: false
-                }
-            })));
-
-            setMessage(`Nueva política global guardada (${newInterval} días laborales). Todas las excepciones han sido restablecidas.`);
+            setMessage("Configuración semanal guardada exitosamente.");
             setTimeout(() => setMessage(null), 4000);
         } catch (err: any) {
-            alert("Error al guardar: " + err.message);
+            alert("Error al guardar la configuración: " + (err.message || err));
         } finally {
             setSaving(false);
         }
     };
 
-    const handleUpdateVehiclePolicy = async (vehId: string, override: any, disabled: boolean) => {
-        const numOverride = override === '' || override === null ? null : Number(override);
-        const cleanOverride = numOverride === null || isNaN(numOverride) ? null : numOverride;
-        const cleanDisabled = !!disabled;
-
+    const handleUpdateVehiclePolicy = async (vehId: string, disabled: boolean) => {
         await updateDoc(doc(db, 'vehiculos', vehId), {
             photoPolicy: {
-                intervalDaysOverride: cleanOverride,
-                disabled: cleanDisabled
+                disabled: !!disabled
             }
         });
         setVehicles(prev => prev.map(v => v.id === vehId ? { 
             ...v, 
-            photoPolicy: { intervalDaysOverride: cleanOverride, disabled: cleanDisabled } 
+            photoPolicy: { ...v.photoPolicy, disabled: !!disabled } 
         } : v));
     };
 
-    const unidadCounts = vehicles.reduce((acc: Record<string, number>, v: any) => {
-        acc[v.unidad] = (acc[v.unidad] || 0) + 1;
-        return acc;
-    }, {});
-    const isDuplicate = (unidad: string) => (unidadCounts[unidad] || 0) > 1;
+    const todayWeekDay = getTodayWeekDay();
+    const todayName = getWeekDayLabel(todayWeekDay);
 
-    const globalCount = vehicles.filter(v => (v.photoPolicy?.intervalDaysOverride === null || v.photoPolicy?.intervalDaysOverride === undefined || v.photoPolicy?.intervalDaysOverride === '') && !v.photoPolicy?.disabled).length;
-    const overrideCount = vehicles.filter(v => typeof v.photoPolicy?.intervalDaysOverride === 'number' && !v.photoPolicy?.disabled).length;
+    const activeCount = vehicles.filter(v => !v.photoPolicy?.disabled).length;
     const excludedCount = vehicles.filter(v => v.photoPolicy?.disabled).length;
 
     return (
         <div className="space-y-6">
             {message && (
-                <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl font-bold text-sm">
-                    {message}
+                <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl font-bold text-sm flex items-center gap-2">
+                    <FiCheck className="text-emerald-600 text-lg" />
+                    <span>{message}</span>
                 </div>
             )}
 
-            {/* INTERRUPTOR GENERAL DE LA POLÍTICA */}
-            <div className={`p-6 rounded-2xl border transition-all ${
-                policyEnabled 
-                    ? 'bg-blue-50/50 border-blue-200' 
-                    : 'bg-slate-100 border-slate-300'
-            }`}>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-black uppercase tracking-wider text-slate-500">CONTROL GENERAL</span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                policyEnabled 
-                                    ? 'bg-emerald-500 text-white' 
-                                    : 'bg-slate-400 text-white'
+            {/* BANNER DE INFORMATIVO DE HOY */}
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                        Día actual del sistema
+                    </span>
+                    <h3 className="text-base font-black text-slate-800 uppercase mt-1">
+                        Hoy es {todayName}
+                    </h3>
+                    <p className="text-xs text-slate-600 font-medium">
+                        Las solicitudes de fotografías y revisión se aplicarán inmediatamente a los registros creados hoy según los días configurados.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${
+                        policyConfig.photos.enabled && todayWeekDay && policyConfig.photos.days.includes(todayWeekDay)
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-200 text-slate-600'
+                    }`}>
+                        Fotos Hoy: {policyConfig.photos.enabled && todayWeekDay && policyConfig.photos.days.includes(todayWeekDay) ? 'SÍ' : 'NO'}
+                    </span>
+                    <span className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${
+                        policyConfig.inspection.enabled && todayWeekDay && policyConfig.inspection.days.includes(todayWeekDay)
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-200 text-slate-600'
+                    }`}>
+                        Revisión Hoy: {policyConfig.inspection.enabled && todayWeekDay && policyConfig.inspection.days.includes(todayWeekDay) ? 'SÍ' : 'NO'}
+                    </span>
+                </div>
+            </div>
+
+            {/* CONFIGURACIÓN DE LAS DOS POLÍTICAS SEMANALES */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* 1. POLÍTICA DE FOTOGRAFÍAS */}
+                <div className={`p-6 rounded-2xl border transition-all ${
+                    policyConfig.photos.enabled ? 'bg-white border-blue-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-80'
+                }`}>
+                    <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                                policyConfig.photos.enabled ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'
                             }`}>
-                                {policyEnabled ? 'ACTIVADA' : 'DESACTIVADA'}
-                            </span>
+                                <FiCamera className="text-lg" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-slate-900 uppercase">
+                                    1. Fotografías de Bitácora
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium">
+                                    Solicitud obligatoria de fotos de la unidad
+                                </p>
+                            </div>
                         </div>
-                        <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase">
-                            HABILITAR POLÍTICA GLOBAL DE FOTOS Y REVISIÓN VEHICULAR
-                        </h3>
-                        <p className="text-xs text-slate-600 font-medium max-w-2xl">
-                            {policyEnabled 
-                                ? "La política está activa. Se exigen fotografías e inspección según el intervalo global y las excepciones configuradas."
-                                : "No se solicitarán fotografías ni revisión vehicular automáticamente. Todas las configuraciones se conservan intactas."
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={policyConfig.photos.enabled}
+                                onChange={(e) => setPolicyConfig(prev => ({
+                                    ...prev,
+                                    photos: { ...prev.photos, enabled: e.target.checked }
+                                }))}
+                                className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                        <label className="block text-xs font-bold text-slate-700 uppercase">
+                            Días de la semana para exigir fotografías:
+                        </label>
+                        <div className="grid grid-cols-5 gap-2">
+                            {WEEK_DAYS.map(day => {
+                                const isSelected = policyConfig.photos.days.includes(day.id);
+                                const isToday = todayWeekDay === day.id;
+                                return (
+                                    <button
+                                        key={day.id}
+                                        type="button"
+                                        disabled={!policyConfig.photos.enabled}
+                                        onClick={() => togglePhotoDay(day.id)}
+                                        className={`py-2.5 px-2 rounded-xl text-xs font-black uppercase transition-all flex flex-col items-center justify-center gap-1 border ${
+                                            !policyConfig.photos.enabled
+                                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                                : isSelected
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200'
+                                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        <span>{day.shortLabel}</span>
+                                        {isToday && (
+                                            <span className={`text-[8px] font-black uppercase px-1 rounded ${isSelected ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-700'}`}>
+                                                Hoy
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium">
+                            {policyConfig.photos.enabled 
+                                ? (policyConfig.photos.days.length > 0 
+                                    ? `Activa los días: ${policyConfig.photos.days.map(d => getWeekDayLabel(d)).join(', ')}.` 
+                                    : 'Ningún día seleccionado (No se solicitarán fotos hasta seleccionar al menos un día).')
+                                : 'Política de fotos desactivada.'
                             }
                         </p>
                     </div>
-
-                    <button
-                        type="button"
-                        onClick={handleTogglePolicy}
-                        disabled={togglingPolicy}
-                        className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                            policyEnabled ? 'bg-blue-600' : 'bg-slate-300'
-                        } ${togglingPolicy ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        role="switch"
-                        aria-checked={policyEnabled}
-                    >
-                        <span className="sr-only">Habilitar política global de fotos y revisión vehicular</span>
-                        <span
-                            aria-hidden="true"
-                            className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                                policyEnabled ? 'translate-x-8' : 'translate-x-0'
-                            }`}
-                        />
-                    </button>
                 </div>
-            </div>
 
-            {!policyEnabled && (
-                <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 flex items-start gap-3 text-amber-900 text-xs">
-                    <FiAlertTriangle className="text-amber-600 text-lg shrink-0 mt-0.5" />
-                    <div>
-                        <span className="font-black uppercase tracking-wide block text-sm mb-0.5">POLÍTICA DESACTIVADA</span>
-                        <p className="font-medium text-amber-800">
-                            No se solicitarán fotografías ni revisión vehicular.
+                {/* 2. POLÍTICA DE REVISIÓN VEHICULAR */}
+                <div className={`p-6 rounded-2xl border transition-all ${
+                    policyConfig.inspection.enabled ? 'bg-white border-indigo-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-80'
+                }`}>
+                    <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                                policyConfig.inspection.enabled ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'
+                            }`}>
+                                <FiCheck className="text-lg" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-slate-900 uppercase">
+                                    2. Revisión de Unidad
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium">
+                                    Inspección de 4 categorías técnicas y operativas
+                                </p>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={policyConfig.inspection.enabled}
+                                onChange={(e) => setPolicyConfig(prev => ({
+                                    ...prev,
+                                    inspection: { ...prev.inspection, enabled: e.target.checked }
+                                }))}
+                                className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                        <label className="block text-xs font-bold text-slate-700 uppercase">
+                            Días de la semana para exigir revisión de unidad:
+                        </label>
+                        <div className="grid grid-cols-5 gap-2">
+                            {WEEK_DAYS.map(day => {
+                                const isSelected = policyConfig.inspection.days.includes(day.id);
+                                const isToday = todayWeekDay === day.id;
+                                return (
+                                    <button
+                                        key={day.id}
+                                        type="button"
+                                        disabled={!policyConfig.inspection.enabled}
+                                        onClick={() => toggleInspectionDay(day.id)}
+                                        className={`py-2.5 px-2 rounded-xl text-xs font-black uppercase transition-all flex flex-col items-center justify-center gap-1 border ${
+                                            !policyConfig.inspection.enabled
+                                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                                : isSelected
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-200'
+                                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        <span>{day.shortLabel}</span>
+                                        {isToday && (
+                                            <span className={`text-[8px] font-black uppercase px-1 rounded ${isSelected ? 'bg-white/25 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                Hoy
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium">
+                            {policyConfig.inspection.enabled 
+                                ? (policyConfig.inspection.days.length > 0 
+                                    ? `Activa los días: ${policyConfig.inspection.days.map(d => getWeekDayLabel(d)).join(', ')}.` 
+                                    : 'Ningún día seleccionado (No se solicitará revisión hasta seleccionar al menos un día).')
+                                : 'Política de revisión desactivada.'
+                            }
                         </p>
                     </div>
                 </div>
-            )}
 
-            <div className={`bg-white p-6 rounded-xl border border-slate-200 space-y-4 ${!policyEnabled ? 'opacity-70' : ''}`}>
-                <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-                    <FiCamera className="text-blue-600" />
-                    CONFIGURACIÓN DEL INTERVALO GLOBAL
-                </h2>
-                <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                    Define cada cuántos días laborales todas las unidades deberán realizar nuevamente la fotografía y la revisión de la unidad.
-                </p>
-                <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 max-w-lg">
-                    <div className="flex-1 w-full">
-                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                            INTERVALO GLOBAL (DÍAS LABORALES)
-                        </label>
-                        <input
-                            type="number"
-                            min="1"
-                            max="365"
-                            value={globalInterval}
-                            disabled={!policyEnabled}
-                            onChange={(e) => setGlobalInterval(Number(e.target.value))}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
-                        />
-                        <span className="block text-[11px] text-slate-500 mt-1 font-normal">
-                            Ejemplo: 10 = solicitar nuevamente cada 10 días laborales. Sábados y domingos no cuentan.
-                        </span>
-                    </div>
-                    <ActionButton
-                        type="button"
-                        variant="primary"
-                        label={saving ? "Guardando..." : "Guardar Global"}
-                        onClick={handleSaveGlobal}
-                        disabled={saving || !policyEnabled}
-                        className="!py-2.5 !px-5 !text-xs !font-black !uppercase !tracking-wider w-full sm:w-auto shrink-0"
-                    />
-                </div>
             </div>
 
-            <div className={`bg-white rounded-xl border border-slate-200 overflow-hidden space-y-2 ${!policyEnabled ? 'opacity-70' : ''}`}>
+            {/* BOTÓN GUARDAR CONFIGURACIÓN GLOBAL */}
+            <div className="flex justify-end">
+                <ActionButton
+                    type="button"
+                    variant="primary"
+                    label={saving ? "Guardando Configuración..." : "Guardar Políticas Semanales"}
+                    onClick={handleSaveGlobal}
+                    disabled={saving}
+                    className="!py-3 !px-6 !text-xs !font-black !uppercase !tracking-wider shadow-sm"
+                />
+            </div>
+
+            {/* TABLA DE EXCEPCIONES Y EXCLUSIONES POR VEHÍCULO */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
                 <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                        <h2 className="text-sm font-bold text-slate-800">Excepciones y Overrides por Unidad</h2>
-                        <p className="text-xs text-slate-600">
-                            Todas las unidades utilizan el intervalo global, excepto aquellas configuradas manualmente aquí.
+                        <h2 className="text-sm font-black text-slate-900 uppercase">Exclusiones por Unidad</h2>
+                        <p className="text-xs text-slate-600 font-medium">
+                            Permite excluir unidades específicas para que nunca soliciten fotos ni revisión vehicular.
                         </p>
                     </div>
-                    <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-xs font-bold text-blue-900">
-                        {globalCount} usando Global, {overrideCount} con intervalo personalizado, {excludedCount} excluidas.
+                    <div className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-xl text-xs font-black text-blue-900">
+                        {activeCount} activas • {excludedCount} excluidas
                     </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-100/75 border-b border-slate-200 text-[11px] font-black uppercase text-slate-600 tracking-wider">
-                                <th className="p-3">Unidad / Placa</th>
-                                <th className="p-3">
-                                    DÍAS OVERRIDE
+                                <th className="p-3.5">Unidad / Placa</th>
+                                <th className="p-3.5">
+                                    EXCLUIR DE POLÍTICAS
                                     <span className="block font-normal normal-case text-[10px] text-slate-500 mt-0.5">
-                                        Vacío = usa el intervalo global. Un número = intervalo personalizado para esta unidad.
+                                        Si está excluida, nunca se le exigirá fotos ni revisión técnica.
                                     </span>
                                 </th>
-                                <th className="p-3">
-                                    EXCLUIR REQUISITO
+                                <th className="p-3.5">
+                                    ESTADO HOY ({todayName})
                                     <span className="block font-normal normal-case text-[10px] text-slate-500 mt-0.5">
-                                        Actívelo únicamente si esta unidad nunca debe solicitar fotografía ni revisión mediante esta política.
+                                        Requisitos vigentes para hoy según la política semanal.
                                     </span>
                                 </th>
-                                <th className="p-3">
-                                    ESTADO ACTUAL
-                                    <span className="block font-normal normal-case text-[10px] text-slate-500 mt-0.5">
-                                        Estado en tiempo real calculado por política de días laborales.
-                                    </span>
-                                </th>
-                                <th className="p-3 text-right">Acción</th>
+                                <th className="p-3.5 text-right">Acción</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                             {vehicles.map(veh => (
                                 <VehiclePolicyRow 
-                                    key={`${veh.id}-${veh.photoPolicy?.intervalDaysOverride ?? 'g'}-${veh.photoPolicy?.disabled ? 'd' : 'a'}`} 
+                                    key={veh.id} 
                                     veh={veh} 
-                                    globalInterval={globalInterval}
-                                    policyEnabled={policyEnabled}
-                                    isDuplicate={isDuplicate(veh.unidad)} 
+                                    policyConfig={policyConfig}
+                                    todayWeekDay={todayWeekDay}
                                     onSave={handleUpdateVehiclePolicy} 
                                 />
                             ))}
                             {vehicles.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="p-6 text-center text-slate-400 font-bold">No hay vehículos registrados</td>
+                                    <td colSpan={4} className="p-6 text-center text-slate-400 font-bold">No hay vehículos registrados</td>
                                 </tr>
                             )}
                         </tbody>
@@ -370,134 +396,76 @@ function PhotoPolicySettings() {
 
 function VehiclePolicyRow({ 
     veh, 
-    globalInterval,
-    policyEnabled,
-    isDuplicate, 
+    policyConfig,
+    todayWeekDay,
     onSave 
 }: { 
     veh: any; 
-    globalInterval: number;
-    policyEnabled: boolean;
-    isDuplicate: boolean; 
-    onSave: (id: string, override: any, disabled: boolean) => Promise<void> 
+    policyConfig: VehicleWeeklyPolicyConfig;
+    todayWeekDay: WeekDay | null;
+    onSave: (id: string, disabled: boolean) => Promise<void> 
 }) {
-    const [override, setOverride] = useState(
-        veh.photoPolicy?.intervalDaysOverride !== null && veh.photoPolicy?.intervalDaysOverride !== undefined 
-            ? String(veh.photoPolicy.intervalDaysOverride) 
-            : ''
-    );
     const [disabled, setDisabled] = useState(Boolean(veh.photoPolicy?.disabled));
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
 
-    const [policyStatus, setPolicyStatus] = useState<{ vencida: boolean; intervalDays: number; disabled: boolean; ultimaFotoDate: Date | null; fechaLimite: Date | null } | null>(null);
-    const [loadingStatus, setLoadingStatus] = useState(true);
-
-    // Keep internal row input state in sync if parent resets vehicles
     useEffect(() => {
-        setOverride(
-            veh.photoPolicy?.intervalDaysOverride !== null && veh.photoPolicy?.intervalDaysOverride !== undefined 
-                ? String(veh.photoPolicy.intervalDaysOverride) 
-                : ''
-        );
         setDisabled(Boolean(veh.photoPolicy?.disabled));
-    }, [veh.photoPolicy]);
+    }, [veh.photoPolicy?.disabled]);
 
-    useEffect(() => {
-        let isMounted = true;
-        const fetchStatus = async () => {
-            try {
-                const res = await checkVehiclePhotoPolicy(veh.unidad);
-                if (isMounted) {
-                    setPolicyStatus(res);
-                }
-            } catch (e) {
-                console.error("Error fetching policy status:", e);
-            } finally {
-                if (isMounted) setLoadingStatus(false);
-            }
-        };
-        fetchStatus();
-        return () => { isMounted = false; };
-    }, [veh.unidad, veh.photoPolicy, globalInterval, policyEnabled]);
-
-    // Determine configuration type (GLOBAL, PERSONALIZADO, EXCLUIDA)
-    const isCustomOverride = typeof veh.photoPolicy?.intervalDaysOverride === 'number' && veh.photoPolicy?.intervalDaysOverride >= 0;
-    const isExcluded = Boolean(veh.photoPolicy?.disabled);
+    const isExcluded = disabled;
+    const isPhotoDay = Boolean(policyConfig.photos.enabled && todayWeekDay && policyConfig.photos.days.includes(todayWeekDay) && !isExcluded);
+    const isInspectionDay = Boolean(policyConfig.inspection.enabled && todayWeekDay && policyConfig.inspection.days.includes(todayWeekDay) && !isExcluded);
 
     return (
-        <tr className={`hover:bg-slate-50/50 ${isDuplicate ? 'bg-amber-50/30' : ''}`}>
-            <td className="p-3 font-bold text-slate-900">
+        <tr className="hover:bg-slate-50/50">
+            <td className="p-3.5 font-bold text-slate-900">
                 <div className="flex items-center gap-2">
                     <span>{veh.unidad}</span>
                     <span className="font-normal text-slate-500">({veh.placa || 'Sin placa'})</span>
                 </div>
-                {isDuplicate && (
-                    <div className="mt-1 flex items-center gap-1 text-[10px] font-black text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300 w-fit">
-                        <FiAlertTriangle className="text-amber-600 shrink-0" />
-                        <span>Unidad duplicada — revisar en Firestore manualmente</span>
-                    </div>
-                )}
             </td>
-            <td className="p-3">
-                <input
-                    type="number"
-                    min="1"
-                    placeholder="Global"
-                    value={override}
-                    disabled={!policyEnabled}
-                    onChange={(e) => setOverride(e.target.value)}
-                    className="w-32 px-2 py-1.5 border border-slate-300 rounded text-xs font-bold focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
-                />
-            </td>
-            <td className="p-3">
-                <label className={`flex items-center gap-2 select-none ${policyEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+            <td className="p-3.5">
+                <label className="flex items-center gap-2 select-none cursor-pointer">
                     <input
                         type="checkbox"
                         checked={disabled}
-                        disabled={!policyEnabled}
                         onChange={(e) => setDisabled(e.target.checked)}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+                        className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
                     />
-                    <span className={disabled ? "text-rose-600 font-bold" : "text-slate-600"}>
-                        {disabled ? "Excluida" : "Activo"}
+                    <span className={disabled ? "text-rose-600 font-bold" : "text-slate-600 font-medium"}>
+                        {disabled ? "Excluida de políticas" : "Activa (Sigue política semanal)"}
                     </span>
                 </label>
             </td>
-            <td className="p-3">
-                {!policyEnabled ? (
-                    <span className="inline-flex items-center px-2 py-1 bg-slate-100 text-slate-500 rounded text-[11px] font-bold">
-                        POLÍTICA DESACTIVADA
-                    </span>
-                ) : loadingStatus ? (
-                    <span className="text-[11px] text-slate-400">Calculando...</span>
-                ) : isExcluded || policyStatus?.disabled ? (
-                    <span className="inline-flex items-center px-2 py-1 bg-slate-100 text-slate-600 rounded text-[11px] font-bold">
+            <td className="p-3.5">
+                {isExcluded ? (
+                    <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[11px] font-bold">
                         EXCLUIDA
                     </span>
-                ) : policyStatus?.vencida ? (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-rose-50 border border-rose-200 text-rose-700 rounded text-[11px] font-bold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                        {policyStatus?.ultimaFotoDate ? "VENCIDA — REQUERIDA" : "PENDIENTE (NUEVO CICLO)"}
+                ) : (!isPhotoDay && !isInspectionDay) ? (
+                    <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-500 rounded-lg text-[11px] font-bold">
+                        Sin requisitos hoy
                     </span>
                 ) : (
-                    (() => {
-                        const now = new Date();
-                        const targetDate = policyStatus?.fechaLimite || now;
-                        const remainingBusinessDays = calculateRemainingBusinessDays(now, targetDate);
-                        const prefix = isCustomOverride ? "PERSONALIZADO" : "GLOBAL";
-
-                        return (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded text-[11px] font-bold">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {isPhotoDay && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-md text-[10px] font-black uppercase">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                {prefix} — faltan {remainingBusinessDays} {remainingBusinessDays === 1 ? 'día' : 'días'}
+                                Fotos: Requerida
                             </span>
-                        );
-                    })()
+                        )}
+                        {isInspectionDay && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-md text-[10px] font-black uppercase">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                Revisión: Requerida
+                            </span>
+                        )}
+                    </div>
                 )}
             </td>
-            <td className="p-3 text-right">
+            <td className="p-3.5 text-right">
                 <div className="flex flex-col items-end gap-1">
                     <ActionButton
                         type="button"
@@ -508,7 +476,7 @@ function VehiclePolicyRow({
                             setIsSaving(true);
                             setSaveError(null);
                             try {
-                                await onSave(veh.id, override, disabled);
+                                await onSave(veh.id, disabled);
                                 setSaveSuccess(true);
                                 setTimeout(() => setSaveSuccess(false), 2500);
                             } catch (err: any) {
@@ -517,7 +485,7 @@ function VehiclePolicyRow({
                                 setIsSaving(false);
                             }
                         }}
-                        disabled={isSaving || !policyEnabled}
+                        disabled={isSaving}
                         className="!py-1.5 !px-3 !text-[11px] !font-black !uppercase !tracking-wider !rounded-lg"
                     />
                     {saveError && <span className="text-[10px] text-rose-600 font-bold">{saveError}</span>}

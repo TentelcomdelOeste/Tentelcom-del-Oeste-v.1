@@ -1,35 +1,318 @@
 import { db } from "../firebase";
-import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
-import { localDocStore } from "./offline/localDocStore";
+import { doc, getDoc, collection, query, where, limit, getDocs, setDoc } from "firebase/firestore";
 
-export interface VehiclePhotoPolicyOverride {
-  intervalDaysOverride?: number | null;
-  disabled?: boolean;
+export type WeekDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
+
+export const WEEK_DAYS: { id: WeekDay; label: string; shortLabel: string; dayIndex: number }[] = [
+  { id: 'monday', label: 'Lunes', shortLabel: 'Lun', dayIndex: 1 },
+  { id: 'tuesday', label: 'Martes', shortLabel: 'Mar', dayIndex: 2 },
+  { id: 'wednesday', label: 'Miércoles', shortLabel: 'Mié', dayIndex: 3 },
+  { id: 'thursday', label: 'Jueves', shortLabel: 'Jue', dayIndex: 4 },
+  { id: 'friday', label: 'Viernes', shortLabel: 'Vie', dayIndex: 5 },
+];
+
+export interface PolicySchedule {
+  enabled: boolean;
+  days: WeekDay[];
 }
 
-export interface PhotoPolicyConfig {
-  enabled: boolean;
-  intervalDays: number;
+export interface VehicleWeeklyPolicyConfig {
+  enabled: boolean; // Master switch / legacy compat
+  photos: PolicySchedule;
+  inspection: PolicySchedule;
+  // Legacy compatibility fields
+  intervalDays?: number;
   policyActivatedAt?: string;
 }
 
+export interface VehiclePhotoPolicyOverride {
+  disabled?: boolean;
+  photosEnabled?: boolean | null;
+  photosDays?: WeekDay[] | null;
+  inspectionEnabled?: boolean | null;
+  inspectionDays?: WeekDay[] | null;
+  intervalDaysOverride?: number | null; // Legacy
+}
+
+export interface VehiclePolicyEvaluation {
+  requiresPhotos: boolean;
+  requiresInspection: boolean;
+  disabled: boolean;
+  photosEnabled: boolean;
+  inspectionEnabled: boolean;
+  todayDay: WeekDay | null;
+  todayLabel: string;
+  isPhotoDay: boolean;
+  isInspectionDay: boolean;
+  // Legacy compatibility fields
+  vencida: boolean;
+  intervalDays: number;
+  ultimaFotoDate: Date | null;
+  fechaLimite: Date | null;
+  policyEnabled: boolean;
+  policyActivatedAt: Date | null;
+}
+
+export interface PhotoPolicyConfig extends VehicleWeeklyPolicyConfig {}
+
 /**
- * Calculates deadline adding a specific number of BUSINESS DAYS (Monday to Friday).
- * If startDate is on a weekend (Saturday/Sunday), counting starts on the next Monday.
- * If businessDays is 0, the deadline is the current date (or next Monday if weekend).
- * The resulting deadline will ALWAYS fall on a weekday (Monday to Friday).
+ * Returns the current day of the week as a WeekDay ('monday'..'friday') or null for weekends.
+ */
+export function getTodayWeekDay(date: Date = new Date()): WeekDay | null {
+  const day = date.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
+  switch (day) {
+    case 1: return 'monday';
+    case 2: return 'tuesday';
+    case 3: return 'wednesday';
+    case 4: return 'thursday';
+    case 5: return 'friday';
+    default: return null;
+  }
+}
+
+/**
+ * Returns human-readable label for a WeekDay.
+ */
+export function getWeekDayLabel(day: WeekDay | null): string {
+  if (!day) return 'Fin de semana';
+  const found = WEEK_DAYS.find(w => w.id === day);
+  return found ? found.label : day;
+}
+
+/**
+ * Default fallback policy: Photos on Mon & Fri, Inspection on Mon & Fri.
+ */
+export function getDefaultPolicyConfig(): VehicleWeeklyPolicyConfig {
+  return {
+    enabled: true,
+    photos: {
+      enabled: true,
+      days: ['monday', 'friday'],
+    },
+    inspection: {
+      enabled: true,
+      days: ['monday', 'friday'],
+    },
+    intervalDays: 15,
+  };
+}
+
+let cachedGlobalConfig: VehicleWeeklyPolicyConfig | null = null;
+let lastCacheFetchTime = 0;
+const CACHE_TTL_MS = 30000; // 30 seconds
+
+export function clearPolicyConfigCache(): void {
+  cachedGlobalConfig = null;
+  lastCacheFetchTime = 0;
+}
+
+/**
+ * Retrieves the global policy config with in-memory caching to prevent repeated Firestore reads.
+ */
+export async function getGlobalPolicyConfig(forceRefresh = false): Promise<VehicleWeeklyPolicyConfig> {
+  const now = Date.now();
+  if (!forceRefresh && cachedGlobalConfig && (now - lastCacheFetchTime < CACHE_TTL_MS)) {
+    return cachedGlobalConfig;
+  }
+
+  try {
+    const configSnap = await getDoc(doc(db, "config", "photo_policy"));
+    if (configSnap.exists()) {
+      const data = configSnap.data();
+      const masterEnabled = typeof data.enabled === "boolean" ? data.enabled : true;
+
+      // Parse photos policy
+      const photosData = data.photos || {};
+      const photosEnabled = typeof photosData.enabled === "boolean" 
+        ? photosData.enabled 
+        : masterEnabled;
+      const photosDays: WeekDay[] = Array.isArray(photosData.days) 
+        ? (photosData.days.filter((d: string) => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d)) as WeekDay[])
+        : ['monday', 'friday'];
+
+      // Parse inspection policy
+      const inspectionData = data.inspection || {};
+      const inspectionEnabled = typeof inspectionData.enabled === "boolean" 
+        ? inspectionData.enabled 
+        : masterEnabled;
+      const inspectionDays: WeekDay[] = Array.isArray(inspectionData.days) 
+        ? (inspectionData.days.filter((d: string) => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d)) as WeekDay[])
+        : ['monday', 'friday'];
+
+      cachedGlobalConfig = {
+        enabled: masterEnabled,
+        photos: {
+          enabled: photosEnabled,
+          days: photosDays,
+        },
+        inspection: {
+          enabled: inspectionEnabled,
+          days: inspectionDays,
+        },
+        intervalDays: typeof data.intervalDays === "number" ? data.intervalDays : 15,
+        policyActivatedAt: data.policyActivatedAt,
+      };
+      lastCacheFetchTime = now;
+      return cachedGlobalConfig;
+    }
+  } catch (e) {
+    console.warn("[photoPolicy] Error reading config/photo_policy from Firestore:", e);
+  }
+
+  cachedGlobalConfig = getDefaultPolicyConfig();
+  lastCacheFetchTime = now;
+  return cachedGlobalConfig;
+}
+
+/**
+ * Saves the global policy config to Firestore and updates in-memory cache.
+ */
+export async function saveGlobalPolicyConfig(config: Partial<VehicleWeeklyPolicyConfig>): Promise<void> {
+  const current = await getGlobalPolicyConfig(true);
+  const updated: VehicleWeeklyPolicyConfig = {
+    ...current,
+    ...config,
+    photos: {
+      ...current.photos,
+      ...(config.photos || {}),
+    },
+    inspection: {
+      ...current.inspection,
+      ...(config.inspection || {}),
+    },
+  };
+
+  await setDoc(doc(db, "config", "photo_policy"), updated, { merge: true });
+  cachedGlobalConfig = updated;
+  lastCacheFetchTime = Date.now();
+}
+
+/**
+ * Synchronous, fast evaluation of vehicle policy based on weekly days and vehicle exceptions.
+ */
+export function evaluateVehiclePolicy(
+  globalConfig: VehicleWeeklyPolicyConfig,
+  vehicleData?: any,
+  targetDate: Date = new Date()
+): VehiclePolicyEvaluation {
+  const todayDay = getTodayWeekDay(targetDate);
+  const todayLabel = getWeekDayLabel(todayDay);
+
+  const pol = vehicleData?.photoPolicy as VehiclePhotoPolicyOverride | undefined;
+  const isVehicleExcluded = Boolean(pol?.disabled);
+
+  // If vehicle is explicitly excluded, never require photos or inspection
+  if (isVehicleExcluded) {
+    return {
+      requiresPhotos: false,
+      requiresInspection: false,
+      disabled: true,
+      photosEnabled: false,
+      inspectionEnabled: false,
+      todayDay,
+      todayLabel,
+      isPhotoDay: false,
+      isInspectionDay: false,
+      vencida: false,
+      intervalDays: 15,
+      ultimaFotoDate: null,
+      fechaLimite: null,
+      policyEnabled: globalConfig.enabled,
+      policyActivatedAt: null,
+    };
+  }
+
+  // 1. Photos policy resolution
+  const effectivePhotosEnabled = typeof pol?.photosEnabled === "boolean"
+    ? pol.photosEnabled
+    : globalConfig.photos.enabled;
+
+  const effectivePhotosDays: WeekDay[] = Array.isArray(pol?.photosDays) && pol.photosDays.length > 0
+    ? pol.photosDays
+    : globalConfig.photos.days;
+
+  const isPhotoDay = todayDay !== null && effectivePhotosDays.includes(todayDay);
+  const requiresPhotos = effectivePhotosEnabled && isPhotoDay;
+
+  // 2. Inspection policy resolution
+  const effectiveInspectionEnabled = typeof pol?.inspectionEnabled === "boolean"
+    ? pol.inspectionEnabled
+    : globalConfig.inspection.enabled;
+
+  const effectiveInspectionDays: WeekDay[] = Array.isArray(pol?.inspectionDays) && pol.inspectionDays.length > 0
+    ? pol.inspectionDays
+    : globalConfig.inspection.days;
+
+  const isInspectionDay = todayDay !== null && effectiveInspectionDays.includes(todayDay);
+  const requiresInspection = effectiveInspectionEnabled && isInspectionDay;
+
+  const vencida = requiresPhotos || requiresInspection;
+
+  return {
+    requiresPhotos,
+    requiresInspection,
+    disabled: !effectivePhotosEnabled && !effectiveInspectionEnabled,
+    photosEnabled: effectivePhotosEnabled,
+    inspectionEnabled: effectiveInspectionEnabled,
+    todayDay,
+    todayLabel,
+    isPhotoDay,
+    isInspectionDay,
+    vencida,
+    intervalDays: 15,
+    ultimaFotoDate: null,
+    fechaLimite: null,
+    policyEnabled: globalConfig.enabled,
+    policyActivatedAt: null,
+  };
+}
+
+/**
+ * Fast check for a vehicle's policy status for today.
+ * Does NOT perform heavy history queries, resulting in instant response.
+ */
+export async function checkVehiclePhotoPolicy(
+  unidadIdOrCode: string,
+  providedVehicleData?: any
+): Promise<VehiclePolicyEvaluation> {
+  try {
+    const globalConfig = await getGlobalPolicyConfig();
+
+    let vehicleData = providedVehicleData;
+    if (!vehicleData && unidadIdOrCode) {
+      try {
+        const vehDocRef = doc(db, "vehiculos", unidadIdOrCode);
+        const vehSnap = await getDoc(vehDocRef);
+        if (vehSnap.exists()) {
+          vehicleData = vehSnap.data();
+        } else {
+          const qVeh = query(collection(db, "vehiculos"), where("unidad", "==", unidadIdOrCode), limit(1));
+          const qSnap = await getDocs(qVeh);
+          if (!qSnap.empty) {
+            vehicleData = qSnap.docs[0].data();
+          }
+        }
+      } catch (err) {
+        console.warn("[photoPolicy] Could not fetch vehicle document:", unidadIdOrCode, err);
+      }
+    }
+
+    return evaluateVehiclePolicy(globalConfig, vehicleData, new Date());
+  } catch (e) {
+    console.error("[photoPolicy] Error checking vehicle policy:", e);
+    return evaluateVehiclePolicy(getDefaultPolicyConfig(), null, new Date());
+  }
+}
+
+/**
+ * Legacy business days helper functions kept for backwards compatibility.
  */
 export function calculateBusinessDaysDeadline(startDate: Date, businessDays: number): Date {
   const result = new Date(startDate.getTime());
-  
   if (businessDays <= 0) {
-    // If weekend, move to next Monday
     const dow = result.getDay();
-    if (dow === 6) {
-      result.setDate(result.getDate() + 2);
-    } else if (dow === 0) {
-      result.setDate(result.getDate() + 1);
-    }
+    if (dow === 6) result.setDate(result.getDate() + 2);
+    else if (dow === 0) result.setDate(result.getDate() + 1);
     return result;
   }
 
@@ -37,26 +320,16 @@ export function calculateBusinessDaysDeadline(startDate: Date, businessDays: num
   while (added < businessDays) {
     result.setDate(result.getDate() + 1);
     const dow = result.getDay();
-    // Monday(1) to Friday(5) are business days. Saturday(6) and Sunday(0) are skipped.
     if (dow !== 0 && dow !== 6) {
       added++;
     }
   }
-
   return result;
 }
 
-/**
- * Counts the number of remaining BUSINESS DAYS between two dates (fromDate -> toDate).
- * Excludes weekends. Returns 0 if fromDate is already past or equal to toDate.
- */
 export function calculateRemainingBusinessDays(fromDate: Date, toDate: Date): number {
-  if (fromDate.getTime() >= toDate.getTime()) {
-    return 0;
-  }
-  
+  if (fromDate.getTime() >= toDate.getTime()) return 0;
   const current = new Date(fromDate.getTime());
-  // Normalize current date to start of next day for counting
   current.setHours(0, 0, 0, 0);
   const target = new Date(toDate.getTime());
   target.setHours(0, 0, 0, 0);
@@ -70,212 +343,4 @@ export function calculateRemainingBusinessDays(fromDate: Date, toDate: Date): nu
     }
   }
   return businessDays;
-}
-
-export async function checkVehiclePhotoPolicy(unidadIdOrCode: string): Promise<{
-  vencida: boolean;
-  intervalDays: number;
-  disabled: boolean;
-  ultimaFotoDate: Date | null;
-  fechaLimite: Date | null;
-  policyEnabled: boolean;
-  policyActivatedAt: Date | null;
-}> {
-  try {
-    // 1. Get global config /config/photo_policy
-    let intervalDays = 15;
-    let policyEnabled = true;
-    let policyActivatedAtStr: string | null = null;
-
-    try {
-      const configDoc = await getDoc(doc(db, "config", "photo_policy"));
-      if (configDoc.exists()) {
-        const data = configDoc.data();
-        if (typeof data.intervalDays === "number") {
-          intervalDays = data.intervalDays;
-        }
-        if (typeof data.enabled === "boolean") {
-          policyEnabled = data.enabled;
-        }
-        if (data.policyActivatedAt) {
-          policyActivatedAtStr = String(data.policyActivatedAt);
-        }
-      }
-    } catch (e) {
-      console.warn("[photoPolicy] Could not load config/photo_policy, using default 15:", e);
-    }
-
-    // REGLA 1: Si la política global está desactivada (enabled = false),
-    // NINGUNA unidad está obligada, no se exigen fotos ni revisión.
-    if (!policyEnabled) {
-      return {
-        vencida: false,
-        intervalDays,
-        disabled: true,
-        ultimaFotoDate: null,
-        fechaLimite: null,
-        policyEnabled: false,
-        policyActivatedAt: null,
-      };
-    }
-
-    const policyActivatedAtDate = policyActivatedAtStr ? new Date(policyActivatedAtStr) : null;
-    const policyActivatedAtMs = policyActivatedAtDate && !isNaN(policyActivatedAtDate.getTime()) 
-      ? policyActivatedAtDate.getTime() 
-      : 0;
-
-    // 2. Get vehicle document
-    let vehicleData: any = null;
-    let effectiveInterval = intervalDays;
-    let disabled = false;
-
-    try {
-      const vehDocRef = doc(db, "vehiculos", unidadIdOrCode);
-      const vehSnap = await getDoc(vehDocRef);
-      if (vehSnap.exists()) {
-        vehicleData = vehSnap.data();
-      } else {
-        const qVeh = query(collection(db, "vehiculos"), where("unidad", "==", unidadIdOrCode), limit(1));
-        const qSnap = await getDocs(qVeh);
-        if (!qSnap.empty) {
-          vehicleData = qSnap.docs[0].data();
-        }
-      }
-    } catch (e) {
-      console.warn("[photoPolicy] Could not load vehicle document for:", unidadIdOrCode, e);
-    }
-
-    if (vehicleData && vehicleData.photoPolicy) {
-      const pol = vehicleData.photoPolicy as VehiclePhotoPolicyOverride;
-      if (pol.disabled) {
-        disabled = true;
-      }
-      if (typeof pol.intervalDaysOverride === "number" && pol.intervalDaysOverride >= 0) {
-        effectiveInterval = pol.intervalDaysOverride;
-      }
-    }
-
-    // REGLA 8: Si la unidad individual está excluida, no participa en la política.
-    if (disabled) {
-      return {
-        vencida: false,
-        intervalDays: effectiveInterval,
-        disabled: true,
-        ultimaFotoDate: null,
-        fechaLimite: null,
-        policyEnabled: true,
-        policyActivatedAt: policyActivatedAtDate,
-      };
-    }
-
-    // 3. Buscar fecha del último cumplimiento VÁLIDO (posterior o igual a policyActivatedAtMs)
-    let ultimaFotoMs: number | null = null;
-    const unitNamesToQuery = [unidadIdOrCode];
-    if (vehicleData && vehicleData.unidad && vehicleData.unidad !== unidadIdOrCode) {
-      unitNamesToQuery.push(vehicleData.unidad);
-    }
-
-    // Helper para verificar y registrar cumplimiento si es >= policyActivatedAtMs
-    const recordCandidateTimestamp = (rawTs: any) => {
-      if (!rawTs) return;
-      const ts = typeof rawTs === "number" ? rawTs : new Date(rawTs).getTime();
-      if (!isNaN(ts)) {
-        // Solo cuenta si ocurrió en o después de la última activación de la política
-        if (policyActivatedAtMs === 0 || ts >= policyActivatedAtMs) {
-          if (!ultimaFotoMs || ts > ultimaFotoMs) {
-            ultimaFotoMs = ts;
-          }
-        }
-      }
-    };
-
-    // 3.1. Verificar en vehicleData
-    if (vehicleData) {
-      recordCandidateTimestamp(vehicleData.photoPolicyLastCompletedAt);
-    }
-
-    // 3.2. Verificar en localDocStore (reactividad inmediata local)
-    try {
-      const localLogs = await localDocStore.getLocalCollection("bitacora_vehiculos");
-      if (Array.isArray(localLogs)) {
-        for (const entry of localLogs) {
-          const lData = entry.data || entry;
-          if (unitNamesToQuery.includes(lData.unidad) || unitNamesToQuery.includes(lData.unidadId)) {
-            recordCandidateTimestamp(lData.photoPolicyLastCompletedAt);
-            recordCandidateTimestamp(lData.photoTimestamp);
-            if (lData.oneDriveUrl && lData.fecha) {
-              recordCandidateTimestamp(lData.fecha);
-            }
-          }
-        }
-      }
-    } catch {
-      // Ignorar error de localDocStore
-    }
-
-    // 3.3. Verificar en Firestore remoto bitacora_vehiculos
-    for (const uName of unitNamesToQuery) {
-      try {
-        const qLogs = query(
-          collection(db, "bitacora_vehiculos"),
-          where("unidad", "==", uName),
-          orderBy("fecha", "desc"),
-          limit(20)
-        );
-        const logsSnap = await getDocs(qLogs);
-        for (const d of logsSnap.docs) {
-          const lData = d.data();
-          recordCandidateTimestamp(lData.photoPolicyLastCompletedAt);
-          recordCandidateTimestamp(lData.photoTimestamp);
-          if (lData.oneDriveUrl && lData.fecha) {
-            recordCandidateTimestamp(lData.fecha);
-          }
-        }
-      } catch (err) {
-        console.warn("[photoPolicy] Error querying bitacora_vehiculos for unit:", uName, err);
-      }
-    }
-
-    // REGLA 2 y 5: Si no existe ningún cumplimiento válido después de la última activación,
-    // la unidad queda PENDIENTE inmediatamente.
-    if (!ultimaFotoMs) {
-      return {
-        vencida: true,
-        intervalDays: effectiveInterval,
-        disabled: false,
-        ultimaFotoDate: null,
-        fechaLimite: new Date(),
-        policyEnabled: true,
-        policyActivatedAt: policyActivatedAtDate,
-      };
-    }
-
-    // Si tiene cumplimiento en el ciclo actual, calculamos la fecha límite sumando los días laborales
-    const ultimaFotoDate = new Date(ultimaFotoMs);
-    const fechaLimite = calculateBusinessDaysDeadline(ultimaFotoDate, effectiveInterval);
-
-    const today = new Date();
-    const vencida = today.getTime() >= fechaLimite.getTime();
-
-    return {
-      vencida,
-      intervalDays: effectiveInterval,
-      disabled: false,
-      ultimaFotoDate,
-      fechaLimite,
-      policyEnabled: true,
-      policyActivatedAt: policyActivatedAtDate,
-    };
-  } catch (e) {
-    console.error("[photoPolicy] Error checking photo policy:", e);
-    return {
-      vencida: false,
-      intervalDays: 15,
-      disabled: false,
-      ultimaFotoDate: null,
-      fechaLimite: null,
-      policyEnabled: true,
-      policyActivatedAt: null,
-    };
-  }
 }

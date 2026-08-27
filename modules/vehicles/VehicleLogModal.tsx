@@ -15,7 +15,7 @@ import { FiX, FiAlertTriangle, FiCreditCard, FiPlus, FiTrash2, FiEdit2 } from 'r
 import { isAdmin as checkIsAdmin } from '../../utils/permissions';
 import { saveVehicleLog, deleteVehicleLogPhoto, SaveProgressInfo } from './vehicleService';
 import { VehicleExpenseModal } from './components/VehicleExpenseModal';
-import { checkVehiclePhotoPolicy } from '../../core/photoPolicy';
+import { checkVehiclePhotoPolicy, VehiclePolicyEvaluation } from '../../core/photoPolicy';
 import { networkProbe } from '../../core/offline/networkProbe';
 
 interface VehicleLogModalProps {
@@ -101,12 +101,13 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         return base;
     });
 
-    const [photoPolicyStatus, setPhotoPolicyStatus] = useState<{ vencida: boolean; loading: boolean; intervalDays: number; disabled: boolean }>({ vencida: false, loading: false, intervalDays: 15, disabled: false });
+    const [policyStatus, setPolicyStatus] = useState<VehiclePolicyEvaluation | null>(null);
     const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
     const [existingPhotos, setExistingPhotos] = useState<{ url: string; path?: string }[]>([]);
     const [deletingPhotoIndex, setDeletingPhotoIndex] = useState<number | null>(null);
     const [photoLoading, setPhotoLoading] = useState(false);
     const [manualPhotoRequested, setManualPhotoRequested] = useState(false);
+    const [manualInspectionRequested, setManualInspectionRequested] = useState(false);
     const [revisionUnidad, setRevisionUnidad] = useState<Record<string, InspectionOption>>(() => {
         if (initialData?.revisionUnidad) {
             return normalizeVehicleInspection(initialData.revisionUnidad);
@@ -325,26 +326,28 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     }, [initialData]);
 
     useEffect(() => {
+        let isMounted = true;
         const checkPolicy = async () => {
             const unidad = formData.unidadName || formData.unidad || initialData?.unidad;
-            if (!unidad) return;
-            setPhotoPolicyStatus(prev => ({ ...prev, loading: true }));
+            if (!unidad) {
+                setPolicyStatus(null);
+                return;
+            }
             try {
                 const res = await checkVehiclePhotoPolicy(unidad);
-                setPhotoPolicyStatus({
-                    vencida: res.vencida,
-                    loading: false,
-                    intervalDays: res.intervalDays,
-                    disabled: res.disabled
-                });
+                if (isMounted) {
+                    setPolicyStatus(res);
+                }
             } catch (e) {
-                console.error("Error checking photo policy:", e);
-                setPhotoPolicyStatus(prev => ({ ...prev, loading: false }));
+                console.error("Error checking vehicle policy:", e);
             }
         };
         if (show) {
             checkPolicy();
         }
+        return () => {
+            isMounted = false;
+        };
     }, [show, formData.unidadName, formData.unidad, initialData?.unidad]);
     
     
@@ -720,8 +723,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             return;
         }
 
-        // 1.3 Validación de Revisión de Unidad y Aire Acondicionado (si aplica política o registro histórico)
-        const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
+        // 1.3 Validación de Revisión de Unidad (si aplica política semanal, registro histórico o solicitud manual)
+        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos && !policyStatus?.disabled);
+        const isInspectionRequired = Boolean(policyStatus?.requiresInspection && !policyStatus?.disabled);
         const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
             initialData.revisionUnidad.estadoLlantas !== undefined ||
             initialData.revisionUnidad.llantas !== undefined ||
@@ -731,14 +735,11 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             initialData.revisionUnidad.cuentaExtintor !== undefined ||
             initialData.revisionUnidad.terminalesBateriaBuenEstado !== undefined ||
             initialData.revisionUnidad.enciendeCorreBien !== undefined ||
-            initialData.revisionUnidad.aireAcondicionado !== undefined ||
-            !!initialData.photoStoragePath ||
-            !!initialData.oneDriveUrl
+            initialData.revisionUnidad.aireAcondicionado !== undefined
         );
-        const isFulfillingCycle = !photoPolicyStatus.disabled && (isPhotoRequired || manualPhotoRequested || hasHistoricalInspection);
-        const shouldSaveInspection = isFulfillingCycle;
+        const shouldValidateInspection = isInspectionRequired || hasHistoricalInspection || manualInspectionRequested;
 
-        if (shouldSaveInspection || hasHistoricalInspection) {
+        if (shouldValidateInspection) {
             // Verificar primer punto de revisión que pudiera estar pendiente
             const unitInspectionItems = INSPECTION_ITEMS.filter(
                 it => it.category !== 'INICIO DE LABORES' && it.category !== 'FINAL DE LABORES'
@@ -759,12 +760,13 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             }
         }
 
-        // 1.4 Validación de Fotografía requerida
-        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotos.length === 0) {
+        // 1.4 Validación de Fotografía requerida según política semanal
+        const hasExistingPhoto = (existingPhotos.length > 0) || !!initialData?.oneDriveUrl || !!initialData?.photoTimestamp || !!initialData?.photoStoragePath;
+        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !hasExistingPhoto) {
             setIsLoading(false);
             await confirm({
                 title: 'Fotografía de Bitácora Requerida',
-                description: `Esta unidad tiene la fotografía de bitácora vencida (más de ${photoPolicyStatus.intervalDays} días laborales). Debe adjuntar al menos una foto actual para registrar o cerrar la boleta.`,
+                description: `Hoy (${policyStatus?.todayLabel || 'hoy'}) corresponde adjuntar la fotografía de bitácora para esta unidad según la política semanal. Debe adjuntar al menos una foto actual para registrar o cerrar la boleta.`,
                 confirmLabel: 'ACEPTAR',
                 variant: 'warning'
             });
@@ -837,9 +839,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                 ...(initialData?.revisionUnidad || {}),
                 ...revisionUnidad
             },
-            ...(isFulfillingCycle && (selectedPhotoFiles.length > 0 || existingPhotos.length > 0)
-                ? { photoPolicyLastCompletedAt: new Date().toISOString() }
-                : (initialData?.photoPolicyLastCompletedAt ? { photoPolicyLastCompletedAt: initialData.photoPolicyLastCompletedAt } : {})),
+            ...(initialData?.photoPolicyLastCompletedAt ? { photoPolicyLastCompletedAt: initialData.photoPolicyLastCompletedAt } : {}),
             recargas: validRecargas,
             monto: validRecargas.length > 0 ? totalMonto : null,
             litros: validRecargas.length > 0 ? totalLitros : null,
@@ -847,17 +847,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             tipoCombustible: validRecargas.length > 0 ? validRecargas[0].tipoCombustible : null,
             gasolinera: validRecargas.length > 0 ? validRecargas.map(r => r.gasolinera).filter(Boolean).join(', ') : '',
         };
-
-        if (isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotos.length === 0) {
-            setIsLoading(false);
-            await confirm({
-                title: 'Fotografía de Bitácora Requerida',
-                description: `Esta unidad tiene la fotografía de bitácora vencida (más de ${photoPolicyStatus.intervalDays} días laborales). Debe adjuntar al menos una foto actual para registrar o cerrar la boleta.`,
-                confirmLabel: 'ACEPTAR',
-                variant: 'warning'
-            });
-            return;
-        }
 
         // 2. Ejecutar Guardado Centralizado con arquitectura paralela y seguimiento de progreso
         try {
@@ -1098,39 +1087,42 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         </div>
                     </div>
 
-                    {/* 3. REVISIÓN DE UNIDAD Y FOTOGRAFÍA */}
+                    {/* 3A. FOTOGRAFÍA DE BITÁCORA */}
                     {(() => {
-                        // 1. REGLA ABSOLUTA: Si la política global está desactivada (o la unidad está excluida / disabled),
-                        // NO mostrar Fotografía ni Revisión de Unidad.
-                        if (photoPolicyStatus.disabled) {
+                        if (policyStatus?.disabled) {
                             return null;
                         }
 
-                        // 2. Si la política está activada pero NO vencida y no hay solicitud manual:
-                        // NO mostrar formulario, NO mostrar revisión, NO mostrar botón.
-                        const isPhotoRequired = photoPolicyStatus.vencida;
-                        const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
-                            initialData.revisionUnidad.estadoLlantas !== undefined ||
-                            initialData.revisionUnidad.llantas !== undefined ||
-                            initialData.revisionUnidad.inspeccionGolpesDanos !== undefined ||
-                            initialData.revisionUnidad.nivelAceite !== undefined ||
-                            initialData.revisionUnidad.extintorVigente !== undefined ||
-                            initialData.revisionUnidad.cuentaExtintor !== undefined ||
-                            initialData.revisionUnidad.terminalesBateriaBuenEstado !== undefined ||
-                            initialData.revisionUnidad.enciendeCorreBien !== undefined ||
-                            initialData.revisionUnidad.aireAcondicionado !== undefined ||
-                            !!initialData.photoStoragePath ||
-                            !!initialData.oneDriveUrl
+                        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos);
+                        const hasHistoricalPhotos = isEditing && (
+                            existingPhotos.length > 0 ||
+                            !!initialData?.photoStoragePath ||
+                            !!initialData?.oneDriveUrl ||
+                            !!initialData?.photoTimestamp
                         );
-                        const shouldShowPhotoAndInspection = isPhotoRequired || manualPhotoRequested || hasHistoricalInspection;
+                        const showPhotos = isPhotoRequired || manualPhotoRequested || hasHistoricalPhotos;
 
-                        if (!shouldShowPhotoAndInspection) {
-                            return null;
+                        if (!showPhotos) {
+                            return (
+                                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-700">📷 Fotografía de Bitácora</span>
+                                        <span className="text-[10px] text-slate-500">(No requerida hoy)</span>
+                                    </div>
+                                    <ActionButton
+                                        type="button"
+                                        variant="secondary"
+                                        label="+ Adjuntar Foto"
+                                        onClick={() => setManualPhotoRequested(true)}
+                                        className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg"
+                                    />
+                                </div>
+                            );
                         }
 
                         return (
                             <div id="field-container-photo-section" className={`p-3 sm:p-4 rounded-xl border space-y-3 transition-all duration-300 ${highlightedFieldId === 'photo-section' ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-50 border-slate-200'}`}>
-                                {/* Encabezado de la Sección Integrada */}
+                                {/* Encabezado de la Sección de Fotos */}
                                 <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/80">
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
@@ -1169,7 +1161,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                             onClick={() => galleryInputRef.current?.click()}
                                             className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg"
                                         />
-                                        {!isPhotoRequired && !initialData?.photoStoragePath && !initialData?.photoTimestamp && !initialData?.revisionUnidad && existingPhotos.length === 0 && selectedPhotoFiles.length === 0 && manualPhotoRequested && (
+                                        {!isPhotoRequired && !initialData?.photoStoragePath && !initialData?.photoTimestamp && existingPhotos.length === 0 && selectedPhotoFiles.length === 0 && manualPhotoRequested && (
                                             <IconButton
                                                 icon={<FiX size={14} />}
                                                 onClick={() => setManualPhotoRequested(false)}
@@ -1180,11 +1172,11 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     </div>
                                 </div>
 
-                                {photoPolicyStatus.vencida && !photoPolicyStatus.disabled && (
+                                {isPhotoRequired && (
                                     <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-start gap-2 text-amber-800 text-xs">
                                         <FiAlertTriangle className="text-sm shrink-0 text-amber-600 mt-0.5" />
                                         <div>
-                                            <span className="font-bold uppercase">Fotografía Obligatoria Requerida:</span> Han pasado más de {photoPolicyStatus.intervalDays} días desde la última fotografía de bitácora para esta unidad.
+                                            <span className="font-bold uppercase">Fotografía Obligatoria Requerida:</span> Hoy ({policyStatus?.todayLabel || 'hoy'}) corresponde adjuntar la fotografía de bitácora para esta unidad según la política semanal.
                                         </div>
                                     </div>
                                 )}
@@ -1242,75 +1234,132 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                         })}
                                     </div>
                                 )}
+                            </div>
+                        );
+                    })()}
 
-                                {/* REVISIÓN DE UNIDAD (4 CATEGORÍAS ORGANIZADAS) */}
-                                <div className="pt-2 border-t border-slate-200/80">
-                                    <div className="flex items-center justify-between mb-2.5">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                                                Revisión de Unidad
-                                            </span>
-                                            <span className="text-[10px] text-slate-500 font-medium">
-                                                (Inspección técnica y operativa del vehículo)
-                                            </span>
+                    {/* 3B. REVISIÓN DE UNIDAD (INSPECCIÓN TÉCNICA) */}
+                    {(() => {
+                        if (policyStatus?.disabled) {
+                            return null;
+                        }
+
+                        const isInspectionRequired = Boolean(policyStatus?.requiresInspection);
+                        const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
+                            initialData.revisionUnidad.estadoLlantas !== undefined ||
+                            initialData.revisionUnidad.llantas !== undefined ||
+                            initialData.revisionUnidad.inspeccionGolpesDanos !== undefined ||
+                            initialData.revisionUnidad.nivelAceite !== undefined ||
+                            initialData.revisionUnidad.extintorVigente !== undefined ||
+                            initialData.revisionUnidad.cuentaExtintor !== undefined ||
+                            initialData.revisionUnidad.terminalesBateriaBuenEstado !== undefined ||
+                            initialData.revisionUnidad.enciendeCorreBien !== undefined ||
+                            initialData.revisionUnidad.aireAcondicionado !== undefined
+                        );
+                        const showInspection = isInspectionRequired || manualInspectionRequested || hasHistoricalInspection;
+
+                        if (!showInspection) {
+                            return (
+                                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-700">🔍 Revisión de Unidad</span>
+                                        <span className="text-[10px] text-slate-500">(No requerida hoy)</span>
+                                    </div>
+                                    <ActionButton
+                                        type="button"
+                                        variant="secondary"
+                                        label="+ Realizar Revisión"
+                                        onClick={() => setManualInspectionRequested(true)}
+                                        className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg"
+                                    />
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <div id="field-container-inspection-section" className={`p-3 sm:p-4 rounded-xl border space-y-3 transition-all duration-300 ${highlightedFieldId === 'inspection-section' ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-50 border-slate-200'}`}>
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                                            Revisión de Unidad
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 font-medium">
+                                            (Inspección técnica y operativa del vehículo)
+                                        </span>
+                                    </div>
+                                    {!isInspectionRequired && !hasHistoricalInspection && manualInspectionRequested && (
+                                        <IconButton
+                                            icon={<FiX size={14} />}
+                                            onClick={() => setManualInspectionRequested(false)}
+                                            className="!p-1 text-slate-400 hover:text-slate-700"
+                                            title="Ocultar revisión opcional"
+                                        />
+                                    )}
+                                </div>
+
+                                {isInspectionRequired && (
+                                    <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-start gap-2 text-amber-800 text-xs">
+                                        <FiAlertTriangle className="text-sm shrink-0 text-amber-600 mt-0.5" />
+                                        <div>
+                                            <span className="font-bold uppercase">Revisión Obligatoria Requerida:</span> Hoy ({policyStatus?.todayLabel || 'hoy'}) corresponde completar la inspección técnica del vehículo según la política semanal.
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Grid responsivo de tarjetas organizadas */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {/* 1. INSPECCIÓN EXTERIOR DEL VEHÍCULO */}
+                                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
+                                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
+                                            <span className="truncate">1. Inspección Exterior</span>
+                                            <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">7 puntos</span>
+                                        </div>
+                                        <div className="divide-y divide-slate-100 flex-1">
+                                            {INSPECTION_ITEMS.filter(item => item.category === 'INSPECCIÓN EXTERIOR').map(renderInspectionItem)}
                                         </div>
                                     </div>
 
-                                    {/* Grid responsivo de tarjetas organizadas */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {/* 1. INSPECCIÓN EXTERIOR DEL VEHÍCULO */}
-                                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
-                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
-                                                <span className="truncate">1. Inspección Exterior</span>
+                                    {/* 2. REVISIÓN MECÁNICA BÁSICA */}
+                                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
+                                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
+                                            <span className="truncate">2. Revisión Mecánica Básica</span>
+                                            <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">5 puntos</span>
+                                        </div>
+                                        <div className="divide-y divide-slate-100 flex-1">
+                                            {INSPECTION_ITEMS.filter(item => item.category === 'REVISIÓN MECÁNICA BÁSICA').map(renderInspectionItem)}
+                                        </div>
+                                    </div>
+
+                                    {/* 3. EQUIPAMIENTO DE SEGURIDAD */}
+                                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
+                                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
+                                            <span className="truncate">3. Equipamiento de Seguridad</span>
+                                            <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">7 puntos</span>
+                                        </div>
+                                        <div className="divide-y divide-slate-100 flex-1">
+                                            {INSPECTION_ITEMS.filter(item => item.category === 'EQUIPAMIENTO DE SEGURIDAD').map(renderInspectionItem)}
+                                        </div>
+                                    </div>
+
+                                    {/* 4. REVISIÓN OPERATIVA (UNIDAD APAGADA Y ENCENDIDA) */}
+                                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col space-y-3">
+                                        <div>
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-1.5 flex items-center justify-between border border-slate-200/60">
+                                                <span className="truncate">4.1 Unidad Apagada</span>
+                                                <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">2 puntos</span>
+                                            </div>
+                                            <div className="divide-y divide-slate-100">
+                                                {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD APAGADA').map(renderInspectionItem)}
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-slate-100">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-1.5 flex items-center justify-between border border-slate-200/60">
+                                                <span className="truncate">4.2 Unidad Encendida</span>
                                                 <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">7 puntos</span>
                                             </div>
-                                            <div className="divide-y divide-slate-100 flex-1">
-                                                {INSPECTION_ITEMS.filter(item => item.category === 'INSPECCIÓN EXTERIOR').map(renderInspectionItem)}
-                                            </div>
-                                        </div>
-
-                                        {/* 2. REVISIÓN MECÁNICA BÁSICA */}
-                                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
-                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
-                                                <span className="truncate">2. Revisión Mecánica Básica</span>
-                                                <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">5 puntos</span>
-                                            </div>
-                                            <div className="divide-y divide-slate-100 flex-1">
-                                                {INSPECTION_ITEMS.filter(item => item.category === 'REVISIÓN MECÁNICA BÁSICA').map(renderInspectionItem)}
-                                            </div>
-                                        </div>
-
-                                        {/* 3. EQUIPAMIENTO DE SEGURIDAD */}
-                                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col">
-                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between border border-slate-200/60">
-                                                <span className="truncate">3. Equipamiento de Seguridad</span>
-                                                <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">7 puntos</span>
-                                            </div>
-                                            <div className="divide-y divide-slate-100 flex-1">
-                                                {INSPECTION_ITEMS.filter(item => item.category === 'EQUIPAMIENTO DE SEGURIDAD').map(renderInspectionItem)}
-                                            </div>
-                                        </div>
-
-                                        {/* 4. REVISIÓN OPERATIVA (UNIDAD APAGADA Y ENCENDIDA) */}
-                                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col space-y-3">
-                                            <div>
-                                                <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-1.5 flex items-center justify-between border border-slate-200/60">
-                                                    <span className="truncate">4.1 Unidad Apagada</span>
-                                                    <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">2 puntos</span>
-                                                </div>
-                                                <div className="divide-y divide-slate-100">
-                                                    {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD APAGADA').map(renderInspectionItem)}
-                                                </div>
-                                            </div>
-
-                                            <div className="pt-2 border-t border-slate-100">
-                                                <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 bg-slate-100/90 px-2.5 py-1.5 rounded-lg mb-1.5 flex items-center justify-between border border-slate-200/60">
-                                                    <span className="truncate">4.2 Unidad Encendida</span>
-                                                    <span className="text-[9px] text-slate-500 font-bold shrink-0 ml-1">7 puntos</span>
-                                                </div>
-                                                <div className="divide-y divide-slate-100">
-                                                    {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD ENCENDIDA').map(renderInspectionItem)}
-                                                </div>
+                                            <div className="divide-y divide-slate-100">
+                                                {INSPECTION_ITEMS.filter(item => item.category === 'UNIDAD ENCENDIDA').map(renderInspectionItem)}
                                             </div>
                                         </div>
                                     </div>
@@ -1619,8 +1668,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         className="flex-1 !py-3 !text-[10px] !font-bold !uppercase !rounded-xl disabled:opacity-50"
                     />
                     {(() => {
-                        const isPhotoRequired = !photoPolicyStatus.disabled && photoPolicyStatus.vencida;
-                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !initialData?.oneDriveUrl && !initialData?.photoTimestamp && !initialData?.photoStoragePath && existingPhotos.length === 0;
+                        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos && !policyStatus?.disabled);
+                        const hasExistingPhoto = (existingPhotos.length > 0) || !!initialData?.oneDriveUrl || !!initialData?.photoTimestamp || !!initialData?.photoStoragePath;
+                        const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !hasExistingPhoto;
                         const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
 
                         let buttonLabel = "Guardar Registro";
