@@ -64,6 +64,8 @@ export interface VehicleLog {
     oneDriveSyncedAt?: string;
     oneDriveSyncError?: string;
     revisionUnidad?: Record<string, 'SI' | 'NO' | 'N/A'>;
+    hasInspectionAlert?: boolean;
+    inspectionAlerts?: InspectionAlertItem[];
 }
 
 export type InspectionOption = 'SI' | 'NO' | 'N/A';
@@ -209,6 +211,143 @@ export const extraerPlaca = (unidadId?: string): string => {
     if (!unidadId) return '';
     const parts = String(unidadId).split(' - ');
     return parts.length > 2 ? parts[2]?.trim() || '' : (parts.length > 1 ? parts[1]?.trim() || '' : '');
+};
+
+export interface InspectionAlertItem {
+    itemId: string;
+    label: string;
+    category?: InspectionCategory;
+    expectedValue: InspectionOption;
+    selectedValue: InspectionOption;
+}
+
+/**
+ * Extrae y normaliza el identificador canónico de la unidad (ej: 'U1', 'U2', 'U5', 'U8', etc.).
+ */
+export const getUnitCode = (unidad?: string, unidadId?: string, unidadName?: string): string => {
+    const raw = String(unidad || unidadName || unidadId || '').trim();
+    if (!raw) return '';
+    const parts = raw.split(' - ');
+    const firstPart = parts[0]?.trim().toUpperCase() || '';
+    const match = firstPart.match(/^U\d+/);
+    if (match) return match[0];
+    const generalMatch = raw.toUpperCase().match(/\bU(\d+)\b/);
+    if (generalMatch) return `U${generalMatch[1]}`;
+    if (raw.toUpperCase().includes('BONGO')) return 'U2';
+    if (raw.toUpperCase().includes('PATHFINDER')) return 'U1';
+    if (raw.toUpperCase().includes('UD 1400') || raw.toUpperCase().includes('NISSAN UD')) return 'U5';
+    return firstPart;
+};
+
+/**
+ * Obtiene el valor esperado preestablecido para un punto de inspección según la unidad.
+ * 
+ * Reglas de negocio:
+ * 1. SECCIONES GENERALES (SI para TODAS las unidades):
+ *    - 1. INSPECCIÓN EXTERIOR
+ *    - 2. REVISIÓN MECÁNICA BÁSICA
+ *    - 3. EQUIPAMIENTO DE SEGURIDAD
+ *    - 4.1 UNIDAD APAGADA
+ * 
+ * 2. SECCIÓN 4.2 UNIDAD ENCENDIDA:
+ *    - U1: Nivel de Combustible/Carga (id: nivelCombustibleCarga) -> NO
+ *          Aire acondicionado en buen estado (id: aireAcondicionado) -> NO
+ *          Demás puntos -> SI
+ *    - U2: Aire acondicionado en buen estado (id: aireAcondicionado) -> NO
+ *          Demás puntos -> SI
+ *    - U5: Nivel de Combustible/Carga (id: nivelCombustibleCarga) -> NO
+ *          Aire acondicionado en buen estado (id: aireAcondicionado) -> NO
+ *          Demás puntos -> SI
+ *    - DEMÁS UNIDADES:
+ *          Todos los puntos -> SI
+ */
+export const getExpectedInspectionValue = (itemId: string, unitCode: string): InspectionOption | null => {
+    const unit = unitCode.trim().toUpperCase();
+
+    // 4.2 UNIDAD ENCENDIDA
+    if (itemId === 'nivelCombustibleCarga') {
+        if (unit === 'U1' || unit === 'U5') {
+            return 'NO';
+        }
+        return 'SI';
+    }
+
+    if (itemId === 'aireAcondicionado') {
+        if (unit === 'U1' || unit === 'U2' || unit === 'U5') {
+            return 'NO';
+        }
+        return 'SI';
+    }
+
+    const itemDef = INSPECTION_ITEMS.find(i => i.id === itemId);
+    if (!itemDef) return null;
+
+    if (
+        itemDef.category === 'INSPECCIÓN EXTERIOR' ||
+        itemDef.category === 'REVISIÓN MECÁNICA BÁSICA' ||
+        itemDef.category === 'EQUIPAMIENTO DE SEGURIDAD' ||
+        itemDef.category === 'UNIDAD APAGADA' ||
+        itemDef.category === 'UNIDAD ENCENDIDA'
+    ) {
+        return 'SI';
+    }
+
+    return null;
+};
+
+/**
+ * Evalúa las desviaciones de la revisión vehicular respecto a los valores preestablecidos.
+ * La alerta se activa si: VALOR SELECCIONADO !== VALOR PREESTABLECIDO PARA ESA UNIDAD.
+ */
+export const evaluateVehicleInspectionAlerts = (
+    revisionUnidad?: Record<string, any>,
+    unitOrLog?: string | Partial<VehicleLog>
+): { hasInspectionAlert: boolean; inspectionAlerts: InspectionAlertItem[] } => {
+    if (!revisionUnidad) {
+        return { hasInspectionAlert: false, inspectionAlerts: [] };
+    }
+
+    let unitCode = '';
+    if (typeof unitOrLog === 'string') {
+        unitCode = getUnitCode(unitOrLog);
+    } else if (unitOrLog) {
+        unitCode = getUnitCode(unitOrLog.unidad, unitOrLog.unidadId, unitOrLog.unidadName);
+    }
+
+    const alerts: InspectionAlertItem[] = [];
+
+    const evaluatedCategories: InspectionCategory[] = [
+        'INSPECCIÓN EXTERIOR',
+        'REVISIÓN MECÁNICA BÁSICA',
+        'EQUIPAMIENTO DE SEGURIDAD',
+        'UNIDAD APAGADA',
+        'UNIDAD ENCENDIDA'
+    ];
+
+    const inspectedItems = INSPECTION_ITEMS.filter(item => evaluatedCategories.includes(item.category));
+
+    for (const item of inspectedItems) {
+        const userValue = revisionUnidad[item.id];
+        if (userValue === undefined || userValue === null || userValue === '') {
+            continue;
+        }
+
+        const expected = getExpectedInspectionValue(item.id, unitCode);
+        if (expected && userValue !== expected) {
+            alerts.push({
+                itemId: item.id,
+                label: item.label,
+                category: item.category,
+                expectedValue: expected,
+                selectedValue: userValue as InspectionOption
+            });
+        }
+    }
+
+    return {
+        hasInspectionAlert: alerts.length > 0,
+        inspectionAlerts: alerts
+    };
 };
 
 export interface Vehicle {

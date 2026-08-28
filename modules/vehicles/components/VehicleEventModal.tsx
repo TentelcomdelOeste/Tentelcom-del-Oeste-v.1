@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuditPermanence } from '../../../hooks/useAuditPermanence';
-import { VehicleLog, extraerPlaca } from '../../../types/vehicle.types';
+import { VehicleLog, extraerPlaca, evaluateVehicleInspectionAlerts } from '../../../types/vehicle.types';
 
 interface VehicleEventModalProps {
     show: boolean;
@@ -17,6 +17,10 @@ export const VehicleEventModal: React.FC<VehicleEventModalProps> = ({ show, onCl
         enabled: show && !!log
     });
     if (!show || !log) return null;
+
+    const alertInfo = evaluateVehicleInspectionAlerts(log.revisionUnidad, log);
+    const hasInspectionAlert = log.hasInspectionAlert !== undefined ? log.hasInspectionAlert : alertInfo.hasInspectionAlert;
+    const inspectionAlerts = (log.inspectionAlerts && log.inspectionAlerts.length > 0) ? log.inspectionAlerts : alertInfo.inspectionAlerts;
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-950/90 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
@@ -53,6 +57,26 @@ export const VehicleEventModal: React.FC<VehicleEventModalProps> = ({ show, onCl
                             </span>
                         </div>
                     </div>
+
+                    {hasInspectionAlert && (
+                        <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-3.5 space-y-2">
+                            <div className="flex items-center gap-2 text-amber-950 font-black text-xs uppercase tracking-wide">
+                                <span>⚠️</span>
+                                <span>Observaciones de Revisión Vehicular ({inspectionAlerts.length})</span>
+                            </div>
+                            <div className="space-y-1.5 pt-1">
+                                {inspectionAlerts.map(alert => (
+                                    <div key={alert.itemId} className="bg-white/95 border border-amber-200 rounded-lg p-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1 shadow-2xs">
+                                        <span className="font-bold text-slate-800">{alert.label}</span>
+                                        <div className="flex items-center gap-2 text-[11px] font-medium shrink-0">
+                                            <span className="text-slate-500">Esperado: <strong className="text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded font-black">{alert.expectedValue}</strong></span>
+                                            <span className="text-amber-900">Registrado: <strong className="text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded font-black">{alert.selectedValue}</strong></span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">

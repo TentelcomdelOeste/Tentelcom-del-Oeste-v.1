@@ -17,6 +17,7 @@ import {
   VehicleLog,
   extraerUnidad,
   extraerPlaca,
+  evaluateVehicleInspectionAlerts,
 } from "../../types/vehicle.types";
 import { db } from "../../firebase";
 import { useAuth } from "../../hooks/useAuth";
@@ -569,6 +570,9 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
         width: "10%",
         render: (l: any) => {
           const isIncomplete = !l.horaLlegada || !l.kmLlegada;
+          const alertInfo = evaluateVehicleInspectionAlerts(l.revisionUnidad, l);
+          const hasInspectionAlert = l.hasInspectionAlert !== undefined ? l.hasInspectionAlert : alertInfo.hasInspectionAlert;
+
           const dateStr = l.fecha || l.createdAt || "";
           if (!dateStr) return "---";
 
@@ -583,11 +587,21 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
           return (
             <div className="flex flex-col items-start gap-1 w-full overflow-hidden">
               <span className="truncate w-full font-bold text-slate-700">{displayDate}</span>
-              {isIncomplete && (
-                <span className="text-[9px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded uppercase leading-none shadow-sm whitespace-nowrap">
-                  Incompleto
-                </span>
-              )}
+              <div className="flex flex-wrap items-center gap-1">
+                {isIncomplete && (
+                  <span className="text-[9px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded uppercase leading-none shadow-sm whitespace-nowrap">
+                    Incompleto
+                  </span>
+                )}
+                {hasInspectionAlert && (
+                  <span 
+                    className="text-[9px] font-black bg-amber-100/95 text-amber-950 border border-amber-300 px-1.5 py-0.5 rounded uppercase leading-none shadow-2xs whitespace-nowrap flex items-center gap-0.5"
+                    title="Revisión vehicular con observaciones de inspección técnica"
+                  >
+                    <span>⚠️</span> <span>Con Obs.</span>
+                  </span>
+                )}
+              </div>
             </div>
           );
         },

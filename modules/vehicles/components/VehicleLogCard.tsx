@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { VehicleLog, VehicleExpense } from '../../../types/vehicle.types';
+import { VehicleLog, VehicleExpense, evaluateVehicleInspectionAlerts } from '../../../types/vehicle.types';
 import { FaTruck, FaCalendar, FaUser, FaMapPin, FaTachometerAlt, FaCreditCard } from 'react-icons/fa';
 import { ActionButtons } from '../../../components/ui/ActionButtons';
 import { SovereignVehicleImage } from './SovereignVehicleImage';
@@ -19,15 +19,36 @@ export const VehicleLogCard = React.memo(({ log, expenses = [], onEdit, onDelete
     const isIncomplete = !log.horaLlegada || !log.kmLlegada;
     const totalExpenses = expenses.reduce((sum, e) => sum + (e.monto || 0), 0);
 
+    const alertInfo = evaluateVehicleInspectionAlerts(log.revisionUnidad, log);
+    const hasInspectionAlert = log.hasInspectionAlert !== undefined ? log.hasInspectionAlert : alertInfo.hasInspectionAlert;
+    const alertsCount = (log.inspectionAlerts && log.inspectionAlerts.length > 0) 
+        ? log.inspectionAlerts.length 
+        : alertInfo.inspectionAlerts.length;
+
     return (
         <div className={`bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition-shadow relative ${
             isIncomplete 
                 ? 'border-l-[5px] border-l-[#FFA500] bg-orange-50/20 animate-pulso-naranja outline outline-1 outline-orange-500/20' 
-                : 'border-slate-100'
+                : hasInspectionAlert
+                    ? 'border-amber-200 bg-amber-50/10'
+                    : 'border-slate-100'
         }`}>
-            {isIncomplete && (
-                <div className="absolute -top-2 right-2 bg-[#FFA500] text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md z-10 border border-white uppercase tracking-wider animate-bounce-subtle">
-                    Incompleto
+            {(isIncomplete || hasInspectionAlert) && (
+                <div className="absolute -top-2 right-2 flex items-center gap-1.5 z-10">
+                    {isIncomplete && (
+                        <div className="bg-[#FFA500] text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md border border-white uppercase tracking-wider animate-bounce-subtle">
+                            Incompleto
+                        </div>
+                    )}
+                    {hasInspectionAlert && (
+                        <div 
+                            className="bg-amber-100/95 text-amber-950 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs uppercase tracking-wider flex items-center gap-1"
+                            title={`Revisión vehicular con ${alertsCount} observación(es) respecto a los valores preestablecidos`}
+                        >
+                            <span className="text-xs leading-none">⚠️</span>
+                            <span>Con Observación</span>
+                        </div>
+                    )}
                 </div>
             )}
             {/* Header */}

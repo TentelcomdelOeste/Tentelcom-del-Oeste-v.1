@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
 import { Calendar, dateFnsLocalizer, SlotInfo } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, addYears, subYears, endOfWeek, isSameDay, isWithinInterval, isSameMonth } from 'date-fns';
+import { format, parse, startOfWeek, getDay, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, addYears, subYears, endOfWeek, isSameDay, isWithinInterval, isSameMonth, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { es } from 'date-fns/locale';
 import { getTrabajos, migrateExistingTrabajos, renameExistingOTCodes } from './jobService';
@@ -467,13 +467,59 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
     setIsModalOpen(true);
   };
 
+  const getJobDateTimes = (t: Trabajo) => {
+    const rawStart = t.fecha_inicio instanceof Date 
+      ? t.fecha_inicio 
+      : ((t.fecha_inicio as any)?.toDate?.() || new Date(t.fecha_inicio || new Date()));
+    
+    const rawEnd = t.fecha_fin instanceof Date 
+      ? t.fecha_fin 
+      : ((t.fecha_fin as any)?.toDate?.() || new Date(t.fecha_fin || rawStart));
+
+    const dStart = isNaN(rawStart.getTime()) ? new Date() : rawStart;
+    const dEnd = isNaN(rawEnd.getTime()) ? new Date(dStart) : rawEnd;
+
+    const [h1, m1] = (t.hora_inicio || '00:00').split(':').map(Number);
+    const [h2, m2] = (t.hora_fin || '00:00').split(':').map(Number);
+
+    const startDateTime = new Date(
+      dStart.getFullYear(),
+      dStart.getMonth(),
+      dStart.getDate(),
+      isNaN(h1) ? 0 : h1,
+      isNaN(m1) ? 0 : m1,
+      0,
+      0
+    );
+
+    let endDateTime = new Date(
+      dEnd.getFullYear(),
+      dEnd.getMonth(),
+      dEnd.getDate(),
+      isNaN(h2) ? 0 : h2,
+      isNaN(m2) ? 0 : m2,
+      0,
+      0
+    );
+
+    // Si la fecha final es menor que la inicial (ej. trabajo antiguo con fecha_fin igual a fecha_inicio pero cruzando medianoche)
+    if (endDateTime.getTime() < startDateTime.getTime()) {
+      endDateTime = new Date(endDateTime.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    return { dStart, dEnd, startDateTime, endDateTime };
+  };
+
   const calcularHoras = (t: Trabajo) => {
-    const [h1, m1] = t.hora_inicio.split(':').map(Number);
-    const [h2, m2] = t.hora_fin.split(':').map(Number);
-    const start = new Date(0, 0, 0, h1, m1);
-    const end = new Date(0, 0, 0, h2, m2);
-    const diffInMs = end.getTime() - start.getTime();
+    const { startDateTime, endDateTime } = getJobDateTimes(t);
+    const diffInMs = endDateTime.getTime() - startDateTime.getTime();
     return Math.max(0, diffInMs / (1000 * 60 * 60));
+  };
+
+  const formatJobDateLabel = (dStart: Date, dEnd: Date) => {
+    const startStr = format(dStart, 'dd/MM/yyyy');
+    const endStr = format(dEnd, 'dd/MM/yyyy');
+    return startStr === endStr ? startStr : `${startStr} - ${endStr}`;
   };
 
   const getExpandedJobsData = () => {
@@ -487,100 +533,54 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
     }
 
     sourceData.forEach((job) => {
-      // Find days in this job that fall into the current view
-      const jobDays = job.dias_detalle || [];
-      jobDays.forEach((dia) => {
-        const diaDate = new Date(dia.fecha);
-        let include = false;
-        
-        if (searchTerm.trim().length > 0 || viewMode === 'waiting') {
-          include = true;
-        } else if (agendaViewMode === 'day') {
-          include = isSameDay(diaDate, currentDate);
-        } else if (agendaViewMode === 'week') {
-          include = isWithinInterval(diaDate, {
-            start: startOfWeek(currentDate, { weekStartsOn: 1 }),
-            end: endOfWeek(currentDate, { weekStartsOn: 1 })
-          });
-        } else if (agendaViewMode === 'month') {
-          include = isSameMonth(diaDate, currentDate);
-        } else {
-          include = true;
-        }
+      const { dStart, dEnd } = getJobDateTimes(job);
+      const jobStartDay = startOfDay(dStart);
+      const jobEndDay = endOfDay(dEnd);
+      
+      let include = false;
+      if (searchTerm.trim().length > 0 || viewMode === 'waiting') {
+        include = true;
+      } else if (agendaViewMode === 'day') {
+        const targetDay = startOfDay(currentDate);
+        include = targetDay >= jobStartDay && targetDay <= jobEndDay;
+      } else if (agendaViewMode === 'week') {
+        const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+        include = jobStartDay <= weekEnd && jobEndDay >= weekStart;
+      } else if (agendaViewMode === 'month') {
+        const monthStart = startOfMonth(currentDate);
+        const monthEnd = endOfMonth(currentDate);
+        include = jobStartDay <= monthEnd && jobEndDay >= monthStart;
+      } else {
+        include = true;
+      }
 
-        if (include) {
-          const cuadrilla = dia.recursos_ajustados && dia.cuadrilla_diaria ? dia.cuadrilla_diaria : job.cuadrilla;
-          const unidades = dia.recursos_ajustados && dia.unidades_diarias ? dia.unidades_diarias : job.unidades;
-          const [h1, m1] = (dia.hora_inicio || job.hora_inicio).split(':').map(Number);
-          const [h2, m2] = (dia.hora_fin || job.hora_fin).split(':').map(Number);
-          const start = new Date(0, 0, 0, h1, m1);
-          const end = new Date(0, 0, 0, h2, m2);
-          const horas = Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60));
+      if (include) {
+        const horas = calcularHoras(job);
 
-          list.push({
-            id: `${job.id}-${format(diaDate, 'yyyyMMdd')}`,
-            Número: job.otCode || '',
-            Proyecto: job.tipo_trabajo,
-            Cliente: 'N/D',
-            Fecha: new Intl.DateTimeFormat("es-CR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(diaDate),
-            'Hora Inicio': dia.hora_inicio || job.hora_inicio,
-            'Hora Fin': dia.hora_fin || job.hora_fin,
-            'Horas Totales': horas, // stored as number to sum up later
-            Personal: cuadrilla.length > 0 ? cuadrilla.join(', ') : 'Sin personal asignado',
-            Unidad: unidades.length > 0 ? unidades.join(', ') : 'Sin unidad asignada',
-            Ubicación: job.ubicacion,
-            Estado: dia.estado || job.estado,
-            Descripción: job.descripcion || 'Sin descripción',
-            Observaciones: job.observaciones || ''
-          });
-        }
-      });
-
-      // Fallback if no dias_detalle exist for older jobs
-      if (jobDays.length === 0) {
-        let includeFallback = false;
-        const jobDate = new Date(job.fecha_inicio);
-        
-        if (searchTerm.trim().length > 0 || viewMode === 'waiting') {
-          includeFallback = true;
-        } else if (agendaViewMode === 'day') {
-          includeFallback = isSameDay(jobDate, currentDate);
-        } else if (agendaViewMode === 'week') {
-          includeFallback = isWithinInterval(jobDate, {
-            start: startOfWeek(currentDate, { weekStartsOn: 1 }),
-            end: endOfWeek(currentDate, { weekStartsOn: 1 })
-          });
-        } else if (agendaViewMode === 'month') {
-          includeFallback = isSameMonth(jobDate, currentDate);
-        } else {
-          includeFallback = true;
-        }
-
-        if (includeFallback) {
-          list.push({
-            id: job.id,
-            Número: job.otCode || '',
-            Proyecto: job.tipo_trabajo,
-            Cliente: 'N/D',
-            Fecha: new Intl.DateTimeFormat("es-CR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(new Date(job.fecha_inicio)),
-            'Hora Inicio': job.hora_inicio,
-            'Hora Fin': job.hora_fin,
-            'Horas Totales': calcularHoras(job),
-            Personal: job.cuadrilla.length > 0 ? job.cuadrilla.join(', ') : 'Sin personal asignado',
-            Unidad: job.unidades.length > 0 ? job.unidades.join(', ') : 'Sin unidad asignada',
-            Ubicación: job.ubicacion,
-            Estado: job.estado,
-            Descripción: job.descripcion || 'Sin descripción',
-            Observaciones: job.observaciones || ''
-          });
-        }
+        list.push({
+          id: job.id,
+          Número: job.otCode || '',
+          Proyecto: job.tipo_trabajo,
+          Cliente: 'N/D',
+          Fecha: formatJobDateLabel(dStart, dEnd),
+          'Hora Inicio': job.hora_inicio || '',
+          'Hora Fin': job.hora_fin || '',
+          'Horas Totales': horas, // stored as number to sum up later
+          Personal: job.cuadrilla && job.cuadrilla.length > 0 ? job.cuadrilla.join(', ') : 'Sin personal asignado',
+          Unidad: job.unidades && job.unidades.length > 0 ? job.unidades.join(', ') : 'Sin unidad asignada',
+          Ubicación: job.ubicacion || '',
+          Estado: job.estado || '',
+          Descripción: job.descripcion || 'Sin descripción',
+          Observaciones: job.observaciones || ''
+        });
       }
     });
 
     return list.sort((a, b) => {
-        const dateA = a.Fecha.split('/').reverse().join('');
-        const dateB = b.Fecha.split('/').reverse().join('');
-        return dateA.localeCompare(dateB) || a['Hora Inicio'].localeCompare(b['Hora Inicio']);
+      const dateA = a.Fecha.split(' - ')[0].split('/').reverse().join('');
+      const dateB = b.Fecha.split(' - ')[0].split('/').reverse().join('');
+      return dateA.localeCompare(dateB) || a['Hora Inicio'].localeCompare(b['Hora Inicio']);
     });
   };
 

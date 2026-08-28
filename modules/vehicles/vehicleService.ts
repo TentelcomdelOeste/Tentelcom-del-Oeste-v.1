@@ -1,6 +1,6 @@
 import { db } from "../../firebase";
 import { doc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
-import { VehicleLog, VehicleExpense } from "../../types/vehicle.types";
+import { VehicleLog, VehicleExpense, evaluateVehicleInspectionAlerts } from "../../types/vehicle.types";
 import { User } from "../../utils/types";
 import { createSystemEvent } from "../job_scheduling/jobService";
 import { setVersionedDocOffline, updateVersionedDocOffline } from "../../core/versionControl";
@@ -435,8 +435,20 @@ export const saveVehicleLog = async (
         vPlaca = parts[2]?.trim() || parts[1]?.trim() || "";
     }
 
+    // Evaluación de alertas de inspección técnica vehicular
+    const alertEvaluation = evaluateVehicleInspectionAlerts(
+        sanitizedData.revisionUnidad,
+        {
+            unidad: vUnidad,
+            unidadId: sanitizedData.unidadId,
+            unidadName: sanitizedData.unidadName
+        }
+    );
+
     const dataToSave = {
         ...sanitizedData,
+        hasInspectionAlert: alertEvaluation.hasInspectionAlert,
+        inspectionAlerts: alertEvaluation.inspectionAlerts,
         totalKm,
         updatedAt: now.toISOString(),
         updatedBy: currentUser.id,
@@ -787,8 +799,25 @@ export const updateVehicleLog = async (
 ) => {
     try {
         const now = new Date().toISOString();
+        let alertData = {};
+        if (data.revisionUnidad) {
+            const evalResult = evaluateVehicleInspectionAlerts(
+                data.revisionUnidad,
+                {
+                    unidad: data.unidad,
+                    unidadId: data.unidadId,
+                    unidadName: data.unidadName
+                }
+            );
+            alertData = {
+                hasInspectionAlert: evalResult.hasInspectionAlert,
+                inspectionAlerts: evalResult.inspectionAlerts
+            };
+        }
+
         const dataToSave = {
             ...data,
+            ...alertData,
             updatedAt: now,
             updatedBy: currentUser.id
         };
