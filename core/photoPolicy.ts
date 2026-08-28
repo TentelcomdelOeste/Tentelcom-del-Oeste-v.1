@@ -1,5 +1,6 @@
 import { db } from "../firebase";
 import { doc, getDoc, collection, query, where, limit, getDocs, setDoc } from "firebase/firestore";
+import { getUnitCode } from "../types/vehicle.types";
 
 export type WeekDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
 
@@ -277,19 +278,48 @@ export async function checkVehiclePhotoPolicy(
 ): Promise<VehiclePolicyEvaluation> {
   try {
     const globalConfig = await getGlobalPolicyConfig();
+    const unitCode = getUnitCode(unidadIdOrCode) || unidadIdOrCode;
 
     let vehicleData = providedVehicleData;
-    if (!vehicleData && unidadIdOrCode) {
+    const hasExplicitPhotoPolicy = vehicleData && typeof vehicleData === 'object' && vehicleData.photoPolicy !== undefined;
+
+    if (!hasExplicitPhotoPolicy && (unitCode || unidadIdOrCode)) {
       try {
-        const vehDocRef = doc(db, "vehiculos", unidadIdOrCode);
-        const vehSnap = await getDoc(vehDocRef);
-        if (vehSnap.exists()) {
-          vehicleData = vehSnap.data();
-        } else {
-          const qVeh = query(collection(db, "vehiculos"), where("unidad", "==", unidadIdOrCode), limit(1));
+        // 1. Direct lookup by canonical unit code (e.g. "U1")
+        if (unitCode) {
+          const vehDocRef = doc(db, "vehiculos", unitCode);
+          const vehSnap = await getDoc(vehDocRef);
+          if (vehSnap.exists() && vehSnap.data()?.photoPolicy !== undefined) {
+            vehicleData = vehSnap.data();
+          }
+        }
+
+        // 2. Direct lookup by raw string if different
+        if (!vehicleData?.photoPolicy && unidadIdOrCode && unidadIdOrCode !== unitCode) {
+          const vehDocRefRaw = doc(db, "vehiculos", unidadIdOrCode);
+          const vehSnapRaw = await getDoc(vehDocRefRaw);
+          if (vehSnapRaw.exists() && vehSnapRaw.data()?.photoPolicy !== undefined) {
+            vehicleData = vehSnapRaw.data();
+          }
+        }
+
+        // 3. Query collection by 'unidad' field matching unitCode
+        if (!vehicleData?.photoPolicy && unitCode) {
+          const qVeh = query(collection(db, "vehiculos"), where("unidad", "==", unitCode), limit(5));
           const qSnap = await getDocs(qVeh);
           if (!qSnap.empty) {
-            vehicleData = qSnap.docs[0].data();
+            const disabledDoc = qSnap.docs.find(d => d.data()?.photoPolicy?.disabled === true);
+            vehicleData = (disabledDoc || qSnap.docs[0]).data();
+          }
+        }
+
+        // 4. Query collection by raw string matching
+        if (!vehicleData?.photoPolicy && unidadIdOrCode && unidadIdOrCode !== unitCode) {
+          const qVehRaw = query(collection(db, "vehiculos"), where("unidad", "==", unidadIdOrCode), limit(5));
+          const qSnapRaw = await getDocs(qVehRaw);
+          if (!qSnapRaw.empty) {
+            const disabledDoc = qSnapRaw.docs.find(d => d.data()?.photoPolicy?.disabled === true);
+            vehicleData = (disabledDoc || qSnapRaw.docs[0]).data();
           }
         }
       } catch (err) {

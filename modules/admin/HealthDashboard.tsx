@@ -16,6 +16,8 @@ import {
     getWeekDayLabel,
     VehicleWeeklyPolicyConfig 
 } from '../../core/photoPolicy';
+import { VEHICLES } from '../job_scheduling/JobForm';
+import { getUnitCode, extraerPlaca } from '../../types/vehicle.types';
 
 const AuditDashboard = lazy(() => import('./AuditDashboard'));
 
@@ -42,13 +44,71 @@ function PhotoPolicySettings() {
             setPolicyConfig(config);
 
             const vehSnap = await getDocs(collection(db, 'vehiculos'));
-            const vehList = vehSnap.docs.map(d => ({
-                id: d.id,
-                unidad: d.data().unidad || d.id,
-                placa: d.data().placa || '',
-                photoPolicy: d.data().photoPolicy || { disabled: false }
-            }));
-            vehList.sort((a, b) => a.unidad.localeCompare(b.unidad));
+            
+            // Deduplicate and group by canonical unit code
+            const unitMap = new Map<string, {
+                id: string;
+                unidad: string;
+                placa: string;
+                label?: string;
+                docIds: string[];
+                photoPolicy: { disabled: boolean };
+            }>();
+
+            // 1. Initialize with standard units U1 through U8 from VEHICLES
+            VEHICLES.forEach(v => {
+                const code = v.value; // "U1", "U2", etc.
+                const placa = extraerPlaca(v.label) || '';
+                unitMap.set(code, {
+                    id: code,
+                    unidad: code,
+                    placa: placa,
+                    label: v.label,
+                    docIds: [code],
+                    photoPolicy: { disabled: false }
+                });
+            });
+
+            // 2. Merge all documents from Firestore collection 'vehiculos'
+            vehSnap.docs.forEach(d => {
+                const data = d.data();
+                const code = getUnitCode(data.unidad, data.unidadId, data.unidadName) || getUnitCode(d.id) || d.id;
+                const isExcluded = Boolean(data.photoPolicy?.disabled);
+                const placa = data.placa || extraerPlaca(data.unidadId) || '';
+
+                if (unitMap.has(code)) {
+                    const existing = unitMap.get(code)!;
+                    if (!existing.docIds.includes(d.id)) {
+                        existing.docIds.push(d.id);
+                    }
+                    if (isExcluded) {
+                        existing.photoPolicy.disabled = true;
+                    }
+                    if (placa && (!existing.placa || existing.placa === '')) {
+                        existing.placa = placa;
+                    }
+                } else {
+                    unitMap.set(code, {
+                        id: code,
+                        unidad: code,
+                        placa: placa,
+                        docIds: [d.id],
+                        photoPolicy: { disabled: isExcluded }
+                    });
+                }
+            });
+
+            // 3. Convert to array and sort canonically (U1, U2, ..., U8, etc.)
+            const vehList = Array.from(unitMap.values());
+            vehList.sort((a, b) => {
+                const numA = parseInt(a.unidad.replace(/\D/g, ''), 10);
+                const numB = parseInt(b.unidad.replace(/\D/g, ''), 10);
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return numA - numB;
+                }
+                return a.unidad.localeCompare(b.unidad);
+            });
+
             setVehicles(vehList);
         } catch (err) {
             console.error("Error loading photo policy settings:", err);
@@ -109,13 +169,24 @@ function PhotoPolicySettings() {
         }
     };
 
-    const handleUpdateVehiclePolicy = async (vehId: string, disabled: boolean) => {
-        await updateDoc(doc(db, 'vehiculos', vehId), {
-            photoPolicy: {
-                disabled: !!disabled
-            }
-        });
-        setVehicles(prev => prev.map(v => v.id === vehId ? { 
+    const handleUpdateVehiclePolicy = async (unitCode: string, disabled: boolean) => {
+        const item = vehicles.find(v => v.unidad === unitCode);
+        const docIdsToUpdate = Array.from(new Set([unitCode, ...(item?.docIds || [])]));
+
+        const batch = writeBatch(db);
+        for (const docId of docIdsToUpdate) {
+            const ref = doc(db, 'vehiculos', docId);
+            batch.set(ref, {
+                unidad: unitCode,
+                placa: item?.placa || '',
+                photoPolicy: {
+                    disabled: !!disabled
+                }
+            }, { merge: true });
+        }
+        await batch.commit();
+
+        setVehicles(prev => prev.map(v => v.unidad === unitCode ? { 
             ...v, 
             photoPolicy: { ...v.photoPolicy, disabled: !!disabled } 
         } : v));

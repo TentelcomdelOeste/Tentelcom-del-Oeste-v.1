@@ -110,7 +110,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         return base;
     });
 
-    const [selectedVehicleData, setSelectedVehicleData] = useState<any>(null);
     const [policyStatus, setPolicyStatus] = useState<VehiclePolicyEvaluation | null>(null);
     const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
     const [existingPhotos, setExistingPhotos] = useState<{ url: string; path?: string }[]>([]);
@@ -375,7 +374,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                 return;
             }
             try {
-                const res = await checkVehiclePhotoPolicy(unidad, selectedVehicleData);
+                const res = await checkVehiclePhotoPolicy(unidad);
                 if (isMounted) {
                     setPolicyStatus(res);
                 }
@@ -389,7 +388,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         return () => {
             isMounted = false;
         };
-    }, [show, formData.unidadName, formData.unidad, initialData?.unidad, selectedVehicleData]);
+    }, [show, formData.unidadName, formData.unidad, initialData?.unidad]);
     
     
     const [recargas, setRecargas] = useState<VehicleRecharge[]>(() => {
@@ -1060,7 +1059,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     value={formData.unidadName}
                                     onChange={(val) => {
                                         const vehicle = VEHICLES.find(v => v.value === val);
-                                        setSelectedVehicleData(vehicle || null);
                                         setFormData(p => ({...p, unidadName: val, unidadId: vehicle?.label || ''}));
                                     }}
                                     placeholder="Buscar vehículo..."
@@ -1131,11 +1129,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
                     {/* 3A. FOTOGRAFÍA DE BITÁCORA */}
                     {(() => {
-                        if (policyStatus?.disabled) {
-                            return null;
-                        }
-
-                        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos);
+                        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos && !policyStatus?.disabled);
                         const hasHistoricalPhotos = isEditing && (
                             existingPhotos.length > 0 ||
                             !!initialData?.photoStoragePath ||
@@ -1149,7 +1143,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-bold text-slate-700">📷 Fotografía de Bitácora</span>
-                                        <span className="text-[10px] text-slate-500">(No requerida hoy)</span>
+                                        <span className="text-[10px] text-slate-500">
+                                            {policyStatus?.disabled ? '(No requerida - Unidad excluida)' : '(No requerida hoy)'}
+                                        </span>
                                     </div>
                                     <ActionButton
                                         type="button"
@@ -1282,11 +1278,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
                     {/* 3B. REVISIÓN DE UNIDAD (INSPECCIÓN TÉCNICA) */}
                     {(() => {
-                        if (policyStatus?.disabled) {
-                            return null;
-                        }
-
-                        const isInspectionRequired = Boolean(policyStatus?.requiresInspection);
+                        const isInspectionRequired = Boolean(policyStatus?.requiresInspection && !policyStatus?.disabled);
                         const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
                             initialData.revisionUnidad.estadoLlantas !== undefined ||
                             initialData.revisionUnidad.llantas !== undefined ||
@@ -1305,7 +1297,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-bold text-slate-700">🔍 Revisión de Unidad</span>
-                                        <span className="text-[10px] text-slate-500">(No requerida hoy)</span>
+                                        <span className="text-[10px] text-slate-500">
+                                            {policyStatus?.disabled ? '(No requerida - Unidad excluida)' : '(No requerida hoy)'}
+                                        </span>
                                     </div>
                                     <ActionButton
                                         type="button"
