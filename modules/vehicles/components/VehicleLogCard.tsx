@@ -34,32 +34,11 @@ export const VehicleLogCard = React.memo(({ log, expenses = [], onEdit, onDelete
                     ? 'border-l-[5px] border-l-[#FFA500] bg-orange-50/20 animate-pulso-naranja outline outline-1 outline-orange-500/20' 
                     : 'border-slate-100'
             }`}>
-                {(isIncomplete || hasInspectionAlert) && (
-                    <div className="absolute -top-2.5 right-2 flex items-center gap-1.5 z-20">
-                        {isIncomplete && (
-                            <div className="bg-[#FFA500] text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md border border-white uppercase tracking-wider animate-bounce-subtle">
-                                Incompleto
-                            </div>
-                        )}
-                        {hasInspectionAlert && (
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowAlertsModal(true);
-                                }}
-                                className={`cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-black border shadow-xs transition-all touch-manipulation min-h-[26px] ${
-                                    isIncomplete
-                                        ? 'bg-amber-100/95 text-amber-950 border-amber-300 hover:bg-amber-200 active:scale-95'
-                                        : 'bg-white/95 text-amber-900 border-amber-300 hover:bg-amber-50 active:scale-95 animate-soft-amber-pulse ring-1 ring-amber-400/30'
-                                }`}
-                                title={`Ver observaciones de revisión vehicular (${alertsCount})`}
-                                aria-label={`Ver observaciones de revisión vehicular (${alertsCount})`}
-                            >
-                                <span className="text-xs leading-none">⚠️</span>
-                                <span className="leading-none">{alertsCount > 1 ? `Obs (${alertsCount})` : 'Obs'}</span>
-                            </button>
-                        )}
+                {isIncomplete && (
+                    <div className="absolute -top-2.5 right-2 z-20">
+                        <div className="bg-[#FFA500] text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md border border-white uppercase tracking-wider animate-bounce-subtle">
+                            Incompleto
+                        </div>
                     </div>
                 )}
             {/* Header */}
@@ -253,7 +232,28 @@ export const VehicleLogCard = React.memo(({ log, expenses = [], onEdit, onDelete
             </div>
 
             {/* Actions */}
-            <div className="flex justify-end pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                <div>
+                    {hasInspectionAlert && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowAlertsModal(true);
+                            }}
+                            className={`cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black border shadow-xs transition-all touch-manipulation min-h-[34px] ${
+                                isIncomplete
+                                    ? 'bg-amber-100/95 text-amber-950 border-amber-300 hover:bg-amber-200 active:scale-95'
+                                    : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-50 active:scale-95 animate-soft-amber-pulse ring-1 ring-amber-400/40'
+                            }`}
+                            title={`Ver observaciones de revisión vehicular (${alertsCount})`}
+                            aria-label={`Ver observaciones de revisión vehicular (${alertsCount})`}
+                        >
+                            <span className="text-sm leading-none">⚠️</span>
+                            <span className="leading-none">{alertsCount > 1 ? `Obs (${alertsCount})` : 'Obs'}</span>
+                        </button>
+                    )}
+                </div>
                 <ActionButtons 
                     onPdf={onPdf}
                     onEdit={onEdit}

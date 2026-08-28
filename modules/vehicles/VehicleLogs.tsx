@@ -546,14 +546,39 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
         render: (l: any) => {
           const placa = l._resolvedPlaca || "SIN PLACA";
           const unidad = l._resolvedUnidad || l.unidadName || "---";
+          const isIncomplete = !l.horaLlegada || !l.kmLlegada;
+          const alertInfo = evaluateVehicleInspectionAlerts(l.revisionUnidad, l);
+          const hasInspectionAlert = l.hasInspectionAlert !== undefined ? l.hasInspectionAlert : alertInfo.hasInspectionAlert;
+          const alertsCount = (l.inspectionAlerts && l.inspectionAlerts.length > 0) ? l.inspectionAlerts.length : alertInfo.inspectionAlerts.length;
+
           return (
             <div className="flex flex-col items-start leading-tight">
               <span className="font-bold text-sm text-slate-900 truncate w-full" title={placa}>
                 {placa}
               </span>
-              <span className="text-[11px] text-slate-500 font-medium truncate w-full" title={unidad}>
-                {unidad}
-              </span>
+              <div className="flex items-center gap-1.5 mt-0.5 max-w-full">
+                <span className="text-[11px] text-slate-500 font-medium truncate" title={unidad}>
+                  {unidad}
+                </span>
+                {hasInspectionAlert && (
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInspectionAlertLog(l);
+                    }}
+                    className={`cursor-pointer inline-flex items-center gap-1 text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase leading-none shadow-2xs whitespace-nowrap transition-all shrink-0 touch-manipulation ${
+                      isIncomplete
+                        ? 'bg-amber-100/95 text-amber-950 border border-amber-300 hover:bg-amber-200'
+                        : 'bg-white text-amber-900 border border-amber-300 hover:bg-amber-50 animate-soft-amber-pulse ring-1 ring-amber-400/30'
+                    }`}
+                    title={`Ver observaciones de revisión vehicular (${alertsCount})`}
+                  >
+                    <span className="text-[11px] leading-none">⚠️</span> 
+                    <span className="leading-none">{alertsCount > 1 ? `Obs (${alertsCount})` : 'Obs'}</span>
+                  </button>
+                )}
+              </div>
             </div>
           );
         },
@@ -572,10 +597,6 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
         width: "10%",
         render: (l: any) => {
           const isIncomplete = !l.horaLlegada || !l.kmLlegada;
-          const alertInfo = evaluateVehicleInspectionAlerts(l.revisionUnidad, l);
-          const hasInspectionAlert = l.hasInspectionAlert !== undefined ? l.hasInspectionAlert : alertInfo.hasInspectionAlert;
-          const alertsCount = (l.inspectionAlerts && l.inspectionAlerts.length > 0) ? l.inspectionAlerts.length : alertInfo.inspectionAlerts.length;
-
           const dateStr = l.fecha || l.createdAt || "";
           if (!dateStr) return "---";
 
@@ -590,30 +611,11 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
           return (
             <div className="flex flex-col items-start gap-1 w-full overflow-hidden">
               <span className="truncate w-full font-bold text-slate-700">{displayDate}</span>
-              <div className="flex flex-wrap items-center gap-1">
-                {isIncomplete && (
-                  <span className="text-[9px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded uppercase leading-none shadow-sm whitespace-nowrap">
-                    Incompleto
-                  </span>
-                )}
-                {hasInspectionAlert && (
-                  <button 
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setInspectionAlertLog(l);
-                    }}
-                    className={`cursor-pointer inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded uppercase leading-none shadow-2xs whitespace-nowrap transition-all touch-manipulation ${
-                      isIncomplete
-                        ? 'bg-amber-100/95 text-amber-950 border border-amber-300 hover:bg-amber-200'
-                        : 'bg-white text-amber-900 border border-amber-300 hover:bg-amber-50 animate-soft-amber-pulse ring-1 ring-amber-400/30'
-                    }`}
-                    title={`Ver observaciones de revisión vehicular (${alertsCount})`}
-                  >
-                    <span>⚠️</span> <span>Obs ({alertsCount})</span>
-                  </button>
-                )}
-              </div>
+              {isIncomplete && (
+                <span className="text-[9px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded uppercase leading-none shadow-sm whitespace-nowrap">
+                  Incompleto
+                </span>
+              )}
             </div>
           );
         },
