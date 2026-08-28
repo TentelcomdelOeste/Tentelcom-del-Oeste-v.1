@@ -123,6 +123,16 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
         return getDefaultVehicleInspection();
     });
+
+    // Condición reactiva: "Final de Labores" se habilita exclusivamente cuando el kilometraje de llegada es válido
+    const hasValidKmLlegada = Boolean(
+        formData.kmLlegada !== null &&
+        formData.kmLlegada !== undefined &&
+        formData.kmLlegada !== '' &&
+        !isNaN(Number(formData.kmLlegada)) &&
+        Number(formData.kmLlegada) > 0
+    );
+
     const [highlightedFieldId, setHighlightedFieldId] = useState<string | null>(null);
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const { triggerHaptic, hapticPatterns } = useHapticFeedback();
@@ -163,7 +173,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     const SPECIAL_THREE_STATE_ITEM_IDS = ['indicadoresTablero', 'nivelCombustibleCarga', 'aireAcondicionado'];
 
-    const renderInspectionItem = (item: InspectionItemDef) => {
+    const renderInspectionItem = (item: InspectionItemDef, disabled = false) => {
+        const isFinalLabores = item.category === 'FINAL DE LABORES';
+        const isItemDisabled = disabled || (isFinalLabores && !hasValidKmLlegada);
         const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
         const isSpecialThreeState = SPECIAL_THREE_STATE_ITEM_IDS.includes(item.id);
         const options: readonly InspectionOption[] = isSpecialThreeState 
@@ -173,6 +185,8 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         const isHighlighted = highlightedFieldId === item.id;
 
         const handleOptionClick = (clickedOpt: InspectionOption) => {
+            if (isItemDisabled) return;
+
             let nextVal: InspectionOption;
             const currentVal = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
 
@@ -225,33 +239,41 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     isHighlighted 
                         ? 'bg-amber-100/90 ring-2 ring-amber-400 border border-amber-300 shadow-xs scale-[1.01]' 
                         : 'border border-transparent'
-                }`}
+                } ${isItemDisabled ? 'opacity-60 select-none' : ''}`}
             >
                 <div className="flex items-center gap-1.5 min-w-0 pr-1">
                     <span className={`text-[11px] font-medium leading-tight select-none transition-colors ${
-                        isHighlighted ? 'text-amber-950 font-bold' : 'text-slate-700'
+                        isHighlighted ? 'text-amber-950 font-bold' : (isItemDisabled ? 'text-slate-400' : 'text-slate-700')
                     }`}>
                         {item.label}
                     </span>
                 </div>
-                <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
+                <div className={`inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60 ${
+                    isItemDisabled ? 'pointer-events-none' : ''
+                }`}>
                     {options.map((opt) => (
                         <span
                             key={opt}
                             role="button"
-                            tabIndex={0}
-                            onClick={() => handleOptionClick(opt)}
+                            aria-disabled={isItemDisabled}
+                            tabIndex={isItemDisabled ? -1 : 0}
+                            onClick={() => !isItemDisabled && handleOptionClick(opt)}
                             onKeyDown={(e) => {
+                                if (isItemDisabled) return;
                                 if (e.key === 'Enter' || e.key === ' ') {
                                     handleOptionClick(opt);
                                 }
                             }}
-                            className={`px-2 py-1 min-w-[28px] text-center inline-flex items-center justify-center rounded transition-all leading-none cursor-pointer select-none active:scale-95 ${
+                            className={`px-2 py-1 min-w-[28px] text-center inline-flex items-center justify-center rounded transition-all leading-none select-none ${
+                                isItemDisabled
+                                    ? 'cursor-not-allowed text-slate-400'
+                                    : 'cursor-pointer active:scale-95'
+                            } ${
                                 val === opt 
                                 ? (opt === 'SI' 
-                                    ? 'bg-emerald-600 text-white shadow-xs font-black' 
-                                    : (opt === 'NO' ? 'bg-rose-600 text-white shadow-xs font-black' : 'bg-slate-700 text-white shadow-xs font-black'))
-                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                                    ? (isItemDisabled ? 'bg-slate-400 text-white font-bold' : 'bg-emerald-600 text-white shadow-xs font-black') 
+                                    : (opt === 'NO' ? (isItemDisabled ? 'bg-slate-400 text-white font-bold' : 'bg-rose-600 text-white shadow-xs font-black') : (isItemDisabled ? 'bg-slate-400 text-white font-bold' : 'bg-slate-700 text-white shadow-xs font-black')))
+                                : (isItemDisabled ? 'text-slate-300' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50')
                             }`}
                         >
                             {opt}
@@ -815,8 +837,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
 
         // 1.5 Validación condicional para Final de Labores (OBLIGATORIO solo si se ingresa Kilometraje de Llegada)
-        const hasKmLlegada = formData.kmLlegada !== null && formData.kmLlegada !== undefined && formData.kmLlegada !== '' && !isNaN(Number(formData.kmLlegada));
-        if (hasKmLlegada) {
+        if (hasValidKmLlegada) {
             const inspParqueo = revisionUnidad?.inspeccionVisualParqueo;
             const cerradoBoleta = revisionUnidad?.cerradoBoletaRecorrido;
             const missingInsp = !inspParqueo || !['SI', 'NO'].includes(inspParqueo);
@@ -1405,17 +1426,31 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                     })()}
 
                     {/* 4. FINAL DE LABORES */}
-                    <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200/80 shadow-xs space-y-2">
+                    <div className={`p-4 rounded-xl border shadow-xs space-y-2 transition-all duration-200 ${
+                        hasValidKmLlegada 
+                            ? 'bg-emerald-50/50 border-emerald-200/80' 
+                            : 'bg-slate-50/70 border-slate-200 opacity-60'
+                    }`}>
                         <div className="flex items-center justify-between">
-                            <h3 className="text-xs font-black text-emerald-900 uppercase tracking-wide flex items-center gap-1.5">
+                            <h3 className={`text-xs font-black uppercase tracking-wide flex items-center gap-1.5 ${
+                                hasValidKmLlegada ? 'text-emerald-900' : 'text-slate-500'
+                            }`}>
                                 <span>Final de Labores</span>
                             </h3>
-                            <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
-                                Cierre de Recorrido
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                hasValidKmLlegada 
+                                    ? 'text-emerald-700 bg-emerald-100' 
+                                    : 'text-slate-500 bg-slate-200/80'
+                            }`}>
+                                {hasValidKmLlegada ? 'Cierre de Recorrido' : 'Deshabilitado (Requiere Km Llegada)'}
                             </span>
                         </div>
-                        <div className="bg-white p-3 rounded-lg border border-emerald-100 divide-y divide-slate-100">
-                            {INSPECTION_ITEMS.filter(item => item.category === 'FINAL DE LABORES').map(renderInspectionItem)}
+                        <div className={`bg-white p-3 rounded-lg border divide-y divide-slate-100 ${
+                            hasValidKmLlegada 
+                                ? 'border-emerald-100' 
+                                : 'border-slate-200 pointer-events-none select-none'
+                        }`}>
+                            {INSPECTION_ITEMS.filter(item => item.category === 'FINAL DE LABORES').map(item => renderInspectionItem(item, !hasValidKmLlegada))}
                         </div>
                     </div>
 
