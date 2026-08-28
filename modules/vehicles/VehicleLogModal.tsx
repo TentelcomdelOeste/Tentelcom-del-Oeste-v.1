@@ -236,7 +236,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     handleOptionClick(opt);
                                 }
                             }}
-                            className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
+                            className={`px-2 py-1 min-w-[28px] text-center inline-flex items-center justify-center rounded transition-all leading-none cursor-pointer select-none active:scale-95 ${
                                 val === opt 
                                 ? (opt === 'SI' 
                                     ? 'bg-emerald-600 text-white shadow-xs font-black' 
