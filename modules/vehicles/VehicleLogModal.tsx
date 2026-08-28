@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { User } from '../../utils/types';
 import { 
@@ -9,10 +9,7 @@ import {
     getDefaultVehicleInspection, 
     normalizeVehicleInspection, 
     InspectionOption, 
-    InspectionItemDef,
-    evaluateVehicleInspectionAlerts,
-    getExpectedInspectionValue,
-    getUnitCode
+    InspectionItemDef
 } from '../../types/vehicle.types';
 import { db } from '../../firebase';
 import { collection, query, getDocs, orderBy, where, limit, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
@@ -158,18 +155,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }, 3500);
     };
 
-    const currentUnitCode = useMemo(() => {
-        return getUnitCode(formData.unidad, formData.unidadId, formData.unidadName);
-    }, [formData.unidad, formData.unidadId, formData.unidadName]);
-
-    const currentAlertEvaluation = useMemo(() => {
-        return evaluateVehicleInspectionAlerts(revisionUnidad, {
-            unidad: formData.unidad,
-            unidadId: formData.unidadId,
-            unidadName: formData.unidadName
-        });
-    }, [revisionUnidad, formData.unidad, formData.unidadId, formData.unidadName]);
-
     const handleInspectionChange = (id: string, value: InspectionOption) => {
         setRevisionUnidad(prev => ({
             ...prev,
@@ -187,8 +172,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             : (['SI', 'NO'] as const);
 
         const isHighlighted = highlightedFieldId === item.id;
-        const expectedVal = getExpectedInspectionValue(item.id, currentUnitCode);
-        const isDeviation = expectedVal !== null && val !== undefined && val !== null && val !== '' && val !== expectedVal;
 
         const handleOptionClick = (clickedOpt: InspectionOption) => {
             let nextVal: InspectionOption;
@@ -242,25 +225,15 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                 className={`py-1.5 px-2 rounded-lg flex items-center justify-between gap-2.5 transition-all duration-300 ${
                     isHighlighted 
                         ? 'bg-amber-100/90 ring-2 ring-amber-400 border border-amber-300 shadow-xs scale-[1.01]' 
-                        : isDeviation 
-                            ? 'bg-amber-50/60 border border-amber-200/70'
-                            : 'border border-transparent'
+                        : 'border border-transparent'
                 }`}
             >
                 <div className="flex items-center gap-1.5 min-w-0 pr-1">
                     <span className={`text-[11px] font-medium leading-tight select-none transition-colors ${
-                        isHighlighted ? 'text-amber-950 font-bold' : (isDeviation ? 'text-amber-900 font-semibold' : 'text-slate-700')
+                        isHighlighted ? 'text-amber-950 font-bold' : 'text-slate-700'
                     }`}>
                         {item.label}
                     </span>
-                    {isDeviation && (
-                        <span 
-                            className="text-[9px] font-black text-amber-700 bg-amber-100/90 border border-amber-300 px-1 py-0.5 rounded shrink-0 leading-none"
-                            title={`Observación: Valor registrado (${val}) difiere del preestablecido (${expectedVal}) para ${currentUnitCode || 'la unidad'}`}
-                        >
-                            ⚠️ Obs.
-                        </span>
-                    )}
                 </div>
                 <div className="inline-flex bg-slate-100 p-0.5 rounded-md text-[10px] font-black shrink-0 border border-slate-200/60">
                     {options.map((opt) => (
@@ -1371,29 +1344,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                         <FiAlertTriangle className="text-sm shrink-0 text-amber-600 mt-0.5" />
                                         <div>
                                             <span className="font-bold uppercase">Revisión Obligatoria Requerida:</span> Hoy ({policyStatus?.todayLabel || 'hoy'}) corresponde completar la inspección técnica del vehículo según la política semanal.
-                                        </div>
-                                    </div>
-                                )}
-
-                                {currentAlertEvaluation.hasInspectionAlert && (
-                                    <div className="bg-amber-50/90 border border-amber-300/90 rounded-xl p-3.5 space-y-2.5 shadow-2xs animate-in fade-in">
-                                        <div className="flex items-center gap-2 text-amber-950 font-black text-xs uppercase tracking-wide">
-                                            <span className="text-sm">⚠️</span>
-                                            <span>Observaciones de Revisión ({currentAlertEvaluation.inspectionAlerts.length})</span>
-                                        </div>
-                                        <p className="text-[11px] text-amber-900 leading-tight">
-                                            Se detectaron desviaciones respecto a los valores preestablecidos de la unidad <strong>{currentUnitCode || 'seleccionada'}</strong>:
-                                        </p>
-                                        <div className="space-y-1.5 pt-0.5">
-                                            {currentAlertEvaluation.inspectionAlerts.map(alert => (
-                                                <div key={alert.itemId} className="bg-white/95 border border-amber-200/80 rounded-lg p-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 shadow-2xs">
-                                                    <span className="font-bold text-slate-800 leading-tight">{alert.label}</span>
-                                                    <div className="flex items-center gap-2 text-[11px] font-medium shrink-0">
-                                                        <span className="text-slate-500">Esperado: <strong className="text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-black">{alert.expectedValue}</strong></span>
-                                                        <span className="text-amber-900">Registrado: <strong className="text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 font-black">{alert.selectedValue}</strong></span>
-                                                    </div>
-                                                </div>
-                                            ))}
                                         </div>
                                     </div>
                                 )}

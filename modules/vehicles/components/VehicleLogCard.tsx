@@ -1,9 +1,10 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { VehicleLog, VehicleExpense, evaluateVehicleInspectionAlerts } from '../../../types/vehicle.types';
 import { FaTruck, FaCalendar, FaUser, FaMapPin, FaTachometerAlt, FaCreditCard } from 'react-icons/fa';
 import { ActionButtons } from '../../../components/ui/ActionButtons';
 import { SovereignVehicleImage } from './SovereignVehicleImage';
+import { InspectionAlertsModal } from './InspectionAlertsModal';
 
 interface Props {
     log: VehicleLog;
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export const VehicleLogCard = React.memo(({ log, expenses = [], onEdit, onDelete, onPdf, onTimeline, onCostAnalysis }: Props) => {
+    const [showAlertsModal, setShowAlertsModal] = useState(false);
     const isIncomplete = !log.horaLlegada || !log.kmLlegada;
     const totalExpenses = expenses.reduce((sum, e) => sum + (e.monto || 0), 0);
 
@@ -26,31 +28,40 @@ export const VehicleLogCard = React.memo(({ log, expenses = [], onEdit, onDelete
         : alertInfo.inspectionAlerts.length;
 
     return (
-        <div className={`bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition-shadow relative ${
-            isIncomplete 
-                ? 'border-l-[5px] border-l-[#FFA500] bg-orange-50/20 animate-pulso-naranja outline outline-1 outline-orange-500/20' 
-                : hasInspectionAlert
-                    ? 'border-amber-200 bg-amber-50/10'
+        <>
+            <div className={`bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition-shadow relative ${
+                isIncomplete 
+                    ? 'border-l-[5px] border-l-[#FFA500] bg-orange-50/20 animate-pulso-naranja outline outline-1 outline-orange-500/20' 
                     : 'border-slate-100'
-        }`}>
-            {(isIncomplete || hasInspectionAlert) && (
-                <div className="absolute -top-2 right-2 flex items-center gap-1.5 z-10">
-                    {isIncomplete && (
-                        <div className="bg-[#FFA500] text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md border border-white uppercase tracking-wider animate-bounce-subtle">
-                            Incompleto
-                        </div>
-                    )}
-                    {hasInspectionAlert && (
-                        <div 
-                            className="bg-amber-100/95 text-amber-950 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs uppercase tracking-wider flex items-center gap-1"
-                            title={`Revisión vehicular con ${alertsCount} observación(es) respecto a los valores preestablecidos`}
-                        >
-                            <span className="text-xs leading-none">⚠️</span>
-                            <span>Con Observación</span>
-                        </div>
-                    )}
-                </div>
-            )}
+            }`}>
+                {(isIncomplete || hasInspectionAlert) && (
+                    <div className="absolute -top-2.5 right-2 flex items-center gap-1.5 z-20">
+                        {isIncomplete && (
+                            <div className="bg-[#FFA500] text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md border border-white uppercase tracking-wider animate-bounce-subtle">
+                                Incompleto
+                            </div>
+                        )}
+                        {hasInspectionAlert && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowAlertsModal(true);
+                                }}
+                                className={`cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-black border shadow-xs transition-all touch-manipulation min-h-[26px] ${
+                                    isIncomplete
+                                        ? 'bg-amber-100/95 text-amber-950 border-amber-300 hover:bg-amber-200 active:scale-95'
+                                        : 'bg-white/95 text-amber-900 border-amber-300 hover:bg-amber-50 active:scale-95 animate-soft-amber-pulse ring-1 ring-amber-400/30'
+                                }`}
+                                title={`Ver observaciones de revisión vehicular (${alertsCount})`}
+                                aria-label={`Ver observaciones de revisión vehicular (${alertsCount})`}
+                            >
+                                <span className="text-xs leading-none">⚠️</span>
+                                <span className="leading-none">{alertsCount > 1 ? `Obs (${alertsCount})` : 'Obs'}</span>
+                            </button>
+                        )}
+                    </div>
+                )}
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
                 <div className="flex items-center gap-3">
@@ -251,6 +262,15 @@ export const VehicleLogCard = React.memo(({ log, expenses = [], onEdit, onDelete
                 />
             </div>
         </div>
+
+        {showAlertsModal && (
+            <InspectionAlertsModal
+                show={showAlertsModal}
+                onClose={() => setShowAlertsModal(false)}
+                log={log}
+            />
+        )}
+        </>
     );
 });
 

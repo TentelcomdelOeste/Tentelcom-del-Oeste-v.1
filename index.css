@@ -75,6 +75,23 @@
   animation: pulso-naranja 1.8s infinite ease-in-out;
 }
 
+@keyframes soft-amber-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+    box-shadow: 0 0 6px 1px rgba(245, 158, 11, 0.25);
+  }
+}
+
+.animate-soft-amber-pulse {
+  animation: soft-amber-pulse 2.2s infinite ease-in-out;
+}
+
 @keyframes progress {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }

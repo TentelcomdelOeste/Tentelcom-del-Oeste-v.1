@@ -40,6 +40,7 @@ import { globalSearchEngine, vehicleLogSearchPlugin } from '../../core/search';
 
 import { generateVehicleLogPDF } from "../../utils/export/vehicleLogPdf";
 import { VehicleLogCard } from "./components/VehicleLogCard";
+import { InspectionAlertsModal } from "./components/InspectionAlertsModal";
 import { localDocStore } from "../../core/offline/localDocStore";
 import { deleteVersionedDocOffline } from "../../core/versionControl";
 
@@ -74,6 +75,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
   const [filterYear, setFilterYear] = useState<number>(() => new Date().getFullYear());
   const [filterMonth, setFilterMonth] = useState<string>(() => String(new Date().getMonth() + 1));
   const [selectedLog, setSelectedLog] = useState<VehicleLog | null>(null);
+  const [inspectionAlertLog, setInspectionAlertLog] = useState<VehicleLog | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [employeeMap, setEmployeeMap] = useState<Record<string, string>>({});
@@ -572,6 +574,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
           const isIncomplete = !l.horaLlegada || !l.kmLlegada;
           const alertInfo = evaluateVehicleInspectionAlerts(l.revisionUnidad, l);
           const hasInspectionAlert = l.hasInspectionAlert !== undefined ? l.hasInspectionAlert : alertInfo.hasInspectionAlert;
+          const alertsCount = (l.inspectionAlerts && l.inspectionAlerts.length > 0) ? l.inspectionAlerts.length : alertInfo.inspectionAlerts.length;
 
           const dateStr = l.fecha || l.createdAt || "";
           if (!dateStr) return "---";
@@ -594,12 +597,21 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
                   </span>
                 )}
                 {hasInspectionAlert && (
-                  <span 
-                    className="text-[9px] font-black bg-amber-100/95 text-amber-950 border border-amber-300 px-1.5 py-0.5 rounded uppercase leading-none shadow-2xs whitespace-nowrap flex items-center gap-0.5"
-                    title="Revisión vehicular con observaciones de inspección técnica"
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInspectionAlertLog(l);
+                    }}
+                    className={`cursor-pointer inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded uppercase leading-none shadow-2xs whitespace-nowrap transition-all touch-manipulation ${
+                      isIncomplete
+                        ? 'bg-amber-100/95 text-amber-950 border border-amber-300 hover:bg-amber-200'
+                        : 'bg-white text-amber-900 border border-amber-300 hover:bg-amber-50 animate-soft-amber-pulse ring-1 ring-amber-400/30'
+                    }`}
+                    title={`Ver observaciones de revisión vehicular (${alertsCount})`}
                   >
-                    <span>⚠️</span> <span>Con Obs.</span>
-                  </span>
+                    <span>⚠️</span> <span>Obs ({alertsCount})</span>
+                  </button>
                 )}
               </div>
             </div>
@@ -865,6 +877,14 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
               currentUser={currentUser}
               initialData={selectedLog}
               initialEmployees={employeesList}
+            />
+          )}
+
+          {inspectionAlertLog && (
+            <InspectionAlertsModal
+              show={!!inspectionAlertLog}
+              onClose={() => setInspectionAlertLog(null)}
+              log={inspectionAlertLog}
             />
           )}
         </ModulePage>
