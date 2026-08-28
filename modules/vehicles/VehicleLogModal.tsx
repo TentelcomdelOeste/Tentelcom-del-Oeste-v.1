@@ -173,9 +173,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     const SPECIAL_THREE_STATE_ITEM_IDS = ['indicadoresTablero', 'nivelCombustibleCarga', 'aireAcondicionado'];
 
-    const renderInspectionItem = (item: InspectionItemDef, disabled = false) => {
+    const renderInspectionItem = (item: InspectionItemDef) => {
         const isFinalLabores = item.category === 'FINAL DE LABORES';
-        const isItemDisabled = disabled || (isFinalLabores && !hasValidKmLlegada);
+        const isItemDisabled = isFinalLabores && !hasValidKmLlegada;
         const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
         const isSpecialThreeState = SPECIAL_THREE_STATE_ITEM_IDS.includes(item.id);
         const options: readonly InspectionOption[] = isSpecialThreeState 
@@ -1450,7 +1450,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                 ? 'border-emerald-100' 
                                 : 'border-slate-200 pointer-events-none select-none'
                         }`}>
-                            {INSPECTION_ITEMS.filter(item => item.category === 'FINAL DE LABORES').map(item => renderInspectionItem(item, !hasValidKmLlegada))}
+                            {INSPECTION_ITEMS.filter(item => item.category === 'FINAL DE LABORES').map(renderInspectionItem)}
                         </div>
                     </div>
 
