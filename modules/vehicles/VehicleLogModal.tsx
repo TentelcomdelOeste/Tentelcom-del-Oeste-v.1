@@ -153,31 +153,60 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }));
     };
 
+    const SPECIAL_THREE_STATE_ITEM_IDS = ['indicadoresTablero', 'nivelCombustibleCarga', 'aireAcondicionado'];
+
     const renderInspectionItem = (item: InspectionItemDef) => {
         const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
-        const isLaborCheckpoint = item.category === 'INICIO DE LABORES' || item.category === 'FINAL DE LABORES';
-        const options: readonly InspectionOption[] = isLaborCheckpoint 
-            ? (['SI', 'NO'] as const)
-            : (['SI', 'NO', 'N/A'] as const);
+        const isSpecialThreeState = SPECIAL_THREE_STATE_ITEM_IDS.includes(item.id);
+        const options: readonly InspectionOption[] = isSpecialThreeState 
+            ? (['SI', 'NO', 'N/A'] as const)
+            : (['SI', 'NO'] as const);
 
         const isHighlighted = highlightedFieldId === item.id;
 
-        const handleOptionSelect = (opt: InspectionOption) => {
+        const handleOptionClick = (clickedOpt: InspectionOption) => {
+            let nextVal: InspectionOption;
+            const currentVal = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
+
+            if (isSpecialThreeState) {
+                if (currentVal === clickedOpt) {
+                    // Ciclo de 3 estados si se vuelve a tocar la opción seleccionada: SI -> NO -> N/A -> SI
+                    if (currentVal === 'SI') {
+                        nextVal = 'NO';
+                    } else if (currentVal === 'NO') {
+                        nextVal = 'N/A';
+                    } else {
+                        nextVal = 'SI';
+                    }
+                } else {
+                    // Selección directa de la opción tocada
+                    nextVal = clickedOpt;
+                }
+            } else {
+                if (currentVal === clickedOpt) {
+                    // Toggle de 2 estados si se vuelve a tocar la opción seleccionada: SI <-> NO
+                    nextVal = currentVal === 'SI' ? 'NO' : 'SI';
+                } else {
+                    // Selección directa de la opción tocada
+                    nextVal = clickedOpt;
+                }
+            }
+
             // IMPORTANTE: Haptic SOLO en INICIO y FINAL de labores (patrones basados en Samsung EFFECT_SWITCH)
             const isLaborSection = item.category === 'INICIO DE LABORES' || item.category === 'FINAL DE LABORES';
 
             if (isLaborSection) {
-                if (opt === 'SI') {
+                if (nextVal === 'SI') {
                     triggerHaptic(hapticPatterns.SI); // [8, 3, 8] - Confirmación positiva
-                } else if (opt === 'NO') {
+                } else if (nextVal === 'NO') {
                     triggerHaptic(hapticPatterns.NO); // [12, 5, 12] - Negación
-                } else if (opt === 'N/A') {
+                } else if (nextVal === 'N/A') {
                     triggerHaptic(hapticPatterns.NA); // [15, 4, 15] - Neutral
                 }
             }
             // Si NO es labor section, no hay vibración
 
-            handleInspectionChange(item.id, opt);
+            handleInspectionChange(item.id, nextVal);
         };
 
         return (
@@ -201,10 +230,10 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                             key={opt}
                             role="button"
                             tabIndex={0}
-                            onClick={() => handleOptionSelect(opt)}
+                            onClick={() => handleOptionClick(opt)}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
-                                    handleOptionSelect(opt);
+                                    handleOptionClick(opt);
                                 }
                             }}
                             className={`px-1.5 py-0.5 rounded transition-all leading-none cursor-pointer select-none ${
