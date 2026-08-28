@@ -118,11 +118,24 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const [manualPhotoRequested, setManualPhotoRequested] = useState(false);
     const [manualInspectionRequested, setManualInspectionRequested] = useState(false);
     const [revisionUnidad, setRevisionUnidad] = useState<Record<string, InspectionOption>>(() => {
+        const unit = initialData?.unidadName || initialData?.unidadId || initialData?.unidad;
         if (initialData?.revisionUnidad) {
-            return normalizeVehicleInspection(initialData.revisionUnidad);
+            return normalizeVehicleInspection(initialData.revisionUnidad, unit);
         }
-        return getDefaultVehicleInspection();
+        return getDefaultVehicleInspection(unit);
     });
+
+    const selectedUnitCode = formData.unidadName || formData.unidadId || formData.unidad;
+    const prevUnitRef = useRef<string | undefined>(undefined);
+
+    useEffect(() => {
+        if (!isEditing && selectedUnitCode) {
+            if (selectedUnitCode !== prevUnitRef.current) {
+                prevUnitRef.current = selectedUnitCode;
+                setRevisionUnidad(getDefaultVehicleInspection(selectedUnitCode));
+            }
+        }
+    }, [selectedUnitCode, isEditing]);
 
     // Condición reactiva: "Final de Labores" se habilita exclusivamente cuando el kilometraje de llegada es válido
     const hasValidKmLlegada = Boolean(
@@ -379,10 +392,11 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
     useEffect(() => {
         if (initialData) {
+            const unit = initialData.unidadName || initialData.unidadId || initialData.unidad;
             if (initialData.revisionUnidad) {
-                setRevisionUnidad(normalizeVehicleInspection(initialData.revisionUnidad));
+                setRevisionUnidad(normalizeVehicleInspection(initialData.revisionUnidad, unit));
             } else {
-                setRevisionUnidad(getDefaultVehicleInspection());
+                setRevisionUnidad(getDefaultVehicleInspection(unit));
             }
         }
     }, [initialData]);

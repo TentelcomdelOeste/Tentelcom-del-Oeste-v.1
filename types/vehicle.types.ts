@@ -126,16 +126,23 @@ export const INSPECTION_ITEMS: InspectionItemDef[] = [
     { id: 'claxonPito', label: '4. Claxon/Pito', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
     { id: 'frenosPedal', label: '5. Frenos de pedal funcionan', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
     { id: 'marchasBuenEstado', label: '6. Marchas en buen estado', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
-    { id: 'aireAcondicionado', label: '7. Aire acondicionado en buen estado', category: 'UNIDAD ENCENDIDA' },
+    { id: 'aireAcondicionado', label: '7. Aire acondicionado en buen estado', category: 'UNIDAD ENCENDIDA', defaultValue: 'SI' },
 
     // FINAL DE LABORES
     { id: 'inspeccionVisualParqueo', label: '1. Inspección visual de la unidad en el parqueo', category: 'FINAL DE LABORES' },
     { id: 'cerradoBoletaRecorrido', label: '2. Cerrado de la boleta de recorrido', category: 'FINAL DE LABORES' }
 ];
 
-export const getDefaultVehicleInspection = (): Record<string, InspectionOption> => {
+export const getDefaultVehicleInspection = (unitCode?: string): Record<string, InspectionOption> => {
     const defaults: Record<string, InspectionOption> = {};
     INSPECTION_ITEMS.forEach(item => {
+        if (unitCode) {
+            const expected = getExpectedInspectionValue(item.id, unitCode);
+            if (expected) {
+                defaults[item.id] = expected;
+                return;
+            }
+        }
         if (item.defaultValue) {
             defaults[item.id] = item.defaultValue;
         }
@@ -143,8 +150,8 @@ export const getDefaultVehicleInspection = (): Record<string, InspectionOption> 
     return defaults;
 };
 
-export const normalizeVehicleInspection = (saved?: Record<string, any>): Record<string, InspectionOption> => {
-    const defaults = getDefaultVehicleInspection();
+export const normalizeVehicleInspection = (saved?: Record<string, any>, unitCode?: string): Record<string, InspectionOption> => {
+    const defaults = getDefaultVehicleInspection(unitCode);
     if (!saved) return defaults;
 
     const result: Record<string, InspectionOption> = { ...defaults, ...saved };
@@ -191,11 +198,6 @@ export const normalizeVehicleInspection = (saved?: Record<string, any>): Record<
         delete result.cerradoBoletaRecorrido;
     } else {
         result.cerradoBoletaRecorrido = saved.cerradoBoletaRecorrido;
-    }
-    if (saved.aireAcondicionado === undefined) {
-        delete result.aireAcondicionado;
-    } else {
-        result.aireAcondicionado = saved.aireAcondicionado;
     }
 
     return result;
@@ -262,7 +264,7 @@ export const getUnitCode = (unidad?: string, unidadId?: string, unidadName?: str
  *          Todos los puntos -> SI
  */
 export const getExpectedInspectionValue = (itemId: string, unitCode: string): InspectionOption | null => {
-    const unit = unitCode.trim().toUpperCase();
+    const unit = getUnitCode(unitCode) || unitCode.trim().toUpperCase();
 
     // 4.2 UNIDAD ENCENDIDA
     if (itemId === 'nivelCombustibleCarga') {
