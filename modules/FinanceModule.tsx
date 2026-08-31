@@ -4,6 +4,7 @@ import { Employee, AbsenceRecord, PayStub } from '../financeTypes';
 import { User } from '../utils/types';
 import { EmployeeModal } from './EmployeeModal';
 import { EmployeeRecordModal } from './finance/components/EmployeeRecordModal'; 
+import { EmployeeExportPdfModal, EMPLOYEE_PDF_EXPORT_COLUMNS } from './finance/components/EmployeeExportPdfModal';
 import { AbsenceModal } from './AbsenceModal';
 import { PaystubModal } from './PaystubModal';
 import { PayrollActionsService } from './finance/payroll/services/payrollActions.service';
@@ -64,6 +65,7 @@ export const FinanceModule: React.FC<FinanceModuleProps> = ({
   const currentTab = activeView || internalActiveTab;
   
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+  const [showExportPdfModal, setShowExportPdfModal] = useState(false);
   const [showRecordModal, setShowRecordModal] = useState(false); 
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
   const [showPaystubModal, setShowPaystubModal] = useState(false);
@@ -344,7 +346,10 @@ export const FinanceModule: React.FC<FinanceModuleProps> = ({
     exportToExcel(data, `Lista_Colaboradores_${showArchived ? 'Archivados' : 'Activos'}_${new Date().toISOString().split('T')[0]}`);
   };
 
-  const handleExportEmployeesPDF = () => {
+  const handleExportEmployeesPDF = async (
+    employeesToExport: Employee[] = filteredEmployees,
+    selectedColumns: string[] = EMPLOYEE_PDF_EXPORT_COLUMNS.map(col => col.key)
+  ) => {
     const formatNumberOnly = (num: number) => {
         return new Intl.NumberFormat('es-CR', {
             minimumFractionDigits: 2,
@@ -352,7 +357,7 @@ export const FinanceModule: React.FC<FinanceModuleProps> = ({
         }).format(num);
     };
 
-    const data = filteredEmployees.map(emp => ({
+    const data = employeesToExport.map(emp => ({
         code: emp.employeeCode,
         name: emp.name,
         pos: emp.position,
@@ -362,19 +367,21 @@ export const FinanceModule: React.FC<FinanceModuleProps> = ({
         status: emp.status === 'activo' ? 'Activo' : 'Inactivo'
     }));
 
-    exportToPDF({
+    const columns = EMPLOYEE_PDF_EXPORT_COLUMNS
+      .filter(col => selectedColumns.includes(col.key))
+      .map(col => ({
+        header: col.header,
+        dataKey: col.dataKey,
+        width: col.width,
+        align: col.align,
+        isCurrency: col.isCurrency
+      }));
+
+    await exportToPDF({
         title: "Reporte de Colaboradores",
         subtitle: `Directorio de personal (${showArchived ? 'Archivados' : 'Activos'})`,
         fileName: "Reporte_Colaboradores",
-        columns: [
-            { header: "ID", dataKey: "code", width: 0.8 },
-            { header: "Nombre", dataKey: "name", width: 2.0 },
-            { header: "Puesto", dataKey: "pos", width: 1.5 },
-            { header: "Ingreso", dataKey: "hire", width: 1.2 },
-            { header: "Moneda", dataKey: "currency", width: 0.8, align: 'center' },
-            { header: "Salario Bruto", dataKey: "salary", width: 1.5, align: 'right' },
-            { header: "Estado", dataKey: "status", width: 1.0, align: 'center' }
-        ],
+        columns: columns,
         data: data
     });
   };
@@ -593,7 +600,7 @@ export const FinanceModule: React.FC<FinanceModuleProps> = ({
                               <div className="flex items-center gap-2">
                                   <div className="flex gap-1 mr-2 border-r border-slate-200 pr-2">
                                       <IconButton icon={<ACTION_ICONS.excel />} variant="success" onClick={handleExportEmployeesExcel} title="Exportar Excel" />
-                                      <IconButton icon={<ACTION_ICONS.pdf />} variant="danger" onClick={handleExportEmployeesPDF} title="Exportar PDF" />
+                                      <IconButton icon={<ACTION_ICONS.pdf />} variant="danger" onClick={() => setShowExportPdfModal(true)} title="Exportar PDF" />
                                   </div>
                                   {isAdmin(currentUser?.role) && (
                                       <ActionButton onClick={() => { setEditingItem(null); setShowEmployeeModal(true); }} label="Nuevo Colaborador" />
@@ -817,6 +824,14 @@ export const FinanceModule: React.FC<FinanceModuleProps> = ({
             onResetPassword={resetEmployeePassword}
             onAdminSetPassword={adminSetPassword}
             employeeData={editingItem}
+        />
+        
+        <EmployeeExportPdfModal 
+            show={showExportPdfModal}
+            onClose={() => setShowExportPdfModal(false)}
+            employees={filteredEmployees}
+            showArchived={showArchived}
+            onGenerate={handleExportEmployeesPDF}
         />
         
         <EmployeeRecordModal 
