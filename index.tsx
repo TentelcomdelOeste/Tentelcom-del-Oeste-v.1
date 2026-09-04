@@ -65,6 +65,15 @@ async function bootstrap() {
 
   window.onerror = (msg, url, line, col, error) => {
     console.error("GLOBAL ERROR (PRE-MOUNT):", msg, "at", url, ":", line, col, error);
+    const errorDiv = document.getElementById('loading-error');
+    if (errorDiv) {
+      errorDiv.style.display = 'block';
+      errorDiv.innerHTML = "<strong>Error de inicialización:</strong><br>" + String(msg) + "<br><small>" + String(url) + ":" + line + "</small>";
+    }
+    const reloadBtn = document.getElementById('reload-btn');
+    if (reloadBtn) reloadBtn.style.display = 'block';
+    const clearBtn = document.getElementById('clear-cache-btn');
+    if (clearBtn) clearBtn.style.display = 'block';
     return false;
   };
 
@@ -82,9 +91,27 @@ async function bootstrap() {
         </UserProvider>
       </ErrorBoundary>
     );
+
+    // Ocultar splash screen una vez renderizado React
+    setTimeout(() => {
+      const splash = document.getElementById('startup-splash');
+      if (splash) {
+        splash.style.opacity = '0';
+        splash.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => splash.remove(), 300);
+      }
+    }, 100);
   } else {
     console.error("❌ [BOOT] Root element NOT FOUND!");
   }
+
+  // Timeout de seguridad definitivo (4 segundos) por si acaso
+  setTimeout(() => {
+    const splash = document.getElementById('startup-splash');
+    if (splash) {
+      splash.remove();
+    }
+  }, 4000);
 }
 
 bootstrap();

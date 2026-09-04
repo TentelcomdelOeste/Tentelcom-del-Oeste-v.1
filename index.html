@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://apis.google.com blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.googleusercontent.com https://picsum.photos https://*.firebasestorage.app https://firebasestorage.googleapis.com https://*.firebasestorage.googleapis.com; connect-src 'self' https: blob: https://*.googleapis.com https://*.firebaseio.com https://*.firebasestorage.app; frame-src 'self' https://www.google.com https://tentelcom-del-oeste.firebaseapp.com; object-src 'none'; worker-src 'self' blob:; base-uri 'self'; form-action 'self';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://apis.google.com blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.googleusercontent.com https://picsum.photos https://*.firebasestorage.app https://firebasestorage.googleapis.com https://*.firebasestorage.googleapis.com; connect-src 'self' https: blob: ws: wss: https://*.googleapis.com https://*.firebaseio.com https://*.firebasestorage.app; frame-src 'self' https://www.google.com https://tentelcom-del-oeste.firebaseapp.com; object-src 'none'; worker-src 'self' blob:; base-uri 'self'; form-action 'self';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Portal de Gestión TENTELCOM DEL OESTE S.A. - Soluciones integrales en telecomunicaciones y fibra óptica.">
     <meta name="author" content="TENTELCOM DEL OESTE S.A.">
@@ -233,19 +233,18 @@
     </script>
 </head>
 <body class="text-slate-900">
-    <div id="root">
-        <div id="startup-splash" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8fafc;">
-            <style>
-                @keyframes spin { 100% { transform: rotate(360deg); } }
-                .spinner { width: 48px; height: 48px; border: 3px solid #1e3a8a; border-bottom-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
-            </style>
-            <div class="spinner"></div>
-            <p style="color: #64748b; font-weight: bold; font-family: sans-serif; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;">Cargando interfaz...</p>
-        </div>
-        <div id="loading-error" style="display:none; color: #ef4444; font-size: 14px; margin-top: 20px; max-width: 300px; background: #fee2e2; padding: 15px; border-radius: 12px; border: 1px solid #fecaca;"></div>
+    <div id="startup-splash" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; width: 100vw; position: fixed; top: 0; left: 0; z-index: 99999; background: #f8fafc;">
+        <style>
+            @keyframes spin { 100% { transform: rotate(360deg); } }
+            .spinner { width: 48px; height: 48px; border: 3px solid #1e3a8a; border-bottom-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+        </style>
+        <div class="spinner"></div>
+        <p style="color: #64748b; font-weight: bold; font-family: sans-serif;">Cargando interfaz...</p>
+        <div id="loading-error" style="display:none; color: #ef4444; font-size: 14px; margin-top: 20px; max-width: 300px; background: #fee2e2; padding: 15px; border-radius: 12px; border: 1px solid #fecaca; text-align: center;"></div>
         <button id="reload-btn" style="display:none; margin-top: 20px; padding: 12px 24px; background: #1e3a8a; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; width: 200px;" onclick="window.location.reload(true)">Recargar</button>
         <button id="clear-cache-btn" style="display:none; margin-top: 10px; padding: 12px 24px; background: #64748b; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; width: 200px;" onclick="clearAndReload()">Limpiar Caché y Forzar</button>
     </div>
+    <div id="root"></div>
     <div id="modal-root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>

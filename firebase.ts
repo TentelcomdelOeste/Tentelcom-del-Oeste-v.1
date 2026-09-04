@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, getAuth } from "firebase/auth";
-import { initializeFirestore, persistentLocalCache, memoryLocalCache } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, memoryLocalCache, getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getMessaging, onMessage, isSupported } from "firebase/messaging";
 import firebaseConfigJson from './firebase-applet-config.json'; // Import config
@@ -28,16 +28,21 @@ try {
 }
 
 // Safely initialize Firestore with fallback to memory cache if persistent cache (IndexedDB) is blocked
-let db;
+let db: any;
 try {
   db = initializeFirestore(app, {
     localCache: persistentLocalCache()
   }, firebaseConfigJson.firestoreDatabaseId || "(default)");
 } catch (error) {
   console.warn("[Firebase] initializeFirestore with persistentLocalCache failed. Falling back to memoryLocalCache.", error);
-  db = initializeFirestore(app, {
-    localCache: memoryLocalCache()
-  }, firebaseConfigJson.firestoreDatabaseId || "(default)");
+  try {
+    db = initializeFirestore(app, {
+      localCache: memoryLocalCache()
+    }, firebaseConfigJson.firestoreDatabaseId || "(default)");
+  } catch (error2) {
+    console.warn("[Firebase] initializeFirestore fallback failed. Falling back to getFirestore().", error2);
+    db = getFirestore(app);
+  }
 }
 
 const storage = getStorage(app);
