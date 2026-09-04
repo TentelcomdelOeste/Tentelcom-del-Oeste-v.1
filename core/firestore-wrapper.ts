@@ -1,7 +1,7 @@
-import * as original from "../node_modules/firebase/firestore/dist/index.mjs";
+import * as original from "firebase/firestore";
 
 // Re-export all original Firestore exports (types, classes, queries, etc.)
-export * from "../node_modules/firebase/firestore/dist/index.mjs";
+export * from "firebase/firestore";
 
 /**
  * Global, recursive data sanitizer for Firestore.

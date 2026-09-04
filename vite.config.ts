@@ -7,6 +7,25 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function firestoreWrapperPlugin() {
+  const wrapperPath = path.resolve(__dirname, "./core/firestore-wrapper.ts");
+  return {
+    name: "vite-plugin-firestore-wrapper",
+    enforce: "pre" as const,
+    async resolveId(source: string, importer: string | undefined) {
+      if (source === "firebase/firestore") {
+        // If imported by the wrapper itself, resolve to the actual node_modules package
+        if (importer && (importer.includes("firestore-wrapper") || importer === wrapperPath)) {
+          return this.resolve("firebase/firestore", importer, { skipSelf: true });
+        }
+        // For all other files in the application, redirect to the sanitized wrapper
+        return wrapperPath;
+      }
+      return null;
+    }
+  };
+}
+
 export default defineConfig({
   server: {
     host: true,
@@ -14,6 +33,7 @@ export default defineConfig({
     strictPort: true,
   },
   plugins: [
+    firestoreWrapperPlugin(),
     react(),
     VitePWA({
       strategies: 'injectManifest',
@@ -40,7 +60,6 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     alias: {
       "@": path.resolve(__dirname, "./"),
-      "firebase/firestore": path.resolve(__dirname, "./core/firestore-wrapper.ts"),
     }
   },
   define: {

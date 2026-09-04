@@ -179,22 +179,21 @@
             window.location.reload(true);
         }
 
-        // Timeout de seguridad para el spinner
-        // setTimeout(function() {
-        //     var root = document.getElementById('root');
-        //     // Si el root sigue vacío o solo contiene los elementos de error ocultos
-        //     if (root && (root.innerHTML === "" || root.children.length <= 2)) {
-        //         var reloadBtn = document.getElementById('reload-btn');
-        //         if (reloadBtn) reloadBtn.style.display = 'block';
-        //         var clearBtn = document.getElementById('clear-cache-btn');
-        //         if (clearBtn) clearBtn.style.display = 'block';
-        //         var errorDiv = document.getElementById('loading-error');
-        //         if (errorDiv) {
-        //             errorDiv.style.display = 'block';
-        //             errorDiv.innerText = "La aplicación está tardando demasiado en iniciar. Esto puede deberse a una conexión lenta o un error en el caché.";
-        //         }
-        //     }
-        // }, 12000);
+        // Timeout de seguridad para el splash (12 segundos)
+        setTimeout(function() {
+            var splash = document.getElementById('startup-splash');
+            if (splash) {
+                var reloadBtn = document.getElementById('reload-btn');
+                if (reloadBtn) reloadBtn.style.display = 'block';
+                var clearBtn = document.getElementById('clear-cache-btn');
+                if (clearBtn) clearBtn.style.display = 'block';
+                var errorDiv = document.getElementById('loading-error');
+                if (errorDiv) {
+                    errorDiv.style.display = 'block';
+                    errorDiv.innerHTML = "<strong>La aplicación está tardando demasiado en iniciar.</strong><br>Esto puede deberse a una conexión lenta o caché obsoleta.<br><small>Haz clic en 'Limpiar Caché y Forzar' para restablecer los recursos.</small>";
+                }
+            }
+        }, 12000);
     </script>
     <script>
         // Captura errores de carga de módulos (chunks) con protección de bucle
