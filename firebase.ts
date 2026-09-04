@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import { initializeAuth, indexedDBLocalPersistence } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getMessaging, onMessage } from "firebase/messaging";
+import { getMessaging, onMessage, isSupported } from "firebase/messaging";
 import firebaseConfigJson from './firebase-applet-config.json'; // Import config
 
 const firebaseConfig = {
@@ -25,6 +25,20 @@ const db = initializeFirestore(app, {
 }, firebaseConfigJson.firestoreDatabaseId || "(default)");
 
 const storage = getStorage(app);
-const messaging = typeof window !== "undefined" ? getMessaging(app) : null;
+
+let messaging: any = null;
+if (typeof window !== "undefined") {
+  isSupported().then((supported) => {
+    if (supported) {
+      try {
+        messaging = getMessaging(app);
+      } catch (e) {
+        console.warn("[Firebase] Could not initialize messaging:", e);
+      }
+    }
+  }).catch((e) => {
+    console.warn("[Firebase] FCM is not supported in this environment:", e);
+  });
+}
 
 export { auth, db, storage, messaging, onMessage, firebaseConfig };
