@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User } from '../../../../types';
 import { mockConsumptions } from '../mockData';
 import { DataTable, TableColumn } from '../../../../design-system';
+import { ActionButtons } from '../../../../components/ui/ActionButtons';
 import { VehicleProjectConsumption } from '../../../../types/vehicleWarehouse.types';
 import { format } from 'date-fns';
 
@@ -9,17 +10,17 @@ interface Props {
   currentUser?: User | null;
 }
 
-export const VehicleReportsTab: React.FC<Props> = ({ currentUser }) => {
+export const VehicleReportsTab: React.FC<Props> = ({ currentUser: _currentUser }) => {
   const [localConsumptions] = useState<VehicleProjectConsumption[]>(mockConsumptions);
 
   const columns: TableColumn<VehicleProjectConsumption>[] = [
     {
       header: 'Fecha Cierre',
-      accessor: (cons) => <span className="text-xs text-slate-600">{format(new Date(cons.closedAt), 'dd/MM/yyyy HH:mm')}</span>
+      render: (cons) => <span className="text-xs text-slate-600">{format(new Date(cons.closedAt), 'dd/MM/yyyy HH:mm')}</span>
     },
     {
       header: 'Proyecto',
-      accessor: (cons) => (
+      render: (cons) => (
         <div>
           <p className="font-bold text-xs text-slate-700">{cons.projectCode}</p>
           <p className="text-[10px] text-slate-500 truncate max-w-[200px]">{cons.projectName}</p>
@@ -28,11 +29,11 @@ export const VehicleReportsTab: React.FC<Props> = ({ currentUser }) => {
     },
     {
       header: 'Vehículo',
-      accessor: (cons) => <span className="font-bold text-slate-600">{cons.vehiculoAlias}</span>
+      render: (cons) => <span className="font-bold text-slate-600">{cons.vehiculoAlias}</span>
     },
     {
       header: 'Materiales Utilizados',
-      accessor: (cons) => (
+      render: (cons) => (
         <div className="flex flex-col gap-2 max-w-[300px]">
           {cons.items.map((item, i) => (
             <div key={i} className="bg-slate-50 p-2 rounded border border-slate-100 text-xs">
@@ -43,6 +44,22 @@ export const VehicleReportsTab: React.FC<Props> = ({ currentUser }) => {
               </div>
             </div>
           ))}
+        </div>
+      )
+    },
+    {
+      header: 'Acciones',
+      width: '120px',
+      align: 'center',
+      className: '!px-2',
+      render: () => (
+        <div className="flex justify-center items-center w-full">
+          <ActionButtons
+            onView={() => {}}
+            viewTitle="Visualizar reporte"
+            onPdf={() => {}}
+            pdfTitle="Generar PDF"
+          />
         </div>
       )
     }
@@ -97,6 +114,16 @@ export const VehicleReportsTab: React.FC<Props> = ({ currentUser }) => {
                           </div>
                         </div>
                       ))}
+                    </div>
+
+                    {/* Acciones */}
+                    <div className="flex items-center justify-end pt-3 mt-3 border-t border-slate-100">
+                      <ActionButtons
+                        onView={() => {}}
+                        viewTitle="Visualizar reporte"
+                        onPdf={() => {}}
+                        pdfTitle="Generar PDF"
+                      />
                     </div>
                   </div>
                 ))}
