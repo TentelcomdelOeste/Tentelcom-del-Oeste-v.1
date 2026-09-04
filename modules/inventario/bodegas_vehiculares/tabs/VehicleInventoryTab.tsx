@@ -220,21 +220,34 @@ export const VehicleInventoryTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-6">
-      {/* Selector de Vehículo y Acciones */}
+      {/* Selector de Vehículo, Buscador y Acciones */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-        <div className="w-full md:w-1/3">
-          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-            Vehículo Seleccionado
-          </label>
-          <Select
-            options={mockVehicles.map(v => ({
-              value: v.id,
-              label: v.displayName || v.alias
-            }))}
-            value={selectedVehicleId}
-            onChange={(val) => setSelectedVehicleId(val)}
-            placeholder="Buscar vehículo..."
-          />
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 w-full md:w-auto flex-1 max-w-2xl">
+          <div className="w-full sm:w-64">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              Vehículo Seleccionado
+            </label>
+            <Select
+              options={mockVehicles.map(v => ({
+                value: v.id,
+                label: v.displayName || v.alias
+              }))}
+              value={selectedVehicleId}
+              onChange={(val) => setSelectedVehicleId(val)}
+              placeholder="Buscar vehículo..."
+            />
+          </div>
+
+          <div className="w-full sm:w-72">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              Buscar Material
+            </label>
+            <SearchInput
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por código, descripción..."
+            />
+          </div>
         </div>
 
         <div className="w-full md:w-auto mt-2 md:mt-0">
@@ -248,67 +261,56 @@ export const VehicleInventoryTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Tabla/Tarjetas de Inventario */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[600px]">
-        <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-          <SearchInput
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar material en esta bodega..."
-          />
+      {/* Tabla / Tarjetas de Inventario */}
+      {filteredItems.length === 0 ? (
+        <div className="p-8 text-center text-slate-500 font-medium bg-slate-50 rounded-xl border border-slate-100">
+          No hay inventario registrado en la bodega del vehículo {selectedVehicle?.alias}.
         </div>
-        <div className="flex-1 overflow-auto bg-slate-50/30 p-2 md:p-0">
-          {filteredItems.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 font-medium">
-              No hay inventario registrado en la bodega del vehículo {selectedVehicle?.alias}.
-            </div>
-          ) : (
-            <>
-              {/* Desktop Table */}
-              <div className="hidden md:block h-full">
-                <DataTable
-                  data={filteredItems}
-                  columns={columns}
-                  keyExtractor={(item) => item.id}
-                  emptyMessage="No hay inventario registrado en este vehículo."
-                />
-              </div>
+      ) : (
+        <>
+          {/* Desktop Table */}
+          <div className="hidden md:block">
+            <DataTable
+              data={filteredItems}
+              columns={columns}
+              keyExtractor={(item) => item.id}
+              emptyMessage="No hay inventario registrado en este vehículo."
+            />
+          </div>
 
-              {/* Mobile Cards */}
-              <div className="flex flex-col gap-2 md:hidden">
-                {filteredItems.map(item => (
-                  <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="mb-3">
-                      <p className="font-bold text-slate-800 text-sm">{item.description}</p>
-                      <div className="flex justify-between items-center mt-1">
-                        <p className="font-mono text-[10px] text-slate-500">
-                          {item.code} • {item.category}
-                        </p>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">{item.unit}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 pt-2">
-                      <div className="text-center">
-                        <p className="text-[9px] uppercase font-bold text-slate-400 mb-0.5">Físico</p>
-                        <p className="text-sm font-black text-slate-700">{item.physicalStock}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[9px] uppercase font-bold text-amber-500 mb-0.5">Comprom.</p>
-                        <p className="text-sm font-black text-amber-600">{item.committedStock}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[9px] uppercase font-bold text-emerald-500 mb-0.5">Disponib.</p>
-                        <p className="text-sm font-black text-emerald-600">{item.availableStock}</p>
-                      </div>
-                    </div>
+          {/* Mobile Cards */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {filteredItems.map(item => (
+              <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="mb-3">
+                  <p className="font-bold text-slate-800 text-sm">{item.description}</p>
+                  <div className="flex justify-between items-center mt-1">
+                    <p className="font-mono text-[10px] text-slate-500">
+                      {item.code} • {item.category}
+                    </p>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{item.unit}</span>
                   </div>
-                ))}
+                </div>
+
+                <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 pt-2">
+                  <div className="text-center">
+                    <p className="text-[9px] uppercase font-bold text-slate-400 mb-0.5">Físico</p>
+                    <p className="text-sm font-black text-slate-700">{item.physicalStock}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[9px] uppercase font-bold text-amber-500 mb-0.5">Comprom.</p>
+                    <p className="text-sm font-black text-amber-600">{item.committedStock}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[9px] uppercase font-bold text-emerald-500 mb-0.5">Disponib.</p>
+                    <p className="text-sm font-black text-emerald-600">{item.availableStock}</p>
+                  </div>
+                </div>
               </div>
-            </>
-          )}
-        </div>
-      </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Modal de Transferencia entre Bodegas Vehiculares */}
       <TransferToVehicleModal

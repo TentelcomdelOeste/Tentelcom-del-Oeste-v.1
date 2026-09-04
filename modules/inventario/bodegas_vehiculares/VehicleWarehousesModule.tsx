@@ -39,76 +39,54 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
   };
 
   return (
-    <ModulePage title="Bodegas Vehiculares" subtitle="Gestión de inventario de flota y solicitudes por vehículo.">
-      <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-200">
-        {/* Navegación por pestañas: Dropdown en móvil, Botones en desktop */}
-        <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-          <div className="block md:hidden relative">
-            <select
-              value={activeTab}
-              onChange={(e) => setActiveTab(e.target.value as any)}
-              className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-10"
-            >
-              <option value="inventory">📦 Inventario por vehículo</option>
-              <option value="requests">📋 Solicitudes de proyecto</option>
-              <option value="movements">🔄 Historial de Movimientos</option>
-              <option value="reports">📊 Reportes y Consumos</option>
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-              ▼
-            </div>
-          </div>
-
-          <div className="hidden md:flex items-center gap-2">
-            <ActionButton
-              label="Inventario por Vehículo"
-              icon={<FiBox />}
-              variant={activeTab === 'inventory' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('inventory')}
-              className={`whitespace-nowrap ${
-                activeTab !== 'inventory'
-                  ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none'
-                  : ''
-              }`}
-            />
-            <ActionButton
-              label="Solicitudes de Proyecto"
-              icon={<FiClipboard />}
-              variant={activeTab === 'requests' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('requests')}
-              className={`whitespace-nowrap ${
-                activeTab !== 'requests'
-                  ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none'
-                  : ''
-              }`}
-            />
-            <ActionButton
-              label="Historial de Movimientos"
-              icon={<FiRefreshCw />}
-              variant={activeTab === 'movements' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('movements')}
-              className={`whitespace-nowrap ${
-                activeTab !== 'movements'
-                  ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none'
-                  : ''
-              }`}
-            />
-            <ActionButton
-              label="Reportes y Consumos"
-              icon={<FiPieChart />}
-              variant={activeTab === 'reports' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('reports')}
-              className={`whitespace-nowrap ${
-                activeTab !== 'reports'
-                  ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none'
-                  : ''
-              }`}
-            />
-          </div>
+    <div className="-mx-2 md:-mx-4 -mt-4">
+      <ModulePage title="Bodegas Vehiculares" subtitle="Gestión de inventario de flota y solicitudes por vehículo.">
+        {/* Navegación por pestañas */}
+        <div className="flex gap-4 mb-6 border-b border-slate-200 overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setActiveTab('inventory')}
+            className={`pb-2 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+              activeTab === 'inventory'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            Inventario por Vehículo
+          </button>
+          <button
+            onClick={() => setActiveTab('requests')}
+            className={`pb-2 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+              activeTab === 'requests'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            Solicitudes
+          </button>
+          <button
+            onClick={() => setActiveTab('movements')}
+            className={`pb-2 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+              activeTab === 'movements'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            Movimientos
+          </button>
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`pb-2 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+              activeTab === 'reports'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            Reportes y Consumos
+          </button>
         </div>
 
         {/* Contenido de la pestaña */}
-        <div className="flex-1 overflow-y-auto p-3 md:p-6 bg-slate-50/30">
+        <div>
           {activeTab === 'inventory' && (
             <VehicleInventoryTab
               currentUser={currentUser}
@@ -134,8 +112,8 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
             />
           )}
         </div>
-      </div>
-    </ModulePage>
+      </ModulePage>
+    </div>
   );
 };
 

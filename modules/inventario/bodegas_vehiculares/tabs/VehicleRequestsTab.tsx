@@ -109,66 +109,65 @@ export const VehicleRequestsTab: React.FC<Props> = ({ currentUser }) => {
         />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[500px] md:h-[600px]">
-        <div className="flex-1 overflow-auto bg-slate-50/30 p-2 md:p-0">
-          {sortedRequests.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 font-medium">No hay solicitudes registradas.</div>
-          ) : (
-            <>
-              {/* Desktop Table */}
-              <div className="hidden md:block h-full">
-                <DataTable
-                  data={sortedRequests}
-                  columns={columns}
-                  keyExtractor={(req) => req.id}
-                  emptyMessage="No hay solicitudes registradas."
-                />
-              </div>
-
-              {/* Mobile Cards */}
-              <div className="flex flex-col gap-2 md:hidden">
-                {sortedRequests.map(req => (
-                  <div key={req.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-bold text-slate-800 text-sm truncate max-w-[200px]">{req.projectName}</p>
-                        <p className="font-mono text-[10px] text-slate-500">{req.requestNumber}</p>
-                      </div>
-                      <StatusBadge 
-                        status={req.status} 
-                        variant={req.status === 'Abierta' ? 'warning' : req.status === 'Cerrada' ? 'success' : 'default'} 
-                      />
-                    </div>
-                    
-                    <div className="text-xs text-slate-600 space-y-1">
-                      <p><span className="font-bold text-slate-400">Vehículo:</span> {req.vehiculoAlias}</p>
-                      <p><span className="font-bold text-slate-400">Materiales:</span> {req.items.length}</p>
-                    </div>
-
-                    <div className="mt-2 pt-3 border-t border-slate-100 flex gap-2 justify-center">
-                      <ActionButtons
-                        onView={() => setRequestToView(req)}
-                        onEdit={req.status === 'Abierta' ? () => setRequestToEdit(req) : undefined}
-                        onDelete={req.status === 'Abierta' ? () => handleDelete(req) : undefined}
-                      />
-                    </div>
-                    
-                    {req.status === 'Abierta' && (
-                      <ActionButton 
-                        label="Cerrar y Liquidar" 
-                        icon={<FiCheckCircle/>} 
-                        variant="secondary" 
-                        className="w-full justify-center text-emerald-600 hover:bg-emerald-50 border-emerald-200 mt-2"
-                        onClick={() => setRequestToClose(req)}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+      {/* Tabla / Tarjetas de Solicitudes */}
+      {sortedRequests.length === 0 ? (
+        <div className="p-8 text-center text-slate-500 font-medium bg-slate-50 rounded-xl border border-slate-100">
+          No hay solicitudes registradas.
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Desktop Table */}
+          <div className="hidden md:block">
+            <DataTable
+              data={sortedRequests}
+              columns={columns}
+              keyExtractor={(req) => req.id}
+              emptyMessage="No hay solicitudes registradas."
+            />
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {sortedRequests.map(req => (
+              <div key={req.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-bold text-slate-800 text-sm truncate max-w-[200px]">{req.projectName}</p>
+                    <p className="font-mono text-[10px] text-slate-500">{req.requestNumber}</p>
+                  </div>
+                  <StatusBadge 
+                    status={req.status} 
+                    variant={req.status === 'Abierta' ? 'warning' : req.status === 'Cerrada' ? 'success' : 'default'} 
+                  />
+                </div>
+                
+                <div className="text-xs text-slate-600 space-y-1">
+                  <p><span className="font-bold text-slate-400">Vehículo:</span> {req.vehiculoAlias}</p>
+                  <p><span className="font-bold text-slate-400">Materiales:</span> {req.items.length}</p>
+                </div>
+
+                <div className="mt-2 pt-3 border-t border-slate-100 flex gap-2 justify-center">
+                  <ActionButtons
+                    onView={() => setRequestToView(req)}
+                    onEdit={req.status === 'Abierta' ? () => setRequestToEdit(req) : undefined}
+                    onDelete={req.status === 'Abierta' ? () => handleDelete(req) : undefined}
+                  />
+                </div>
+                
+                {req.status === 'Abierta' && (
+                  <ActionButton 
+                    label="Cerrar y Liquidar" 
+                    icon={<FiCheckCircle/>} 
+                    variant="secondary" 
+                    className="w-full justify-center text-emerald-600 hover:bg-emerald-50 border-emerald-200 mt-2"
+                    onClick={() => setRequestToClose(req)}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <VehicleRequestModal 
         show={showNewModal} 
