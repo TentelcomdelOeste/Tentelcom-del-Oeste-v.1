@@ -3,7 +3,7 @@ import { db, auth } from '../firebase';
 import { collection, query, where, onSnapshot, limit, doc, getDoc, getDocs, deleteDoc, orderBy, runTransaction, increment } from 'firebase/firestore';
 import { MaterialRequest, RequestStatus } from '../dispatchTypes';
 import { User } from '../utils/types';
-import { hasPermission } from '../utils/permissions';
+import { hasPermission, isAdmin } from '../utils/permissions';
 import { updateVersionedDoc } from '../core/versionControl';
 import { useUserContext } from '../contexts/UserContext';
 
@@ -22,8 +22,9 @@ export const useMaterialRequests = (currentUser: User | null) => {
 
   useEffect(() => {
     const canView = authReady && currentUser?.uid && (
-      currentUser.role === 'admin' || 
-      hasPermission(currentUser, 'inventario', 'solicitudes')
+      isAdmin(currentUser.role) || 
+      hasPermission(currentUser, 'inventario', 'solicitudes') ||
+      hasPermission(currentUser, 'inventario', 'reportes')
     );
 
     if (!canView || (!auth.currentUser && navigator.onLine)) {
@@ -39,9 +40,9 @@ export const useMaterialRequests = (currentUser: User | null) => {
 
     // 2) Sync with Firestore
     const materialRequestsCollectionName = "material_reports";
-    const canViewAll = currentUser?.role === 'admin' || 
-                       currentUser?.role === 'supervisor' || 
-                       hasPermission(currentUser, 'inventario', 'solicitudes');
+    const canViewAll = isAdmin(currentUser?.role) || 
+                       hasPermission(currentUser, 'inventario', 'solicitudes') ||
+                       hasPermission(currentUser, 'inventario', 'reportes');
     
     const baseRef = collection(db, materialRequestsCollectionName);
     let q;
@@ -374,15 +375,15 @@ export const useMaterialRequests = (currentUser: User | null) => {
           throw new Error("No se pueden eliminar solicitudes Aprobadas. Debe Rechazar primero si desea descartarla.");
       }
 
-      // Verificar permisos: Admin, Supervisor o el propio solicitante (si está pendiente)
+      // Verificar permisos: Admin o usuario con permiso de solicitudes (o el propio solicitante si está pendiente)
       const isCreator = currentData.requestedBy === currentUser.id;
-      const isAdminOrSupervisor = currentUser.role === 'admin' || currentUser.role === 'supervisor';
+      const isAdminOrPermitted = isAdmin(currentUser.role) || hasPermission(currentUser, 'inventario', 'solicitudes');
       
-      if (!isAdminOrSupervisor && !isCreator) {
+      if (!isAdminOrPermitted && !isCreator) {
           throw new Error("No tienes permiso para eliminar esta solicitud.");
       }
 
-      if (isCreator && !isAdminOrSupervisor && currentData.status !== 'Pendiente' && currentData.status !== 'Rechazada') {
+      if (isCreator && !isAdminOrPermitted && currentData.status !== 'Pendiente' && currentData.status !== 'Rechazada') {
            throw new Error("Solo puedes eliminar tus propias solicitudes si están Pendientes o Rechazadas.");
       }
 
@@ -429,8 +430,7 @@ export const useMaterialRequests = (currentUser: User | null) => {
   const updateRequestStatus = useCallback(async (requestId: string, status: RequestStatus) => {
       if (!currentUser) throw new Error("No autenticado");
       
-      const canManage = currentUser.role === 'admin' || 
-                        currentUser.role === 'supervisor' || 
+      const canManage = isAdmin(currentUser.role) || 
                         hasPermission(currentUser, 'inventario', 'solicitudes');
 
       if (!canManage) throw new Error("No tiene permisos para gestionar estados.");

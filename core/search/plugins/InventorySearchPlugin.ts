@@ -1,6 +1,7 @@
 import { ISearchPlugin, SearchableItem, SmartNavigationContext } from '../types';
 import { User } from '../../../utils/types';
 import { InventoryItem } from '../../../inventoryTypes';
+import { can, isAdmin } from '../../../utils/permissions';
 
 export class InventorySearchPlugin implements ISearchPlugin {
   moduleId = 'inventory_general';
@@ -9,15 +10,7 @@ export class InventorySearchPlugin implements ISearchPlugin {
 
   canAccess(user: User | null): boolean {
     if (!user) return false;
-    return user.role === 'admin' || this.checkPermission(user, 'inventory_general');
-  }
-
-  private checkPermission(user: User, permission: string): boolean {
-    if (user.role === 'admin') return true;
-    if (user.permissions && Array.isArray(user.permissions)) {
-      return user.permissions.includes(permission);
-    }
-    return false;
+    return isAdmin(user.role) || can(user, 'inventario.general');
   }
 
   getNavigationContext(item: SearchableItem): SmartNavigationContext {

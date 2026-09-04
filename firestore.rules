@@ -125,30 +125,30 @@ service cloud.firestore {
 
     // LOGS DE REPORTES DE MATERIALES
     match /material_reports_log/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isSupervisor();
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
     }
 
     // INVENTARIO
     match /inventory/{id} {
-      allow read: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isSupervisor();
-      allow write: if hasNestedPermission("inventario", "general");
+      allow read: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow write: if hasNestedPermission("inventario", "general") || isAdmin();
     }
     match /inventory_items/{id} {
-      allow read: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isSupervisor();
-      allow update: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || (hasNestedPermission("inventario", "solicitudes") && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reserved']));
+      allow read: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow update: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || (hasNestedPermission("inventario", "solicitudes") && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reserved'])) || isAdmin();
       allow create, delete: if hasNestedPermission("inventario", "general") || isAdmin();
     }
     match /inventory_movements/{id} {
-      allow read, write: if hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos");
+      allow read, write: if hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin();
     }
     match /material_reports/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isSupervisor();
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
     }
     match /materialRequests/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isSupervisor();
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
     }
     match /material_dispatches/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isSupervisor();
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isAdmin();
     }
     match /dispatch_responsibles/{id} {
       allow read, write: if isAuthenticated();

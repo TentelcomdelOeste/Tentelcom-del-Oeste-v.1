@@ -72,69 +72,92 @@ export const VehicleInventoryTab: React.FC<Props> = ({ currentUser }) => {
     <div className="space-y-6">
       
       {/* Selector de Vehículo y Acciones */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 custom-scrollbar">
-          {mockVehicles.map(v => (
-            <button
-              key={v.id}
-              onClick={() => setSelectedVehicleId(v.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-bold transition-all whitespace-nowrap
-                ${selectedVehicleId === v.id 
-                  ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
+        <div className="w-full md:w-1/3">
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Vehículo Seleccionado</label>
+          <div className="relative">
+            <select
+              value={selectedVehicleId}
+              onChange={(e) => setSelectedVehicleId(e.target.value)}
+              className="w-full p-3 pl-10 pr-10 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
             >
-              <FiTruck className={selectedVehicleId === v.id ? 'text-white' : 'text-slate-400'} />
-              {v.alias} - {v.placa}
-            </button>
-          ))}
+              {mockVehicles.map(v => (
+                <option key={v.id} value={v.id}>{v.alias} - {v.placa}</option>
+              ))}
+            </select>
+            <FiTruck className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 text-lg" />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+              ▼
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="w-full md:w-auto mt-2 md:mt-0">
           <ActionButton
             label="Traslado a Vehículo"
             icon={<FiUploadCloud />}
             variant="primary"
             onClick={() => setShowTransferModal(true)}
+            className="w-full md:w-auto justify-center"
           />
         </div>
       </div>
 
-      {/* Resumen del Vehículo Seleccionado */}
-      {selectedVehicle && (
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-black text-slate-800">Inventario: {selectedVehicle.alias}</h3>
-            <p className="text-sm text-slate-500 font-medium">Placa: {selectedVehicle.placa}</p>
-          </div>
-          <div className="flex flex-wrap gap-4">
-             <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 text-center min-w-[120px]">
-               <p className="text-[10px] uppercase font-black text-slate-500 tracking-wider">Total Ítems</p>
-               <p className="text-2xl font-black text-slate-800 mt-1">{filteredItems.length}</p>
-             </div>
-             <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-center min-w-[120px]">
-               <p className="text-[10px] uppercase font-black text-emerald-600 tracking-wider">Con Disponible</p>
-               <p className="text-2xl font-black text-emerald-700 mt-1">{filteredItems.filter(i => i.availableStock > 0).length}</p>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tabla de Inventario */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[500px]">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+      {/* Tabla/Tarjetas de Inventario */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[600px]">
+        <div className="p-3 border-b border-slate-100 bg-slate-50/50">
           <SearchInput
             value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Buscar por código o descripción..."
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar material..."
           />
         </div>
-        <div className="flex-1 overflow-auto">
-          <DataTable
-            data={filteredItems}
-            columns={columns}
-            keyExtractor={(item) => item.id}
-            emptyMessage="No hay inventario registrado en este vehículo."
-          />
+        <div className="flex-1 overflow-auto bg-slate-50/30 p-2 md:p-0">
+          {filteredItems.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 font-medium">No hay inventario registrado.</div>
+          ) : (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block h-full">
+                <DataTable
+                  data={filteredItems}
+                  columns={columns}
+                  keyExtractor={(item) => item.id}
+                  emptyMessage="No hay inventario registrado en este vehículo."
+                />
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="flex flex-col gap-2 md:hidden">
+                {filteredItems.map(item => (
+                  <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="mb-3">
+                      <p className="font-bold text-slate-800 text-sm">{item.description}</p>
+                      <div className="flex justify-between items-center mt-1">
+                        <p className="font-mono text-[10px] text-slate-500">{item.code} • {item.category}</p>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">{item.unit}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 pt-2">
+                      <div className="text-center">
+                        <p className="text-[9px] uppercase font-bold text-slate-400 mb-0.5">Físico</p>
+                        <p className="text-sm font-black text-slate-700">{item.physicalStock}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[9px] uppercase font-bold text-amber-500 mb-0.5">Comprom.</p>
+                        <p className="text-sm font-black text-amber-600">{item.committedStock}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[9px] uppercase font-bold text-emerald-500 mb-0.5">Disponib.</p>
+                        <p className="text-sm font-black text-emerald-600">{item.availableStock}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

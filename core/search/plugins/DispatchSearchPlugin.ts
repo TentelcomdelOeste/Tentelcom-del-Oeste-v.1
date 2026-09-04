@@ -1,5 +1,6 @@
 import { ISearchPlugin, SearchableItem, SmartNavigationContext } from '../types';
 import { User } from '../../../utils/types';
+import { can, isAdmin } from '../../../utils/permissions';
 
 export class DispatchSearchPlugin implements ISearchPlugin {
   moduleId = 'dispatch';
@@ -8,15 +9,7 @@ export class DispatchSearchPlugin implements ISearchPlugin {
 
   canAccess(user: User | null): boolean {
     if (!user) return false;
-    return user.role === 'admin' || this.checkPermission(user, 'dispatch') || this.checkPermission(user, 'material_reports');
-  }
-
-  private checkPermission(user: User, permission: string): boolean {
-    if (user.role === 'admin') return true;
-    if (user.permissions && Array.isArray(user.permissions)) {
-      return user.permissions.includes(permission);
-    }
-    return false;
+    return isAdmin(user.role) || can(user, 'inventario.movimientos') || can(user, 'inventario.solicitudes');
   }
 
   getNavigationContext(item: SearchableItem): SmartNavigationContext {

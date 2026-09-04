@@ -8,7 +8,7 @@ import { localDocStore } from '../core/offline/localDocStore';
 import { useUserContext } from '../contexts/UserContext';
 import { globalSearchEngine, inventorySearchPlugin } from '../core/search';
 
-import { hasPermission } from '../utils/permissions';
+import { hasPermission, isAdmin } from '../utils/permissions';
 
 import { logger } from '../utils/logger';
 
@@ -86,19 +86,14 @@ export const useInventory = (currentUser: User | null) => {
   }, [items, getReservedByItem]);
 
   useEffect(() => {
-    const isSupervisorRole = currentUser?.role?.toLowerCase() === 'supervisor';
-    const isEmpleadoRole = currentUser?.role?.toLowerCase() === 'empleado';
-
     const canViewInventory = authReady && currentUser?.uid && (
-      currentUser.role === 'admin' || 
-      isSupervisorRole ||
+      isAdmin(currentUser.role) ||
       hasPermission(currentUser, 'inventario', 'general') ||
       hasPermission(currentUser, 'inventario', 'solicitudes') ||
       hasPermission(currentUser, 'inventario', 'movimientos') ||
-      hasPermission(currentUser, 'trabajos') ||
-      can(currentUser, 'inventario.solicitudes') ||
-      can(currentUser, 'solicitudes') ||
-      isEmpleadoRole
+      hasPermission(currentUser, 'inventario', 'reportes') ||
+      hasPermission(currentUser, 'inventario', 'bodegas_vehiculares') ||
+      hasPermission(currentUser, 'trabajos')
     );
 
     // Guard: Prevent queries if Auth is not completely ready and authenticated

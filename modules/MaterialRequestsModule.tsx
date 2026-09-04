@@ -278,9 +278,9 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
       mobileGrid: 'full',
       mobileOrder: 6,
       render: (req) => {
-          const canManage = isAdmin(currentUser.role) || currentUser.role === 'supervisor' || hasPermission(currentUser, 'inventario', 'solicitudes');
+          const canManage = isAdmin(currentUser.role) || hasPermission(currentUser, 'inventario', 'solicitudes');
           const isCreator = req.requestedBy === currentUser.id;
-          const canDelete = (isAdmin(currentUser.role) || currentUser.role === 'supervisor') 
+          const canDelete = canManage 
               ? req.status !== 'Aprobada' 
               : (isCreator && (req.status === 'Pendiente' || req.status === 'Rechazada'));
 
@@ -381,9 +381,9 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
                     ) : (
                       <>
                         {filteredRequests.map((req) => {
-                          const canManage = isAdmin(currentUser.role) || currentUser.role === 'supervisor';
+                          const canManage = isAdmin(currentUser.role) || hasPermission(currentUser, 'inventario', 'solicitudes');
                           const isCreator = req.requestedBy === currentUser.id;
-                          const canDelete = (isAdmin(currentUser.role) || currentUser.role === 'supervisor') 
+                          const canDelete = canManage 
                               ? req.status !== 'Aprobada' 
                               : (isCreator && (req.status === 'Pendiente' || req.status === 'Rechazada'));
 
