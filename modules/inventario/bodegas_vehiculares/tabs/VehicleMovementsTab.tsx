@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { User } from '../../../../types';
 import { mockMovements } from '../mockData';
 import { DataTable, TableColumn, StatusBadge } from '../../../../design-system';
@@ -8,11 +8,66 @@ import { format } from 'date-fns';
 interface Props {
   currentUser?: User | null;
   movements?: VehicleMovement[];
+  activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
+  onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
 }
 
-export const VehicleMovementsTab: React.FC<Props> = ({ movements: externalMovements }) => {
+const MONTH_NAMES = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre'
+];
+
+export const VehicleMovementsTab: React.FC<Props> = ({
+  movements: externalMovements,
+  activeTab = 'movements',
+  onTabChange
+}) => {
   const [internalMovements] = useState<VehicleMovement[]>(mockMovements);
-  const movements = externalMovements || internalMovements;
+  const rawMovements = externalMovements || internalMovements;
+
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    rawMovements.forEach((mov) => {
+      const d = new Date(mov.createdAt || mov.date);
+      if (!isNaN(d.getTime())) {
+        years.add(d.getFullYear());
+      }
+    });
+    years.add(new Date().getFullYear());
+    return Array.from(years).sort((a, b) => b - a);
+  }, [rawMovements]);
+
+  const filteredMovements = useMemo(() => {
+    return rawMovements.filter((mov) => {
+      const d = new Date(mov.createdAt || mov.date);
+      if (isNaN(d.getTime())) return true;
+
+      if (selectedMonth !== 'all') {
+        const monthNum = parseInt(selectedMonth, 10);
+        if (d.getMonth() !== monthNum) return false;
+      }
+
+      if (selectedYear !== 'all') {
+        const yearNum = parseInt(selectedYear, 10);
+        if (d.getFullYear() !== yearNum) return false;
+      }
+
+      return true;
+    });
+  }, [rawMovements, selectedMonth, selectedYear]);
 
   const getMovementColor = (type: string) => {
     switch (type) {
@@ -93,18 +148,132 @@ export const VehicleMovementsTab: React.FC<Props> = ({ movements: externalMoveme
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 md:space-y-6">
+      {/* 1. Título y Subtítulo */}
+      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-3">
         <div>
           <h3 className="text-lg font-black text-slate-800">Historial de Movimientos</h3>
           <p className="text-sm text-slate-500">
             Auditoría de traslados entre bodegas vehiculares, abastecimientos y consumos.
           </p>
         </div>
+
+        {/* Desktop Filters */}
+        <div className="hidden md:flex items-center gap-3">
+          <div className="w-44">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              Mes
+            </label>
+            <div className="relative">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7"
+              >
+                <option value="all">Todos</option>
+                {MONTH_NAMES.map((m, idx) => (
+                  <option key={idx} value={String(idx)}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                ▼
+              </div>
+            </div>
+          </div>
+
+          <div className="w-32">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              Año
+            </label>
+            <div className="relative">
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7"
+              >
+                <option value="all">Todos</option>
+                {availableYears.map((yr) => (
+                  <option key={yr} value={String(yr)}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                ▼
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Tabla / Tarjetas de Movimientos */}
-      {movements.length === 0 ? (
+      {/* 2. Fila Móvil: [ Selector de Sección ] [ Mes ] [ Año ] */}
+      <div className="grid grid-cols-12 gap-1.5 sm:gap-2 md:hidden">
+        {/* Selector de Sección */}
+        <div className="col-span-6 min-w-0">
+          <div className="relative">
+            <select
+              value={activeTab}
+              onChange={(e) => onTabChange?.(e.target.value as any)}
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
+            >
+              <option value="inventory">📦 Inventario por vehículo</option>
+              <option value="requests">📋 Solicitudes de proyecto</option>
+              <option value="movements">🔄 Historial de Movimientos</option>
+              <option value="reports">📊 Reportes y Consumos</option>
+            </select>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+              ▼
+            </div>
+          </div>
+        </div>
+
+        {/* Filtro de Mes */}
+        <div className="col-span-3 min-w-0">
+          <div className="relative">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-5 truncate"
+            >
+              <option value="all">Mes: Todos</option>
+              {MONTH_NAMES.map((m, idx) => (
+                <option key={idx} value={String(idx)}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
+              ▼
+            </div>
+          </div>
+        </div>
+
+        {/* Filtro de Año */}
+        <div className="col-span-3 min-w-0">
+          <div className="relative">
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-5 truncate"
+            >
+              <option value="all">Año: Todos</option>
+              {availableYears.map((yr) => (
+                <option key={yr} value={String(yr)}>
+                  {yr}
+                </option>
+              ))}
+            </select>
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
+              ▼
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Tabla / Tarjetas de Movimientos */}
+      {filteredMovements.length === 0 ? (
         <div className="p-8 text-center text-slate-500 font-medium bg-slate-50 rounded-xl border border-slate-100">
           No hay movimientos registrados.
         </div>
@@ -113,7 +282,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({ movements: externalMoveme
           {/* Desktop Table */}
           <div className="hidden md:block">
             <DataTable
-              data={movements}
+              data={filteredMovements}
               columns={columns}
               keyExtractor={(mov) => mov.id}
               emptyMessage="No hay movimientos registrados."
@@ -122,7 +291,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({ movements: externalMoveme
 
           {/* Mobile Cards */}
           <div className="flex flex-col gap-3 md:hidden">
-            {movements.map((mov) => (
+            {filteredMovements.map((mov) => (
               <div
                 key={mov.id}
                 className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden"

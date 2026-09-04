@@ -13,9 +13,16 @@ import { format } from 'date-fns';
 interface Props {
   currentUser?: User | null;
   selectedVehicleId?: string;
+  activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
+  onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
 }
 
-export const VehicleRequestsTab: React.FC<Props> = ({ currentUser, selectedVehicleId }) => {
+export const VehicleRequestsTab: React.FC<Props> = ({
+  currentUser,
+  selectedVehicleId,
+  activeTab = 'requests',
+  onTabChange
+}) => {
   const confirm = useConfirm();
   const [localRequests, setLocalRequests] = useState<VehicleMaterialRequest[]>(mockMaterialRequests);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -95,18 +102,47 @@ export const VehicleRequestsTab: React.FC<Props> = ({ currentUser, selectedVehic
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 md:gap-4">
         <div>
           <h3 className="text-lg font-black text-slate-800">Solicitudes de Proyectos</h3>
           <p className="text-sm text-slate-500">Gestión de materiales asignados a proyectos.</p>
         </div>
-        <ActionButton 
-          label="Nueva Solicitud" 
-          variant="primary" 
-          onClick={() => setShowNewModal(true)}
-          className="w-full md:w-auto justify-center"
-        />
+        <div className="hidden md:block">
+          <ActionButton 
+            label="Nueva Solicitud" 
+            variant="primary" 
+            onClick={() => setShowNewModal(true)}
+            className="w-auto justify-center"
+          />
+        </div>
+      </div>
+
+      {/* Fila móvil: Selector de Secciones + Botón Nueva Solicitud */}
+      <div className="flex items-center gap-2 md:hidden">
+        <div className="relative flex-1 min-w-0">
+          <select
+            value={activeTab}
+            onChange={(e) => onTabChange?.(e.target.value as any)}
+            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7 truncate"
+          >
+            <option value="inventory">📦 Inventario por vehículo</option>
+            <option value="requests">📋 Solicitudes de proyecto</option>
+            <option value="movements">🔄 Historial de Movimientos</option>
+            <option value="reports">📊 Reportes y Consumos</option>
+          </select>
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+            ▼
+          </div>
+        </div>
+        <div className="shrink-0">
+          <ActionButton 
+            label="Nueva Solicitud" 
+            variant="primary" 
+            onClick={() => setShowNewModal(true)}
+            className="!text-xs !py-2.5 !px-3 justify-center whitespace-nowrap"
+          />
+        </div>
       </div>
 
       {/* Tabla / Tarjetas de Solicitudes */}
