@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User } from '../../../../types';
 import { mockVehicles, mockWarehouseItems } from '../mockData';
-import { ActionButton, DataTable, TableColumn, SearchInput, Select } from '../../../../design-system';
-import { FiTruck, FiUploadCloud } from 'react-icons/fi';
+import { ActionButton, DataTable, TableColumn, Select } from '../../../../design-system';
+import { FiTruck, FiUploadCloud, FiSearch, FiX } from 'react-icons/fi';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
 
@@ -13,6 +13,8 @@ interface Props {
   onRegisterMovement?: (movement: VehicleMovement) => void;
   selectedVehicleId?: string;
   onSelectVehicleId?: (id: string) => void;
+  activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
+  onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
 }
 
 export const VehicleInventoryTab: React.FC<Props> = ({
@@ -21,7 +23,9 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   setItems: externalSetItems,
   onRegisterMovement,
   selectedVehicleId: externalSelectedVehicleId,
-  onSelectVehicleId
+  onSelectVehicleId,
+  activeTab = 'inventory',
+  onTabChange
 }) => {
   // Local fallback if not provided by parent
   const [internalItems, setInternalItems] = useState<VehicleWarehouseItem[]>(mockWarehouseItems);
@@ -36,6 +40,32 @@ export const VehicleInventoryTab: React.FC<Props> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showTransferModal, setShowTransferModal] = useState(false);
+
+  // Search logic states
+  const [isMobileSearchFocused, setIsMobileSearchFocused] = useState(false);
+  const [isDesktopSearchFocused, setIsDesktopSearchFocused] = useState(false);
+  
+  const mobileSearchRef = useRef<HTMLDivElement>(null);
+  const desktopSearchRef = useRef<HTMLDivElement>(null);
+
+  // Clear search term when vehicle changes
+  useEffect(() => {
+    setSearchTerm('');
+  }, [selectedVehicleId]);
+
+  // Click outside handlers for search dropdowns
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileSearchRef.current && !mobileSearchRef.current.contains(e.target as Node)) {
+        setIsMobileSearchFocused(false);
+      }
+      if (desktopSearchRef.current && !desktopSearchRef.current.contains(e.target as Node)) {
+        setIsDesktopSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const selectedVehicle = useMemo(() => {
     return mockVehicles.find(v => v.id === selectedVehicleId) || mockVehicles[0];
@@ -55,6 +85,38 @@ export const VehicleInventoryTab: React.FC<Props> = ({
       return true;
     });
   }, [items, selectedVehicleId, searchTerm]);
+
+  const searchDropdownContent = (
+    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+      {filteredItems.length > 0 ? (
+        filteredItems.map(m => (
+          <button
+            key={m.id}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setSearchTerm(m.code);
+              setIsMobileSearchFocused(false);
+              setIsDesktopSearchFocused(false);
+            }}
+            className="w-full text-left p-2.5 border-b border-slate-100 last:border-b-0 hover:bg-blue-50 flex justify-between items-center transition-colors"
+          >
+            <div className="min-w-0 flex-1 pr-2">
+              <p className="text-xs font-bold text-slate-800 truncate">{m.code}</p>
+              <p className="text-[11px] text-slate-600 truncate">{m.description}</p>
+            </div>
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">
+              {m.availableStock} {m.unit}
+            </span>
+          </button>
+        ))
+      ) : (
+        <div className="p-3 text-xs text-slate-400 text-center">
+          No se encontraron materiales.
+        </div>
+      )}
+    </div>
+  );
 
   const originItemsForModal = useMemo(() => {
     return items.filter(item => item.vehiculoId === selectedVehicleId);
@@ -226,11 +288,107 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Selector de Vehículo, Buscador y Acciones */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 w-full md:w-auto flex-1 max-w-2xl">
-          <div className="w-full sm:w-64">
+    <div className="space-y-4 md:space-y-6">
+      {/* Controles Móvil: 2 Filas x 2 Columnas */}
+      <div className="flex flex-col gap-2.5 md:hidden">
+        {/* Fila 1: Selector de Sección + Vehículo Seleccionado */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="w-full min-w-0">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 truncate">
+              Sección
+            </label>
+            <div className="relative">
+              <select
+                value={activeTab}
+                onChange={(e) => onTabChange?.(e.target.value as any)}
+                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7 truncate"
+              >
+                <option value="inventory">📦 Inventario por vehículo</option>
+                <option value="requests">📋 Solicitudes de proyecto</option>
+                <option value="movements">🔄 Historial de Movimientos</option>
+                <option value="reports">📊 Reportes y Consumos</option>
+              </select>
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                ▼
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full min-w-0">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 truncate">
+              Vehículo Seleccionado
+            </label>
+            <div className="relative">
+              <select
+                value={selectedVehicleId}
+                onChange={(e) => setSelectedVehicleId(e.target.value)}
+                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7 truncate"
+              >
+                {mockVehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.displayName || v.alias}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                ▼
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Fila 2: Buscar Material + Traslado a Vehículo */}
+        <div className="grid grid-cols-2 gap-2 items-end relative" ref={mobileSearchRef}>
+          <div className="w-full min-w-0">
+            <div className={`transition-all duration-200 ${isMobileSearchFocused ? 'absolute z-40 left-0 right-0 bg-white p-2 -m-2 rounded-xl shadow-lg border border-slate-100' : 'relative'}`}>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 truncate">
+                Buscar Material
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Buscar código, descripción..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onFocus={() => setIsMobileSearchFocused(true)}
+                  className="w-full p-2.5 pl-9 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none pr-8"
+                />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <FiSearch />
+                </div>
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                    title="Limpiar búsqueda"
+                  >
+                    <FiX />
+                  </button>
+                )}
+              </div>
+              {isMobileSearchFocused && searchDropdownContent}
+            </div>
+          </div>
+
+          <div className="w-full min-w-0">
+            <ActionButton
+              label="Traslado a vehículo"
+              icon={<FiUploadCloud />}
+              variant="primary"
+              onClick={() => setShowTransferModal(true)}
+              className="w-full justify-center !text-xs !py-2.5 truncate"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Controles Desktop */}
+      <div className="hidden md:flex md:items-end justify-between gap-3">
+        <div className="flex items-end gap-3 flex-1 max-w-2xl">
+          <div className="w-64">
             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
               Vehículo Seleccionado
             </label>
@@ -245,25 +403,44 @@ export const VehicleInventoryTab: React.FC<Props> = ({
             />
           </div>
 
-          <div className="w-full sm:w-72">
+          <div className="w-72 relative" ref={desktopSearchRef}>
             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
               Buscar Material
             </label>
-            <SearchInput
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por código, descripción..."
-            />
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Buscar código, descripción..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onFocus={() => setIsDesktopSearchFocused(true)}
+                className="w-full p-2.5 pl-9 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none pr-8"
+              />
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <FiSearch />
+              </div>
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  title="Limpiar búsqueda"
+                >
+                  <FiX />
+                </button>
+              )}
+            </div>
+            {isDesktopSearchFocused && searchDropdownContent}
           </div>
         </div>
 
-        <div className="w-full md:w-auto mt-2 md:mt-0">
+        <div>
           <ActionButton
             label="Traslado a Vehículo"
             icon={<FiUploadCloud />}
             variant="primary"
             onClick={() => setShowTransferModal(true)}
-            className="w-full md:w-auto justify-center"
+            className="justify-center"
           />
         </div>
       </div>

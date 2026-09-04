@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ActionButton, IconButton } from '../../../../design-system';
-import { FiX, FiCheck, FiPlus, FiTrash2, FiSearch, FiChevronDown } from 'react-icons/fi';
+import { FiX, FiCheck, FiTrash2, FiSearch, FiChevronDown } from 'react-icons/fi';
 import { mockVehicles, mockProjects, mockWarehouseItems } from '../mockData';
 import { VehicleMaterialRequest } from '../../../../types/vehicleWarehouse.types';
 
@@ -567,7 +567,6 @@ export const VehicleRequestModal: React.FC<Props> = ({
                 <div className="md:col-span-2">
                   <ActionButton
                     label="Agregar"
-                    icon={<FiPlus />}
                     variant="primary"
                     disabled={!currentAdderMaterial || adderQuantity <= 0 || adderQuantity > maxAvailableForAdder}
                     onClick={handleAddMaterialToRequest}

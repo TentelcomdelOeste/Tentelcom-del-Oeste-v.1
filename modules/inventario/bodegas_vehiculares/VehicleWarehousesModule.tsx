@@ -45,8 +45,8 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Bodegas Vehiculares" subtitle="Gestión de inventario de flota y solicitudes por vehículo.">
-        {/* Navegación por pestañas: Dropdown en móvil, Botones en desktop */}
-        <div className="mb-6">
+        {/* Navegación por pestañas: Dropdown en móvil (cuando no estamos en 'inventory'), Botones en desktop */}
+        <div className={activeTab === 'inventory' ? 'hidden md:block mb-6' : 'block mb-4 md:mb-6'}>
           <div className="block md:hidden relative">
             <select
               value={activeTab}
@@ -121,6 +121,8 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               onRegisterMovement={handleRegisterMovement}
               selectedVehicleId={selectedVehicleId}
               onSelectVehicleId={setSelectedVehicleId}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
             />
           )}
           {activeTab === 'requests' && (

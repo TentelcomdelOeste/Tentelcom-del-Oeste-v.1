@@ -3,7 +3,7 @@ import { User } from '../../../../types';
 import { mockMaterialRequests, mockVehicles, mockProjects } from '../mockData';
 import { ActionButton, DataTable, TableColumn, StatusBadge, useConfirm } from '../../../../design-system';
 import { ActionButtons } from '../../../../components/ui/ActionButtons';
-import { FiPlus, FiCheckCircle } from 'react-icons/fi';
+import { FiCheckCircle } from 'react-icons/fi';
 import { VehicleMaterialRequest } from '../../../../types/vehicleWarehouse.types';
 import { VehicleRequestModal } from '../modals/VehicleRequestModal';
 import { VehicleRequestDetailModal } from '../modals/VehicleRequestDetailModal';
@@ -103,7 +103,6 @@ export const VehicleRequestsTab: React.FC<Props> = ({ currentUser, selectedVehic
         </div>
         <ActionButton 
           label="Nueva Solicitud" 
-          icon={<FiPlus />} 
           variant="primary" 
           onClick={() => setShowNewModal(true)}
           className="w-full md:w-auto justify-center"
