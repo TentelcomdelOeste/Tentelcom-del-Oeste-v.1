@@ -43,7 +43,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
     cotizaciones: false,
     pre_analysis: false,
     trabajos: false,
-    inventario: { general: false, movimientos: false, solicitudes: false },
+    inventario: { general: false, movimientos: false, solicitudes: false, precios: false, bodegas_vehiculares: false },
     finanzas: { movimientos: false, analisis: false, comprobantes: false, ausencias: false, empleados: false, facturacion: false, ordenes_compra: false, payroll: false },
     external_products: false
   });
@@ -75,7 +75,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             setPermissions(employeeData.permissions || {
                 cotizaciones: false,
                 pre_analysis: false,
-                inventario: { general: false, movimientos: false, solicitudes: false, precios: false },
+                inventario: { general: false, movimientos: false, solicitudes: false, precios: false, bodegas_vehiculares: false },
                 finanzas: { movimientos: false, analisis: false, comprobantes: false, ausencias: false, empleados: false, facturacion: false, ordenes_compra: false, payroll: false },
                 external_products: false,
                 configuracion: false
@@ -99,7 +99,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             setPermissions({
                 cotizaciones: false,
                 pre_analysis: false,
-                inventario: { general: false, movimientos: false, solicitudes: false, precios: false },
+                inventario: { general: false, movimientos: false, solicitudes: false, precios: false, bodegas_vehiculares: false },
                 finanzas: { movimientos: false, analisis: false, comprobantes: false, ausencias: false, empleados: false, facturacion: false, ordenes_compra: false, payroll: false },
                 external_products: false,
                 configuracion: false

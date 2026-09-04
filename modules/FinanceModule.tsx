@@ -18,6 +18,7 @@ const LazyInventoryModule = lazy(() => import('./InventoryModule'));
 const LazyInventoryMovementsModule = lazy(() => import('./InventoryMovementsModule'));
 const LazyMaterialRequestsModule = lazy(() => import('./MaterialRequestsModule'));
 const LazyReporteMaterialesProyecto = lazy(() => import('./inventario/ReporteMaterialesProyecto'));
+const LazyVehicleWarehousesModule = lazy(() => import('./inventario/bodegas_vehiculares/VehicleWarehousesModule'));
 const LazyCorporatePayrollView = lazy(() => import('./finance/payroll/CorporatePayrollView'));
 
 const PreAnalysisModule = lazy(() => import('./finance/pre_analysis/PreAnalysisModule'));
@@ -571,6 +572,7 @@ export const FinanceModule: React.FC<FinanceModuleProps> = ({
         { id: 'inventory_general', label: 'Inventario General', component: <LazyInventoryModule currentUser={currentUser} selectedId={selectedId} selectedKey={selectedKey} onClearSelectedId={onClearSelectedId} /> },
         { id: 'inventory_movements', label: 'Movimientos de Inventario', component: <LazyInventoryMovementsModule currentUser={currentUser} selectedId={selectedId} selectedKey={selectedKey} onClearSelectedId={onClearSelectedId} /> },
         { id: 'material_reports', label: 'Solicitud de Materiales', component: <LazyMaterialRequestsModule currentUser={currentUser} selectedId={selectedId} selectedKey={selectedKey} onClearSelectedId={onClearSelectedId} /> },
+        { id: 'vehicle_warehouses', label: 'Bodegas Vehiculares', component: <LazyVehicleWarehousesModule currentUser={currentUser} /> },
       ];
 
       const renderTab = (tabId: string) => {

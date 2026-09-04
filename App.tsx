@@ -91,6 +91,7 @@ const MODULE_PATHS: Record<string, string> = {
   'inventory_movements': '/movimientos-stock',
   'material_reports': '/solicitudes-materiales',
   'material_report': '/reporte-materiales',
+  'vehicle_warehouses': '/bodegas-vehiculares',
   'external_products': '/productos-externos',
   'product_ingestion': '/ingestion-productos',
   'web_analysis': '/analisis-web',
@@ -125,6 +126,7 @@ const getModuleLabel = (modId: string): string => {
     'inventory_movements': 'Inventario',
     'material_reports': 'Inventario',
     'material_report': 'Inventario',
+    'vehicle_warehouses': 'Inventario',
     'external_products': 'Productos Externos',
     'health_dashboard': 'Sistema'
   };
@@ -344,6 +346,7 @@ const SidebarContent = ({
               { id: 'inventory_movements', label: 'Movimientos Stock', perm: 'movimientos' },
               { id: 'material_reports', label: 'Solicitudes', perm: 'solicitudes' },
               { id: 'material_report', label: 'Reporte de Materiales', perm: 'reportes' },
+              { id: 'vehicle_warehouses', label: 'Bodegas Vehiculares', perm: 'bodegas_vehiculares' },
             ]
               .filter(item => can(currentUser, `inventario.${item.perm}`))
               .map(item => (
@@ -940,7 +943,8 @@ function App() {
       'inventory_general': 'inventario.general',
       'inventory_movements': 'inventario.movimientos',
       'material_reports': 'inventario.solicitudes',
-      'material_report': 'inventario.reportes'
+      'material_report': 'inventario.reportes',
+      'vehicle_warehouses': 'inventario.bodegas_vehiculares'
     };
     const perm = permissionMapping[module];
     if (perm) return can(currentUser || null, perm);
