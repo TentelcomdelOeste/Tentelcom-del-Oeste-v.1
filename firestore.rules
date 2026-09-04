@@ -125,7 +125,7 @@ service cloud.firestore {
 
     // LOGS DE REPORTES DE MATERIALES
     match /material_reports_log/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
     }
 
     // INVENTARIO
@@ -142,10 +142,10 @@ service cloud.firestore {
       allow read, write: if hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin();
     }
     match /material_reports/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
     }
     match /materialRequests/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
     }
     match /material_dispatches/{id} {
       allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isAdmin();

@@ -7,7 +7,6 @@ import { User } from '../utils/types';
 import { InventoryMovementModal } from './InventoryMovementModal';
 import { ProjectConsumptionModule } from './ProjectConsumptionModule';
 import { DispatchModule } from './DispatchModule';
-import { hasPermission } from '../utils/permissions';
 import { InventoryMovement } from '../inventoryMovementTypes';
 import { ModulePage } from '../components/ui/ModulePage';
 import { ModuleToolbar } from '../components/ui/ModuleToolbar';
@@ -168,8 +167,6 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
       onClearSelectedId?.();
   }, [onClearSelectedId]);
 
-  const canViewDispatch = hasPermission(currentUser, 'inventario', 'solicitudes');
-
   // Definición de Columnas para DataTable
   const columns = useMemo<TableColumn<InventoryMovement>[]>(() => [
     {
@@ -279,15 +276,13 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
                           label="Consumo por Proyecto"
                           icon={<FiPieChart />}
                       />
-                      {canViewDispatch && (
-                          <ActionButton 
-                              onClick={() => setActiveTab('dispatch')} 
-                              className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-all border-b-2 whitespace-nowrap rounded-none bg-transparent shadow-none min-h-0 ${activeTab === 'dispatch' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-                              variant="secondary"
-                              label="Despacho"
-                              icon={<FiTruck />}
-                          />
-                      )}
+                      <ActionButton 
+                          onClick={() => setActiveTab('dispatch')} 
+                          className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-all border-b-2 whitespace-nowrap rounded-none bg-transparent shadow-none min-h-0 ${activeTab === 'dispatch' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                          variant="secondary"
+                          label="Despacho"
+                          icon={<FiTruck />}
+                      />
                     </>
                   )}
               </div>
@@ -342,7 +337,7 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
               )}
 
               {activeTab === 'consumption' && <ProjectConsumptionModule movements={movements} inventoryItems={inventoryItems} currentUser={currentUser} />}
-              {activeTab === 'dispatch' && canViewDispatch && <DispatchModule currentUser={currentUser} inventoryItems={inventoryItems} />}
+              {activeTab === 'dispatch' && <DispatchModule currentUser={currentUser} inventoryItems={inventoryItems} />}
           </div>
 
           <InventoryMovementModal 
