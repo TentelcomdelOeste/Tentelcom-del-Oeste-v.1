@@ -1,35 +1,175 @@
 import React, { useState, useMemo } from 'react';
 import { User } from '../../../../types';
 import { mockVehicles, mockWarehouseItems } from '../mockData';
-import { ActionButton, DataTable, TableColumn, SearchInput } from '../../../../design-system';
+import { ActionButton, DataTable, TableColumn, SearchInput, Select } from '../../../../design-system';
 import { FiTruck, FiUploadCloud } from 'react-icons/fi';
-import { VehicleWarehouseItem } from '../../../../types/vehicleWarehouse.types';
+import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
 
 interface Props {
   currentUser?: User | null;
+  items?: VehicleWarehouseItem[];
+  setItems?: React.Dispatch<React.SetStateAction<VehicleWarehouseItem[]>>;
+  onRegisterMovement?: (movement: VehicleMovement) => void;
 }
 
-export const VehicleInventoryTab: React.FC<Props> = ({ currentUser }) => {
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(mockVehicles[0].id);
+export const VehicleInventoryTab: React.FC<Props> = ({
+  currentUser,
+  items: externalItems,
+  setItems: externalSetItems,
+  onRegisterMovement
+}) => {
+  // Local fallback if not provided by parent
+  const [internalItems, setInternalItems] = useState<VehicleWarehouseItem[]>(mockWarehouseItems);
+  const items = externalItems || internalItems;
+  const setItems = externalSetItems || setInternalItems;
+
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(
+    mockVehicles.length > 0 ? mockVehicles[0].id : ''
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [showTransferModal, setShowTransferModal] = useState(false);
 
-  // Mock state to allow simulating transfers visually without touching DB
-  const [localItems, setLocalItems] = useState<VehicleWarehouseItem[]>(mockWarehouseItems);
-
-  const selectedVehicle = mockVehicles.find(v => v.id === selectedVehicleId);
+  const selectedVehicle = useMemo(() => {
+    return mockVehicles.find(v => v.id === selectedVehicleId) || mockVehicles[0];
+  }, [selectedVehicleId]);
 
   const filteredItems = useMemo(() => {
-    return localItems.filter(item => {
+    return items.filter(item => {
       if (item.vehiculoId !== selectedVehicleId) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
-        return item.code.toLowerCase().includes(q) || item.description.toLowerCase().includes(q);
+        return (
+          item.code.toLowerCase().includes(q) ||
+          item.description.toLowerCase().includes(q) ||
+          item.category.toLowerCase().includes(q)
+        );
       }
       return true;
     });
-  }, [localItems, selectedVehicleId, searchTerm]);
+  }, [items, selectedVehicleId, searchTerm]);
+
+  const originItemsForModal = useMemo(() => {
+    return items.filter(item => item.vehiculoId === selectedVehicleId);
+  }, [items, selectedVehicleId]);
+
+  const handleExecuteTransfer = ({
+    originVehicleId,
+    targetVehicleId,
+    inventoryItemId,
+    quantity
+  }: {
+    originVehicleId: string;
+    targetVehicleId: string;
+    inventoryItemId: string;
+    quantity: number;
+  }) => {
+    const originItem = items.find(
+      i => i.vehiculoId === originVehicleId && i.inventoryItemId === inventoryItemId
+    );
+    const originVeh = mockVehicles.find(v => v.id === originVehicleId);
+    const targetVeh = mockVehicles.find(v => v.id === targetVehicleId);
+
+    if (!originItem || !originVeh || !targetVeh) return;
+
+    const availableToTransfer = originItem.physicalStock - originItem.committedStock;
+    if (quantity <= 0 || quantity > availableToTransfer || originItem.physicalStock - quantity < 0) {
+      alert('Operación no permitida: la cantidad excede la disponibilidad transferible.');
+      return;
+    }
+
+    const previousOriginPhysical = originItem.physicalStock;
+    const newOriginPhysical = originItem.physicalStock - quantity;
+
+    // Update state
+    setItems(prevItems => {
+      const updated = [...prevItems];
+
+      // 1. Descontar en vehículo origen
+      const origIndex = updated.findIndex(
+        i => i.vehiculoId === originVehicleId && i.inventoryItemId === inventoryItemId
+      );
+      if (origIndex >= 0) {
+        const o = updated[origIndex];
+        const newPhys = o.physicalStock - quantity;
+        updated[origIndex] = {
+          ...o,
+          physicalStock: newPhys,
+          committedStock: o.committedStock, // Mantiene intacto el stock comprometido
+          availableStock: Math.max(0, newPhys - o.committedStock),
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser?.id || currentUser?.email || 'usuario'
+        };
+      }
+
+      // 2. Aumentar en vehículo destino
+      const destIndex = updated.findIndex(
+        i => i.vehiculoId === targetVehicleId && i.inventoryItemId === inventoryItemId
+      );
+      if (destIndex >= 0) {
+        const d = updated[destIndex];
+        const newPhys = d.physicalStock + quantity;
+        updated[destIndex] = {
+          ...d,
+          physicalStock: newPhys,
+          availableStock: Math.max(0, newPhys - d.committedStock),
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser?.id || currentUser?.email || 'usuario'
+        };
+      } else {
+        // Crear registro en destino si aún no existía
+        const newItem: VehicleWarehouseItem = {
+          id: `${targetVehicleId}_${originItem.inventoryItemId}`,
+          vehiculoId: targetVehicleId,
+          vehiculoPlaca: targetVeh.placa,
+          vehiculoAlias: targetVeh.alias,
+          inventoryItemId: originItem.inventoryItemId,
+          code: originItem.code,
+          description: originItem.description,
+          category: originItem.category,
+          unit: originItem.unit,
+          physicalStock: quantity,
+          committedStock: 0,
+          availableStock: quantity,
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser?.id || currentUser?.email || 'usuario'
+        };
+        updated.push(newItem);
+      }
+
+      return updated;
+    });
+
+    // 3. Registrar movimiento de trazabilidad
+    if (onRegisterMovement) {
+      const newMovement: VehicleMovement = {
+        id: `mov-${Date.now()}`,
+        movementNumber: `MOV-VEH-${Date.now().toString().slice(-4)}`,
+        type: 'Traslado_Salida',
+        vehiculoId: originVeh.id,
+        vehiculoPlaca: originVeh.placa,
+        targetVehiculoId: targetVeh.id,
+        items: [
+          {
+            inventoryItemId: originItem.inventoryItemId,
+            code: originItem.code,
+            description: originItem.description,
+            quantity: quantity,
+            previousPhysicalStock: previousOriginPhysical,
+            newPhysicalStock: newOriginPhysical,
+            previousCommittedStock: originItem.committedStock,
+            newCommittedStock: originItem.committedStock
+          }
+        ],
+        date: new Date().toISOString().split('T')[0],
+        reason: `Transferencia entre bodegas vehiculares: ${originVeh.alias} (${originVeh.placa}) → ${targetVeh.alias} (${targetVeh.placa})`,
+        performedBy: currentUser?.id || 'usuario',
+        performedByName: currentUser?.name || currentUser?.email || 'Usuario',
+        createdAt: new Date().toISOString()
+      };
+      onRegisterMovement(newMovement);
+    }
+  };
 
   const columns: TableColumn<VehicleWarehouseItem>[] = [
     {
@@ -42,7 +182,11 @@ export const VehicleInventoryTab: React.FC<Props> = ({ currentUser }) => {
     },
     {
       header: 'Categoría',
-      accessor: (item) => <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-[10px] font-bold">{item.category}</span>
+      accessor: (item) => (
+        <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-[10px] font-bold">
+          {item.category}
+        </span>
+      )
     },
     {
       header: 'Unidad',
@@ -51,45 +195,46 @@ export const VehicleInventoryTab: React.FC<Props> = ({ currentUser }) => {
     {
       header: 'Físico (Real)',
       accessor: (item) => (
-        <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-md">{item.physicalStock}</span>
+        <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-md">
+          {item.physicalStock}
+        </span>
       )
     },
     {
       header: 'Comprometido',
       accessor: (item) => (
-        <span className="font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">{item.committedStock}</span>
+        <span className="font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
+          {item.committedStock}
+        </span>
       )
     },
     {
       header: 'Disponible',
       accessor: (item) => (
-        <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">{item.availableStock}</span>
+        <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">
+          {item.availableStock}
+        </span>
       )
     }
   ];
 
   return (
     <div className="space-y-6">
-      
       {/* Selector de Vehículo y Acciones */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
         <div className="w-full md:w-1/3">
-          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Vehículo Seleccionado</label>
-          <div className="relative">
-            <select
-              value={selectedVehicleId}
-              onChange={(e) => setSelectedVehicleId(e.target.value)}
-              className="w-full p-3 pl-10 pr-10 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
-            >
-              {mockVehicles.map(v => (
-                <option key={v.id} value={v.id}>{v.alias} - {v.placa}</option>
-              ))}
-            </select>
-            <FiTruck className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 text-lg" />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-              ▼
-            </div>
-          </div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+            Vehículo Seleccionado
+          </label>
+          <Select
+            options={mockVehicles.map(v => ({
+              value: v.id,
+              label: v.displayName || v.alias
+            }))}
+            value={selectedVehicleId}
+            onChange={(val) => setSelectedVehicleId(val)}
+            placeholder="Buscar vehículo..."
+          />
         </div>
 
         <div className="w-full md:w-auto mt-2 md:mt-0">
@@ -109,12 +254,14 @@ export const VehicleInventoryTab: React.FC<Props> = ({ currentUser }) => {
           <SearchInput
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar material..."
+            placeholder="Buscar material en esta bodega..."
           />
         </div>
         <div className="flex-1 overflow-auto bg-slate-50/30 p-2 md:p-0">
           {filteredItems.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 font-medium">No hay inventario registrado.</div>
+            <div className="p-8 text-center text-slate-500 font-medium">
+              No hay inventario registrado en la bodega del vehículo {selectedVehicle?.alias}.
+            </div>
           ) : (
             <>
               {/* Desktop Table */}
@@ -134,7 +281,9 @@ export const VehicleInventoryTab: React.FC<Props> = ({ currentUser }) => {
                     <div className="mb-3">
                       <p className="font-bold text-slate-800 text-sm">{item.description}</p>
                       <div className="flex justify-between items-center mt-1">
-                        <p className="font-mono text-[10px] text-slate-500">{item.code} • {item.category}</p>
+                        <p className="font-mono text-[10px] text-slate-500">
+                          {item.code} • {item.category}
+                        </p>
                         <span className="text-[10px] font-bold text-slate-500 uppercase">{item.unit}</span>
                       </div>
                     </div>
@@ -161,27 +310,16 @@ export const VehicleInventoryTab: React.FC<Props> = ({ currentUser }) => {
         </div>
       </div>
 
-      <TransferToVehicleModal 
+      {/* Modal de Transferencia entre Bodegas Vehiculares */}
+      <TransferToVehicleModal
         show={showTransferModal}
         onClose={() => setShowTransferModal(false)}
-        selectedVehicle={selectedVehicle}
-        onSimulateTransfer={(newItem) => {
-          setLocalItems(prev => {
-            const existsIndex = prev.findIndex(i => i.id === newItem.id);
-            if (existsIndex >= 0) {
-              const clone = [...prev];
-              clone[existsIndex] = {
-                ...clone[existsIndex],
-                physicalStock: clone[existsIndex].physicalStock + newItem.physicalStock,
-                availableStock: clone[existsIndex].availableStock + newItem.physicalStock
-              };
-              return clone;
-            }
-            return [...prev, newItem];
-          });
-        }}
+        originVehicle={selectedVehicle}
+        originItems={originItemsForModal}
+        allVehicles={mockVehicles}
+        allItems={items}
+        onTransfer={handleExecuteTransfer}
       />
-
     </div>
   );
 };
