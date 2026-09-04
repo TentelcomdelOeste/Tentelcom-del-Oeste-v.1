@@ -135,7 +135,7 @@ service cloud.firestore {
     }
     match /inventory_items/{id} {
       allow read: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isSupervisor();
-      allow update: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos");
+      allow update: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || (hasNestedPermission("inventario", "solicitudes") && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reserved']));
       allow create, delete: if hasNestedPermission("inventario", "general") || isAdmin();
     }
     match /inventory_movements/{id} {
