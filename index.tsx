@@ -32,8 +32,9 @@ async function bootstrap() {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!refreshing) {
         refreshing = true;
-        console.log('[SW] Controlador actualizado. Recargando página...');
-        window.location.reload();
+        console.log('[SW] Controlador actualizado. El nuevo SW ha tomado el control.');
+        // Se comenta window.location.reload() para evitar parpadeos blancos durante el arranque.
+        // window.location.reload();
       }
     });
   }
