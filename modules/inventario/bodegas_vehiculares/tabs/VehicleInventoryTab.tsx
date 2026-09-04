@@ -11,22 +11,29 @@ interface Props {
   items?: VehicleWarehouseItem[];
   setItems?: React.Dispatch<React.SetStateAction<VehicleWarehouseItem[]>>;
   onRegisterMovement?: (movement: VehicleMovement) => void;
+  selectedVehicleId?: string;
+  onSelectVehicleId?: (id: string) => void;
 }
 
 export const VehicleInventoryTab: React.FC<Props> = ({
   currentUser,
   items: externalItems,
   setItems: externalSetItems,
-  onRegisterMovement
+  onRegisterMovement,
+  selectedVehicleId: externalSelectedVehicleId,
+  onSelectVehicleId
 }) => {
   // Local fallback if not provided by parent
   const [internalItems, setInternalItems] = useState<VehicleWarehouseItem[]>(mockWarehouseItems);
   const items = externalItems || internalItems;
   const setItems = externalSetItems || setInternalItems;
 
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(
+  const [internalVehicleId, setInternalVehicleId] = useState<string>(
     mockVehicles.length > 0 ? mockVehicles[0].id : ''
   );
+  const selectedVehicleId = externalSelectedVehicleId ?? internalVehicleId;
+  const setSelectedVehicleId = onSelectVehicleId ?? setInternalVehicleId;
+
   const [searchTerm, setSearchTerm] = useState('');
   const [showTransferModal, setShowTransferModal] = useState(false);
 

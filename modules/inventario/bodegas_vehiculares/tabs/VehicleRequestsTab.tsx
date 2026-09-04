@@ -12,9 +12,10 @@ import { format } from 'date-fns';
 
 interface Props {
   currentUser?: User | null;
+  selectedVehicleId?: string;
 }
 
-export const VehicleRequestsTab: React.FC<Props> = ({ currentUser }) => {
+export const VehicleRequestsTab: React.FC<Props> = ({ currentUser, selectedVehicleId }) => {
   const confirm = useConfirm();
   const [localRequests, setLocalRequests] = useState<VehicleMaterialRequest[]>(mockMaterialRequests);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -171,6 +172,7 @@ export const VehicleRequestsTab: React.FC<Props> = ({ currentUser }) => {
 
       <VehicleRequestModal 
         show={showNewModal} 
+        initialVehicleId={selectedVehicleId}
         onClose={() => setShowNewModal(false)}
         onSave={(newReq) => {
           setLocalRequests([newReq, ...localRequests.filter(r => r.id !== newReq.id)]);
@@ -181,6 +183,7 @@ export const VehicleRequestsTab: React.FC<Props> = ({ currentUser }) => {
         <VehicleRequestModal 
           show={true}
           initialData={requestToEdit}
+          initialVehicleId={requestToEdit.vehiculoId || selectedVehicleId}
           onClose={() => setRequestToEdit(null)}
           onSave={(updatedReq) => {
             setLocalRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
