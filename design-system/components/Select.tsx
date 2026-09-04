@@ -9,6 +9,7 @@ interface SelectProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 
   onChange: (value: any) => void;
   placeholder?: string;
   isSearchable?: boolean;
+  allowCustomValue?: boolean;
   error?: boolean | string;
   usePortal?: boolean;
 }
@@ -20,6 +21,7 @@ export const Select: React.FC<SelectProps> = ({
   onChange, 
   placeholder,
   isSearchable = true,
+  allowCustomValue = false,
   className = "",
   error,
   usePortal = false,
@@ -124,8 +126,12 @@ export const Select: React.FC<SelectProps> = ({
   }, [isOpen, usePortal]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
     if (isSearchable) {
-      setSearchText(e.target.value);
+      setSearchText(val);
+    }
+    if (allowCustomValue) {
+      onChange(val);
     }
     setIsOpen(true);
   };
@@ -143,7 +149,9 @@ export const Select: React.FC<SelectProps> = ({
 
   const displayValue = useMemo(() => {
     try {
-        if (isOpen && isSearchable) return searchText;
+        if (isOpen && isSearchable && searchText !== "") {
+          return searchText;
+        }
         if (value === undefined || value === null || value === "") return "";
         if (!Array.isArray(options)) return String(value);
 

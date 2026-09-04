@@ -7,6 +7,7 @@ import { MaterialRequest } from '../dispatchTypes';
 import { normalizeOrigin } from '../utils/originUtils';
 import { DataTable, TableColumn, IconButton, ACTION_ICONS, StatusBadge, ActionButton, SearchInput, Select } from '../design-system';
 import { FiPackage, FiInfo, FiX, FiAlertCircle, FiAlertTriangle } from "react-icons/fi";
+import { generateMaterialRequestPDF } from '../utils/pdfGenerator';
 
 interface DispatchModuleProps {
   currentUser: User;
@@ -22,6 +23,27 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+
+  const handleDownloadPdf = async (req: MaterialRequest) => {
+    if (!req) {
+      setErrorMsg("No se encontró la solicitud.");
+      setTimeout(() => setErrorMsg(null), 4000);
+      return;
+    }
+
+    setDownloadingPdfId(req.id);
+    setErrorMsg(null);
+    try {
+      await generateMaterialRequestPDF(req);
+    } catch (err: any) {
+      console.error("Error al generar PDF de la solicitud:", err);
+      setErrorMsg("No fue posible generar el PDF de la solicitud. Intente nuevamente.");
+      setTimeout(() => setErrorMsg(null), 4000);
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  };
 
   // Historial de responsables
   const [responsibleHistory, setResponsibleHistory] = useState<{label: string, value: string}[]>([]);
@@ -229,26 +251,37 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
     {
       header: 'Acción',
       align: 'center',
-      render: (req) => (
-        <div className="flex justify-center items-center gap-2">
-            <ActionButton 
-                onClick={() => handleOpenModal(req)}
-                variant={req.status.toUpperCase() === 'DESPACHADA' ? 'ghost' : 'primary'}
-                label={req.status.toUpperCase() === 'DESPACHADA' ? 'Despachada' : 'Despachar'}
-                icon={<FiPackage />}
-                size="sm"
-                disabled={req.status.toUpperCase() === 'DESPACHADA'}
-            />
-            <IconButton 
-                icon={<ACTION_ICONS.delete />} 
-                onClick={() => setConfirmDeleteModal({ show: true, request: req })} 
-                variant="danger" 
-                title="Eliminar Solicitud"
-            />
-        </div>
-      )
+      render: (req) => {
+        const isDownloading = downloadingPdfId === req.id;
+        return (
+          <div className="flex justify-center items-center gap-2">
+              <ActionButton 
+                  onClick={() => handleOpenModal(req)}
+                  variant={req.status.toUpperCase() === 'DESPACHADA' ? 'ghost' : 'primary'}
+                  label={req.status.toUpperCase() === 'DESPACHADA' ? 'Despachada' : 'Despachar'}
+                  icon={<FiPackage />}
+                  size="sm"
+                  disabled={req.status.toUpperCase() === 'DESPACHADA'}
+              />
+              <IconButton 
+                  icon={<ACTION_ICONS.pdf />} 
+                  onClick={() => handleDownloadPdf(req)} 
+                  variant="danger" 
+                  title="Descargar PDF de solicitud"
+                  disabled={isDownloading}
+                  className={isDownloading ? "animate-pulse opacity-60" : ""}
+              />
+              <IconButton 
+                  icon={<ACTION_ICONS.delete />} 
+                  onClick={() => setConfirmDeleteModal({ show: true, request: req })} 
+                  variant="danger" 
+                  title="Eliminar Solicitud"
+              />
+          </div>
+        );
+      }
     }
-  ], []);
+  ], [downloadingPdfId]);
 
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
@@ -266,6 +299,13 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
             </p>
         </div>
       </div>
+
+      {!showModal && errorMsg && (
+          <div className="bg-red-100 border border-red-200 text-red-800 p-4 rounded-xl text-center font-bold flex items-center justify-center gap-2">
+              <FiAlertCircle className="w-5 h-5 flex-none" />
+              <span>{errorMsg}</span>
+          </div>
+      )}
 
       {successMsg && (
           <div className="bg-green-100 border border-green-200 text-green-800 p-4 rounded-xl text-center font-bold animate-pulse">
@@ -345,6 +385,7 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
                                 onChange={(val) => setResponsibleName(val)}
                                 placeholder="Nombre de quien entrega"
                                 isSearchable={true}
+                                allowCustomValue={true}
                             />
                         </div>
                     </div>

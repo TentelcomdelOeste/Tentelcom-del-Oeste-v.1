@@ -636,29 +636,37 @@ export const MaterialRequestModal = ({
                                 )}
                                 {showItemSuggestions && !isMobile && (
                                     <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-2 z-[210] max-h-48 overflow-y-auto custom-scrollbar border-t-4 border-t-emerald-500">
-                                        {filteredItems.map(item => {
-                                            const available = (item.stock || 0) - (item.reserved || 0);
-                                            const isOutOfStock = available <= 0;
-                                            
-                                            return (
-                                                <div 
-                                                    key={item.id}
-                                                    onClick={() => {
-                                                        setTempItemId(item.id);
-                                                        setItemSearch(`${item.code} - ${item.description}`);
-                                                        setShowItemSuggestions(false);
-                                                        setTimeout(() => qtyInputRef.current?.focus(), 100);
-                                                    }}
-                                                    className={`p-2.5 border-b border-slate-50 last:border-0 transition-colors ${isOutOfStock ? 'bg-amber-50/30 hover:bg-amber-50 cursor-pointer' : 'hover:bg-blue-50 cursor-pointer'}`}
-                                                >
-                                                    <p className="text-[10px] font-black text-slate-700">{item.code}</p>
-                                                    <p className="text-[10px] text-slate-500 truncate">{item.description}</p>
-                                                    <span className={`text-[9px] font-bold ${isOutOfStock ? 'text-amber-600' : 'text-blue-600'}`}>
-                                                        {isOutOfStock ? 'Sin stock (Generará faltante)' : `Disponible: ${available} ${item.unit}`}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
+                                        {filteredItems.length === 0 ? (
+                                            <div className="p-4 text-center">
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">
+                                                    {inventoryItems.length === 0 ? 'Cargando materiales o sin materiales disponibles' : 'No hay coincidencias para la búsqueda'}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            filteredItems.map(item => {
+                                                const available = (item.stock || 0) - (item.reserved || 0);
+                                                const isOutOfStock = available <= 0;
+                                                
+                                                return (
+                                                    <div 
+                                                        key={item.id}
+                                                        onClick={() => {
+                                                            setTempItemId(item.id);
+                                                            setItemSearch(`${item.code} - ${item.description}`);
+                                                            setShowItemSuggestions(false);
+                                                            setTimeout(() => qtyInputRef.current?.focus(), 100);
+                                                        }}
+                                                        className={`p-2.5 border-b border-slate-50 last:border-0 transition-colors ${isOutOfStock ? 'bg-amber-50/30 hover:bg-amber-50 cursor-pointer' : 'hover:bg-blue-50 cursor-pointer'}`}
+                                                    >
+                                                        <p className="text-[10px] font-black text-slate-700">{item.code}</p>
+                                                        <p className="text-[10px] text-slate-500 truncate">{item.description}</p>
+                                                        <span className={`text-[9px] font-bold ${isOutOfStock ? 'text-amber-600' : 'text-blue-600'}`}>
+                                                            {isOutOfStock ? 'Sin stock (Generará faltante)' : `Disponible: ${available} ${item.unit}`}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 )}
                             </div>

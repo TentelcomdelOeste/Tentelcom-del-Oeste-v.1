@@ -264,25 +264,45 @@ export const useDispatch = (currentUser: User | null) => {
 
         // Guardar historial de responsable (Aislado)
         if (dispatchData.responsibleName) {
-            const normalizedId = dispatchData.responsibleName.trim().toLowerCase();
-            const respRef = doc(db, "dispatch_responsibles", normalizedId);
-            try {
-                const respDoc = await getDoc(respRef);
-                if (respDoc.exists()) {
-                    await updateDoc(respRef, {
-                        lastUsed: new Date().toISOString(),
-                        usageCount: increment(1)
-                    });
-                } else {
-                    await setDoc(respRef, {
-                        id: normalizedId,
-                        name: dispatchData.responsibleName.trim(),
-                        lastUsed: new Date().toISOString(),
-                        usageCount: 1
-                    });
+            const cleanName = dispatchData.responsibleName.trim().replace(/\s+/g, ' ');
+            const normalizedId = cleanName.toLowerCase();
+            if (normalizedId) {
+                const respRef = doc(db, "dispatch_responsibles", normalizedId);
+                try {
+                    const respDoc = await getDoc(respRef);
+                    if (respDoc.exists()) {
+                        await updateDoc(respRef, {
+                            name: cleanName,
+                            lastUsed: new Date().toISOString(),
+                            usageCount: increment(1)
+                        });
+                    } else {
+                        await setDoc(respRef, {
+                            id: normalizedId,
+                            name: cleanName,
+                            lastUsed: new Date().toISOString(),
+                            usageCount: 1
+                        });
+                    }
+                } catch (e) {
+                    logger.warn("Error saving responsible history in Firestore:", e);
                 }
-            } catch (e) {
-                logger.warn("Error saving responsible history:", e);
+
+                // Guardar también en localStorage como respaldo local
+                try {
+                    const cacheKey = 'dispatch_responsibles_cache';
+                    const raw = localStorage.getItem(cacheKey);
+                    let list: { id: string; name: string; lastUsed: string }[] = raw ? JSON.parse(raw) : [];
+                    list = list.filter(item => item.id !== normalizedId);
+                    list.unshift({
+                        id: normalizedId,
+                        name: cleanName,
+                        lastUsed: new Date().toISOString()
+                    });
+                    localStorage.setItem(cacheKey, JSON.stringify(list.slice(0, 50)));
+                } catch (e) {
+                    // Ignore localStorage write error
+                }
             }
         }
 
@@ -349,17 +369,46 @@ export const useDispatch = (currentUser: User | null) => {
   }, [currentUser]);
 
   const getResponsibleHistory = useCallback(async () => {
+      const map = new Map<string, { label: string; value: string }>();
+
+      // 1. Obtener de localStorage como prioridad inmediata
+      try {
+          const raw = localStorage.getItem('dispatch_responsibles_cache');
+          if (raw) {
+              const localList: { id: string; name: string }[] = JSON.parse(raw);
+              localList.forEach(item => {
+                  if (item?.name) {
+                      const clean = item.name.trim().replace(/\s+/g, ' ');
+                      const norm = clean.toLowerCase();
+                      if (norm) {
+                          map.set(norm, { label: clean, value: clean });
+                      }
+                  }
+              });
+          }
+      } catch (e) {
+          // Ignore local storage read errors
+      }
+
+      // 2. Obtener de Firestore
       try {
           const q = query(collection(db, "dispatch_responsibles"), orderBy("lastUsed", "desc"));
           const querySnapshot = await getDocs(q);
-          return querySnapshot.docs.map(doc => ({
-              label: doc.data().name,
-              value: doc.data().name
-          }));
+          querySnapshot.docs.forEach(docSnap => {
+              const data = docSnap.data();
+              if (data?.name) {
+                  const clean = String(data.name).trim().replace(/\s+/g, ' ');
+                  const norm = clean.toLowerCase();
+                  if (norm) {
+                      map.set(norm, { label: clean, value: clean });
+                  }
+              }
+          });
       } catch (e) {
-          logger.error("Error fetching responsible history:", e);
-          return [];
+          logger.error("Error fetching responsible history from Firestore:", e);
       }
+
+      return Array.from(map.values());
   }, []);
 
   return {

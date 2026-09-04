@@ -27,23 +27,36 @@ service cloud.firestore {
       let userDoc = getUserData();
       return isAuthenticated() && userDoc != null && (
         isAdmin() ||
-        (userDoc.data.permissions != null && userDoc.data.permissions[path] == true)
+        (userDoc.data.permissions != null && (
+          (path in userDoc.data.permissions && userDoc.data.permissions[path] == true) ||
+          (path in userDoc.data.permissions && userDoc.data.permissions[path] is map)
+        ))
       );
     }
 
     function hasNestedPermission(module, submodule) {
       let userDoc = getUserData();
+      let dotKey = module + "." + submodule;
       return isAuthenticated() && userDoc != null && (
         isAdmin() ||
-        (userDoc.data.permissions != null && 
-         userDoc.data.permissions[module] != null && 
-         userDoc.data.permissions[module][submodule] == true)
+        (userDoc.data.permissions != null && (
+          (dotKey in userDoc.data.permissions && userDoc.data.permissions[dotKey] == true) ||
+          (module in userDoc.data.permissions && userDoc.data.permissions[module] == true) ||
+          (module in userDoc.data.permissions && 
+           userDoc.data.permissions[module] is map && 
+           submodule in userDoc.data.permissions[module] && 
+           userDoc.data.permissions[module][submodule] == true)
+        ))
       );
     }
 
     function isSupervisor() {
       let userDoc = getUserData();
-      return isAuthenticated() && userDoc != null && userDoc.data.role == "supervisor";
+      return isAuthenticated() && userDoc != null && userDoc.data.role != null && (
+        userDoc.data.role == "supervisor" ||
+        userDoc.data.role == "Supervisor" ||
+        userDoc.data.role == "SUPERVISOR"
+      );
     }
 
     function isAdjustmentField(data) {
@@ -82,7 +95,7 @@ service cloud.firestore {
 
     // COTIZACIONES
     match /quotes/{id} {
-      allow read, write: if hasPermission("cotizaciones");
+      allow read, write: if hasPermission("cotizaciones") || hasPermission("pre_analysis");
     }
 
     // CATÁLOGO EXTERNO
@@ -99,10 +112,9 @@ service cloud.firestore {
       }
     }
 
-    // COUNTERS (PARA OT CODES)
+    // COUNTERS (PARA OT CODES, SOLICITUDES, CLIENTES, ETC.)
     match /counters/{id} {
-      allow read: if isAuthenticated();
-      allow write: if hasPermission("trabajos");
+      allow read, write: if isAuthenticated();
     }
 
     // JOB TYPES
@@ -113,24 +125,33 @@ service cloud.firestore {
 
     // LOGS DE REPORTES DE MATERIALES
     match /material_reports_log/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos");
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isSupervisor();
     }
 
     // INVENTARIO
     match /inventory/{id} {
-      allow read, write: if hasNestedPermission("inventario", "general");
+      allow read: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isSupervisor();
+      allow write: if hasNestedPermission("inventario", "general");
     }
     match /inventory_items/{id} {
-      allow read, write: if hasNestedPermission("inventario", "general");
+      allow read: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isSupervisor();
+      allow update: if hasNestedPermission("inventario", "general") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos");
+      allow create, delete: if hasNestedPermission("inventario", "general") || isAdmin();
     }
     match /inventory_movements/{id} {
-      allow read, write: if hasNestedPermission("inventario", "movimientos");
+      allow read, write: if hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos");
     }
     match /material_reports/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes");
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isSupervisor();
     }
     match /materialRequests/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes");
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isSupervisor();
+    }
+    match /material_dispatches/{id} {
+      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isSupervisor();
+    }
+    match /dispatch_responsibles/{id} {
+      allow read, write: if isAuthenticated();
     }
 
     // FINANZAS

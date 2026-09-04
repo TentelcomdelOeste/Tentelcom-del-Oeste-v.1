@@ -728,6 +728,10 @@ export const generatePaystubPDF = async (entry: PayStub, employee: Employee): Pr
 };
 
 export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
+  if (!request) {
+    throw new Error("No se encontró la solicitud.");
+  }
+
   // Validation before generation
   let validationField = '';
   if (request.origin === "IBUX-CLARO") validationField = request.fdh || '';
@@ -735,15 +739,15 @@ export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
   else if (request.origin === "PRIVADO") validationField = request.projectName || '';
 
   if (!validationField) {
-      console.error("No se puede generar el PDF: Falta el campo identificador para el origen", request.origin);
-      return;
+      validationField = request.projectName || request.requestNumber || request.id || 'SOL';
   }
 
-  const tableData = request.items.map(item => {
-    const quantityToDeliver = item.quantityRequested - (item.shortageQty || 0);
+  const items = request.items || [];
+  const tableData = items.map(item => {
+    const quantityToDeliver = (item.quantityRequested || 0) - (item.shortageQty || 0);
     return [
-        item.code,
-        item.description,
+        item.code || '',
+        item.description || '',
         quantityToDeliver.toString(),
         item.comment || ''
     ];
@@ -1067,12 +1071,13 @@ export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
   }
 
   if (!baseName) {
-      console.warn("Missing required field for filename based on origin:", request.origin);
+      baseName = request.projectName || request.requestNumber || request.id || 'SOL';
   }
   
   const fileName = `Solicitud_Materiales_${baseName.replace(/[\s-]+/g, '_')}.pdf`;
   const blob = docPdf.output('blob');
   triggerFileDownload(blob, fileName);
+  return true;
 };
 
 export const generateShortagePDF = async (shortage: Shortage) => {

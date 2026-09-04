@@ -86,9 +86,19 @@ export const useInventory = (currentUser: User | null) => {
   }, [items, getReservedByItem]);
 
   useEffect(() => {
+    const isSupervisorRole = currentUser?.role?.toLowerCase() === 'supervisor';
+    const isEmpleadoRole = currentUser?.role?.toLowerCase() === 'empleado';
+
     const canViewInventory = authReady && currentUser?.uid && (
       currentUser.role === 'admin' || 
-      hasPermission(currentUser, 'inventario', 'general')
+      isSupervisorRole ||
+      hasPermission(currentUser, 'inventario', 'general') ||
+      hasPermission(currentUser, 'inventario', 'solicitudes') ||
+      hasPermission(currentUser, 'inventario', 'movimientos') ||
+      hasPermission(currentUser, 'trabajos') ||
+      can(currentUser, 'inventario.solicitudes') ||
+      can(currentUser, 'solicitudes') ||
+      isEmpleadoRole
     );
 
     // Guard: Prevent queries if Auth is not completely ready and authenticated

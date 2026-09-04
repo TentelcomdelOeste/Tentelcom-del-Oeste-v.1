@@ -39,7 +39,16 @@ export const hasPermission = (user: User | null, moduleKey: string, submoduleKey
   }
 
   try {
+    // Check flat key directly if submoduleKey is provided (e.g. "inventario.solicitudes")
+    if (submoduleKey) {
+      const flatKey = `${moduleKey}.${submoduleKey}`;
+      if (user.permissions[flatKey] === true) return true;
+    }
+
     const modulePerms = user.permissions[moduleKey];
+
+    // Check if flat key for moduleKey exists directly
+    if (user.permissions[moduleKey] === true) return true;
 
     // 3. Si el módulo no existe en el objeto del usuario -> False
     if (modulePerms === undefined) return false;
@@ -49,7 +58,7 @@ export const hasPermission = (user: User | null, moduleKey: string, submoduleKey
 
     // 5. Caso: Permiso Anidado (Submódulo específico)
     if (submoduleKey && typeof modulePerms === 'object' && modulePerms !== null) {
-        return modulePerms[submoduleKey] === true; 
+        if (modulePerms[submoduleKey] === true) return true; 
     }
 
     // 6. Caso: Pregunta por módulo padre que es objeto -> Retornar true si el objeto existe
