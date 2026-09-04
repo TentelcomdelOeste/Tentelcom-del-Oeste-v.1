@@ -430,10 +430,9 @@ export const useMaterialRequests = (currentUser: User | null) => {
   const updateRequestStatus = useCallback(async (requestId: string, status: RequestStatus) => {
       if (!currentUser) throw new Error("No autenticado");
       
-      const canManage = isAdmin(currentUser.role) || 
-                        hasPermission(currentUser, 'inventario', 'solicitudes');
-
-      if (!canManage) throw new Error("No tiene permisos para gestionar estados.");
+      if (!isAdmin(currentUser.role)) {
+          throw new Error("Solo un administrador puede aprobar o rechazar solicitudes.");
+      }
 
       const reqRef = doc(db, "material_reports", requestId);
       const reqSnap = await getDoc(reqRef);

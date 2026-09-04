@@ -142,10 +142,22 @@ service cloud.firestore {
       allow read, write: if hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin();
     }
     match /material_reports/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow read: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow create: if (hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin()) && (isAdmin() || !('status' in request.resource.data) || !(request.resource.data.status in ['Aprobada', 'Rechazada']));
+      allow delete: if hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin();
+      allow update: if isAdmin() || (
+        (hasNestedPermission("inventario", "movimientos") && (!('status' in request.resource.data) || request.resource.data.status in ['Despachada', 'Parcial'] || request.resource.data.status == resource.data.status)) ||
+        ((hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos")) && (!('status' in request.resource.data) || !(request.resource.data.status in ['Aprobada', 'Rechazada'])))
+      );
     }
     match /materialRequests/{id} {
-      allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow read: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "reportes") || hasPermission("trabajos") || isAdmin();
+      allow create: if (hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin()) && (isAdmin() || !('status' in request.resource.data) || !(request.resource.data.status in ['Aprobada', 'Rechazada']));
+      allow delete: if hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin();
+      allow update: if isAdmin() || (
+        (hasNestedPermission("inventario", "movimientos") && (!('status' in request.resource.data) || request.resource.data.status in ['Despachada', 'Parcial'] || request.resource.data.status == resource.data.status)) ||
+        ((hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos")) && (!('status' in request.resource.data) || !(request.resource.data.status in ['Aprobada', 'Rechazada'])))
+      );
     }
     match /material_dispatches/{id} {
       allow read, write: if hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isAdmin();

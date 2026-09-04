@@ -278,6 +278,7 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
       mobileGrid: 'full',
       mobileOrder: 6,
       render: (req) => {
+          const canApproveReject = isAdmin(currentUser.role);
           const canManage = isAdmin(currentUser.role) || hasPermission(currentUser, 'inventario', 'solicitudes');
           const isCreator = req.requestedBy === currentUser.id;
           const canDelete = canManage 
@@ -287,8 +288,8 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
           return (
               <div className="flex flex-wrap justify-center gap-2 py-2 md:py-1 bg-slate-50/80 rounded-xl md:bg-transparent border border-slate-100 md:border-none mt-1 md:mt-0">
                   <ActionButtons 
-                      onApprove={canManage && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Aprobada') : undefined}
-                      onReject={canManage && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Rechazada') : undefined}
+                      onApprove={canApproveReject && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Aprobada') : undefined}
+                      onReject={canApproveReject && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Rechazada') : undefined}
                       onEdit={req.status === 'Pendiente' ? () => handleEdit(req) : undefined}
                       onDelete={canDelete ? () => handleDelete(req) : undefined}
                       onPdf={() => generateMaterialRequestPDF(req)}
@@ -381,6 +382,7 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
                     ) : (
                       <>
                         {filteredRequests.map((req) => {
+                          const canApproveReject = isAdmin(currentUser.role);
                           const canManage = isAdmin(currentUser.role) || hasPermission(currentUser, 'inventario', 'solicitudes');
                           const isCreator = req.requestedBy === currentUser.id;
                           const canDelete = canManage 
@@ -442,8 +444,8 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
 
                               <div className="flex justify-end pt-1">
                                 <ActionButtons 
-                                  onApprove={canManage && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Aprobada') : undefined}
-                                  onReject={canManage && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Rechazada') : undefined}
+                                  onApprove={canApproveReject && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Aprobada') : undefined}
+                                  onReject={canApproveReject && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Rechazada') : undefined}
                                   onEdit={req.status === 'Pendiente' ? () => handleEdit(req) : undefined}
                                   onDelete={canDelete ? () => handleDelete(req) : undefined}
                                   onPdf={() => generateMaterialRequestPDF(req)}
