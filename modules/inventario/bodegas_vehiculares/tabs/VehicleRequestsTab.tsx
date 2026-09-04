@@ -51,7 +51,7 @@ export const VehicleRequestsTab: React.FC<Props> = ({
   const columns: TableColumn<VehicleMaterialRequest>[] = [
     {
       header: 'Solicitud',
-      accessor: (req) => (
+      render: (req) => (
         <div>
           <p className="font-mono text-xs font-bold text-slate-700">{req.requestNumber}</p>
           <p className="text-[10px] text-slate-500">{format(new Date(req.openedAt), 'dd/MM/yyyy HH:mm')}</p>
@@ -60,11 +60,11 @@ export const VehicleRequestsTab: React.FC<Props> = ({
     },
     {
       header: 'Vehículo',
-      accessor: (req) => <span className="font-bold text-slate-600">{req.vehiculoAlias}</span>
+      render: (req) => <span className="font-bold text-slate-600">{req.vehiculoAlias}</span>
     },
     {
       header: 'Proyecto',
-      accessor: (req) => (
+      render: (req) => (
         <div>
           <p className="font-bold text-xs text-slate-700">{req.projectCode}</p>
           <p className="text-[10px] text-slate-500 truncate max-w-[200px]">{req.projectName}</p>
@@ -73,11 +73,11 @@ export const VehicleRequestsTab: React.FC<Props> = ({
     },
     {
       header: 'Responsable',
-      accessor: 'responsibleName'
+      accessorKey: 'responsibleName'
     },
     {
       header: 'Estado',
-      accessor: (req) => (
+      render: (req) => (
         <StatusBadge 
           status={req.status} 
           variant={req.status === 'Abierta' ? 'warning' : req.status === 'Cerrada' ? 'success' : 'default'} 
@@ -86,12 +86,12 @@ export const VehicleRequestsTab: React.FC<Props> = ({
     },
     {
       header: 'Ítems',
-      accessor: (req) => <span className="font-bold text-slate-600">{req.items.length}</span>
+      render: (req) => <span className="font-bold text-slate-600">{req.items.length}</span>
     },
     {
       header: 'Acciones',
       align: 'center',
-      accessor: (req) => (
+      render: (req) => (
         <ActionButtons
           onView={() => setRequestToView(req)}
           onEdit={req.status === 'Abierta' ? () => setRequestToEdit(req) : undefined}

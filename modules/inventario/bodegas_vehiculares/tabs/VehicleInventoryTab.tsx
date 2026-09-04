@@ -243,15 +243,15 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   const columns: TableColumn<VehicleWarehouseItem>[] = [
     {
       header: 'Código',
-      accessor: (item) => <span className="font-mono text-xs text-slate-500">{item.code}</span>
+      render: (item) => <span className="font-mono text-xs text-slate-500">{item.code}</span>
     },
     {
       header: 'Descripción',
-      accessor: 'description'
+      accessorKey: 'description'
     },
     {
       header: 'Categoría',
-      accessor: (item) => (
+      render: (item) => (
         <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-[10px] font-bold">
           {item.category}
         </span>
@@ -259,11 +259,11 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     },
     {
       header: 'Unidad',
-      accessor: (item) => <span className="text-slate-500">{item.unit}</span>
+      render: (item) => <span className="text-slate-500">{item.unit}</span>
     },
     {
       header: 'Físico (Real)',
-      accessor: (item) => (
+      render: (item) => (
         <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-md">
           {item.physicalStock}
         </span>
@@ -271,7 +271,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     },
     {
       header: 'Comprometido',
-      accessor: (item) => (
+      render: (item) => (
         <span className="font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
           {item.committedStock}
         </span>
@@ -279,7 +279,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     },
     {
       header: 'Disponible',
-      accessor: (item) => (
+      render: (item) => (
         <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">
           {item.availableStock}
         </span>

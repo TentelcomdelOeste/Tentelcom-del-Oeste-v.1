@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActionButton, ActionButtons, StatusBadge } from '../../../../design-system';
+import { ActionButton, StatusBadge } from '../../../../design-system';
+import { ActionButtons } from '../../../../components/ui/ActionButtons';
 import { FiX, FiCheckCircle } from 'react-icons/fi';
 import { VehicleMaterialRequest } from '../../../../types/vehicleWarehouse.types';
 import { format } from 'date-fns';

@@ -46,8 +46,15 @@ async function bootstrap() {
 
   window.addEventListener("unhandledrejection", (event) => {
     if (event.reason?.message?.includes('Failed to fetch dynamically imported module')) {
-      console.warn('Dynamic import error caught. Reloading page...');
-      window.location.reload();
+      const reloadCount = sessionStorage.getItem('dynamic_import_reload') || '0';
+      if (parseInt(reloadCount) < 1) {
+        sessionStorage.setItem('dynamic_import_reload', '1');
+        console.warn('Dynamic import error caught. Reloading page...');
+        window.location.reload();
+      } else {
+        console.error('Dynamic import failed multiple times. Halting reload loop.');
+        sessionStorage.removeItem('dynamic_import_reload');
+      }
       return;
     }
     (window as any).__LAST_ERROR__ = {

@@ -197,7 +197,7 @@
         // }, 12000);
     </script>
     <script>
-        // Captura errores de carga de módulos (chunks)
+        // Captura errores de carga de módulos (chunks) con protección de bucle
         window.addEventListener('error', function(e) {
             if (e.message && (
                 e.message.includes('Loading chunk') ||
@@ -205,16 +205,30 @@
                 e.message.includes('Importing a module script failed') ||
                 e.message.includes('error loading dynamically imported module')
             )) {
-                console.warn('Chunk load error detected. Forcing reload to get latest version...');
-                window.location.reload(true);
+                var reloadCount = parseInt(sessionStorage.getItem('chunk_reload_count') || '0', 10);
+                if (reloadCount < 1) {
+                    sessionStorage.setItem('chunk_reload_count', '1');
+                    console.warn('Chunk load error detected. Forcing reload to get latest version...');
+                    window.location.reload(true);
+                } else {
+                    console.error('Chunk loading failed repeatedly. Halting reload loop.');
+                    sessionStorage.removeItem('chunk_reload_count');
+                }
             }
         }, true);
 
         // Captura errores no manejados de promesas (ej. imports dinámicos fallidos)
         window.onunhandledrejection = function(e) {
             if (e.reason && (e.reason.name === 'ChunkLoadError' || (e.reason.message && e.reason.message.includes('Loading chunk')))) {
-                console.warn('Unhandled ChunkLoadError detected. Forcing reload...');
-                window.location.reload(true);
+                var reloadCount = parseInt(sessionStorage.getItem('chunk_reload_count') || '0', 10);
+                if (reloadCount < 1) {
+                    sessionStorage.setItem('chunk_reload_count', '1');
+                    console.warn('Unhandled ChunkLoadError detected. Forcing reload...');
+                    window.location.reload(true);
+                } else {
+                    console.error('Chunk loading failed repeatedly. Halting reload loop.');
+                    sessionStorage.removeItem('chunk_reload_count');
+                }
             }
         };
     </script>

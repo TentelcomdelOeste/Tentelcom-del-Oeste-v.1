@@ -93,7 +93,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({
   const columns: TableColumn<VehicleMovement>[] = [
     {
       header: 'Fecha / Ref',
-      accessor: (mov) => (
+      render: (mov) => (
         <div>
           <p className="font-mono text-xs font-bold text-slate-700">{mov.movementNumber}</p>
           <p className="text-[10px] text-slate-500">{format(new Date(mov.createdAt), 'dd/MM/yyyy HH:mm')}</p>
@@ -102,13 +102,13 @@ export const VehicleMovementsTab: React.FC<Props> = ({
     },
     {
       header: 'Tipo',
-      accessor: (mov) => (
+      render: (mov) => (
         <StatusBadge status={getMovementLabel(mov.type)} variant={getMovementColor(mov.type) as any} />
       )
     },
     {
       header: 'Vehículo / Detalle',
-      accessor: (mov) => (
+      render: (mov) => (
         <div>
           <span className="font-bold text-slate-700 text-xs">{mov.vehiculoPlaca}</span>
           {mov.reason && (
@@ -121,7 +121,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({
     },
     {
       header: 'Proyecto (si aplica)',
-      accessor: (mov) =>
+      render: (mov) =>
         mov.projectName ? (
           <span className="text-xs text-slate-600 truncate max-w-[180px] block">{mov.projectName}</span>
         ) : (
@@ -130,7 +130,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({
     },
     {
       header: 'Ítems Afectados',
-      accessor: (mov) => (
+      render: (mov) => (
         <div className="flex flex-col gap-1">
           {mov.items.map((item, i) => (
             <div key={i} className="text-xs">
@@ -143,7 +143,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({
     },
     {
       header: 'Realizado por',
-      accessor: 'performedByName'
+      accessorKey: 'performedByName'
     }
   ];
 
