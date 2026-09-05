@@ -848,135 +848,166 @@ export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
   const mid = Math.ceil(allFields.length / 2);
   const leftFields = allFields.slice(0, mid);
   const rightFields = allFields.slice(mid);
+  const numRows = Math.max(leftFields.length, rightFields.length);
 
-  docPdf.setFontSize(10);
-  
-  // Calculate required height for left column
-  let leftHeight = 20;
-  leftFields.forEach(field => {
-      docPdf.setFont("helvetica", "bold");
-      const labelWidth = docPdf.getTextWidth(field.label);
-      docPdf.setFont("helvetica", "normal");
-      const valX = margin + 20 + labelWidth + 10;
-      const maxWidth = (pageWidth / 2) - valX;
-      
-      const isLongField = ["Proyecto:", "Lugar / Distrito:", "Lugar / Plantel:", "Origen del Movimiento:"].includes(field.label);
-      
-      if (isLongField) {
-          if (field.label === "Proyecto:" && (field as any).projectCode) {
-              leftHeight += 14;
-          }
-          const lines = docPdf.splitTextToSize(field.value, maxWidth);
-          leftHeight += lines.length * 18;
-      } else {
-          leftHeight += 18;
-      }
-  });
+  // Dimensiones y métricas tipográficas para dos columnas dinámicas blindadas
+  const padX = 16;
+  const padTop = 16;
+  const padBottom = 16;
+  const colGap = 20;
+  const usableWidth = (pageWidth - margin * 2) - (padX * 2);
+  const colWidth = (usableWidth - colGap) / 2; // Exactamente 240 pt por columna
+  const col1X = margin + padX; // 56 pt
+  const col2X = col1X + colWidth + colGap; // 316 pt
 
-  // Calculate required height for right column
-  let rightHeight = 20;
-  const rightColX = pageWidth / 2 + 10;
-  rightFields.forEach(field => {
-      docPdf.setFont("helvetica", "bold");
-      const labelWidth = docPdf.getTextWidth(field.label);
-      docPdf.setFont("helvetica", "normal");
-      const valX = rightColX + labelWidth + 10;
-      const maxWidth = pageWidth - margin - valX;
-      
-      const isLongField = ["Proyecto:", "Lugar / Distrito:", "Lugar / Plantel:", "Origen del Movimiento:"].includes(field.label);
-      
-      if (isLongField) {
-          if (field.label === "Proyecto:" && (field as any).projectCode) {
-              rightHeight += 14;
-          }
-          const lines = docPdf.splitTextToSize(field.value, maxWidth);
-          rightHeight += lines.length * 18;
-      } else {
-          rightHeight += 18;
-      }
-  });
+  const fontSize = 9.5;
+  const lineLeading = 13;
+  const rowSpacing = 7;
+  const labelValGap = 4;
 
-  const boxHeight = Math.max(leftHeight, rightHeight, 20);
+  interface FieldItem {
+    label: string;
+    value: string;
+    projectCode?: string;
+  }
 
+  interface MeasuredField {
+    field?: FieldItem;
+    labelWidth: number;
+    valX: number;
+    valMaxWidth: number;
+    valLines: string[];
+    projectCode?: string;
+    height: number;
+    totalLinesCount: number;
+    isLabelStacked: boolean;
+  }
+
+  const measureField = (field: FieldItem | undefined, colX: number): MeasuredField => {
+    if (!field) {
+      return {
+        field: undefined,
+        labelWidth: 0,
+        valX: colX,
+        valMaxWidth: colWidth,
+        valLines: [],
+        height: 0,
+        totalLinesCount: 0,
+        isLabelStacked: false,
+      };
+    }
+
+    docPdf.setFont("helvetica", "bold");
+    docPdf.setFontSize(fontSize);
+    const labelWidth = docPdf.getTextWidth(field.label);
+
+    const inlineValMaxWidth = colWidth - (labelWidth + labelValGap);
+    // Si la etiqueta es excesivamente ancha y deja menos de 70 pt, apilamos la etiqueta arriba
+    const isLabelStacked = inlineValMaxWidth < 70;
+    const valX = isLabelStacked ? colX : colX + labelWidth + labelValGap;
+    const valMaxWidth = isLabelStacked ? colWidth : inlineValMaxWidth;
+
+    docPdf.setFont("helvetica", "normal");
+    docPdf.setFontSize(fontSize);
+
+    let valLines: string[] = [];
+    if (field.value !== undefined && field.value !== null && String(field.value).trim() !== '') {
+      valLines = docPdf.splitTextToSize(String(field.value), Math.max(valMaxWidth, 20));
+    }
+    if (valLines.length === 0) {
+      valLines = ['-'];
+    }
+
+    let totalLinesCount = valLines.length;
+    if (field.projectCode) {
+      totalLinesCount += 1;
+    }
+    if (isLabelStacked) {
+      totalLinesCount += 1;
+    }
+
+    const height = totalLinesCount * lineLeading;
+
+    return {
+      field,
+      labelWidth,
+      valX,
+      valMaxWidth,
+      valLines,
+      projectCode: field.projectCode,
+      height,
+      totalLinesCount,
+      isLabelStacked,
+    };
+  };
+
+  // 1. Pre-cálculo de altura exacta para cada fila y para el bloque completo
+  const rowCalculations: { left: MeasuredField; right: MeasuredField; rowHeight: number }[] = [];
+  let totalContentHeight = 0;
+
+  for (let i = 0; i < numRows; i++) {
+    const leftMeas = measureField(leftFields[i], col1X);
+    const rightMeas = measureField(rightFields[i], col2X);
+    const rowHeight = Math.max(leftMeas.height, rightMeas.height, lineLeading);
+    rowCalculations.push({
+      left: leftMeas,
+      right: rightMeas,
+      rowHeight,
+    });
+    totalContentHeight += rowHeight;
+    if (i < numRows - 1) {
+      totalContentHeight += rowSpacing;
+    }
+  }
+
+  const boxHeight = padTop + totalContentHeight + padBottom;
+  const boxTop = y;
+
+  // 2. Dibujar el contenedor gris adaptativo con la altura real necesaria
   docPdf.setFillColor(248, 250, 252); 
   docPdf.setDrawColor(226, 232, 240); 
-  docPdf.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 5, 5, 'FD');
-  
-  // Render Left Column
-  let currentLeftY = y + 20;
-  leftFields.forEach(field => {
-      docPdf.setFont("helvetica", "bold");
-      docPdf.setTextColor(71, 85, 105); 
-      docPdf.text(field.label, margin + 20, currentLeftY);
-      
-      docPdf.setFont("helvetica", "normal");
-      docPdf.setTextColor(30, 41, 59); 
-      const labelWidth = docPdf.getTextWidth(field.label);
-      const valX = margin + 20 + labelWidth + 10;
-      const maxWidth = (pageWidth / 2) - valX;
-      
-      const isLongField = ["Proyecto:", "Lugar / Distrito:", "Lugar / Plantel:", "Origen del Movimiento:"].includes(field.label);
-      
-      if (isLongField) {
-          if (field.label === "Proyecto:" && (field as any).projectCode) {
-              docPdf.setFont("helvetica", "bold");
-              docPdf.setTextColor(30, 58, 138); // Blue
-              docPdf.text((field as any).projectCode, valX, currentLeftY);
-              currentLeftY += 14;
-              docPdf.setTextColor(30, 41, 59); // Back to normal
-              docPdf.setFont("helvetica", "normal");
-              const lines = docPdf.splitTextToSize(field.value, maxWidth);
-              docPdf.text(lines, valX, currentLeftY);
-              currentLeftY += lines.length * 18;
-          } else {
-              const lines = docPdf.splitTextToSize(field.value, maxWidth);
-              docPdf.text(lines, valX, currentLeftY);
-              currentLeftY += lines.length * 18;
-          }
-      } else {
-          docPdf.text(field.value, valX, currentLeftY);
-          currentLeftY += 18;
-      }
-  });
+  docPdf.roundedRect(margin, boxTop, pageWidth - margin * 2, boxHeight, 5, 5, 'FD');
 
-  // Render Right Column
-  let currentRightY = y + 20;
-  rightFields.forEach(field => {
-      docPdf.setFont("helvetica", "bold");
-      docPdf.setTextColor(71, 85, 105); 
-      docPdf.text(field.label, rightColX, currentRightY);
-      
-      docPdf.setFont("helvetica", "normal");
-      docPdf.setTextColor(30, 41, 59); 
-      const labelWidth = docPdf.getTextWidth(field.label);
-      const valX = rightColX + labelWidth + 10;
-      const maxWidth = pageWidth - margin - valX;
-      
-      const isLongField = ["Proyecto:", "Lugar / Distrito:", "Lugar / Plantel:", "Origen del Movimiento:"].includes(field.label);
-      
-      if (isLongField) {
-          if (field.label === "Proyecto:" && (field as any).projectCode) {
-              docPdf.setFont("helvetica", "bold");
-              docPdf.setTextColor(30, 58, 138); // Blue
-              docPdf.text((field as any).projectCode, valX, currentRightY);
-              currentRightY += 14;
-              docPdf.setTextColor(30, 41, 59); // Back to normal
-              docPdf.setFont("helvetica", "normal");
-              const lines = docPdf.splitTextToSize(field.value, maxWidth);
-              docPdf.text(lines, valX, currentRightY);
-              currentRightY += lines.length * 18;
-          } else {
-              const lines = docPdf.splitTextToSize(field.value, maxWidth);
-              docPdf.text(lines, valX, currentRightY);
-              currentRightY += lines.length * 18;
-          }
-      } else {
-          docPdf.text(field.value, valX, currentRightY);
-          currentRightY += 18;
-      }
-  });
+  // 3. Renderizar campos fila por fila con alineación superior sincronizada
+  const renderField = (meas: MeasuredField, colX: number, rowY: number) => {
+    if (!meas.field) return;
 
-  y += boxHeight + 25;
+    // Etiqueta
+    docPdf.setFont("helvetica", "bold");
+    docPdf.setFontSize(fontSize);
+    docPdf.setTextColor(71, 85, 105);
+    docPdf.text(meas.field.label, colX, rowY);
+
+    let currentValY = meas.isLabelStacked ? rowY + lineLeading : rowY;
+
+    // Código de proyecto opcional (para proyectos con projectCode)
+    if (meas.projectCode) {
+      docPdf.setFont("helvetica", "bold");
+      docPdf.setFontSize(fontSize);
+      docPdf.setTextColor(30, 58, 138); // Azul
+      docPdf.text(meas.projectCode, meas.valX, currentValY);
+      currentValY += lineLeading;
+    }
+
+    // Líneas del valor (estrictamente limitadas a valMaxWidth de la columna)
+    docPdf.setFont("helvetica", "normal");
+    docPdf.setFontSize(fontSize);
+    docPdf.setTextColor(30, 41, 59);
+    for (let li = 0; li < meas.valLines.length; li++) {
+      docPdf.text(meas.valLines[li], meas.valX, currentValY + li * lineLeading);
+    }
+  };
+
+  let currentRowY = boxTop + padTop;
+  for (let i = 0; i < numRows; i++) {
+    const row = rowCalculations[i];
+    renderField(row.left, col1X, currentRowY);
+    renderField(row.right, col2X, currentRowY);
+    currentRowY += row.rowHeight + rowSpacing;
+  }
+
+  // Desplazamiento dinámico del cursor Y para que la tabla comience después del bloque
+  y = boxTop + boxHeight + 25;
 
   // --- TABLE ITEMS ---
   const rowHeight = 25;
@@ -985,7 +1016,7 @@ export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
   const marginBottom = 40;
   const espacioDisponibleTable = pageHeight - y - marginBottom;
 
-  if (tableHeight > espacioDisponibleTable) {
+  if (tableHeight > espacioDisponibleTable && (espacioDisponibleTable < 120 || tableHeight < 220)) {
       docPdf.addPage();
       y = margin;
   }
