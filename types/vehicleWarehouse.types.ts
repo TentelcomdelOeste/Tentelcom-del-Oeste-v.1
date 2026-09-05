@@ -66,6 +66,7 @@ export interface VehicleMaterialRequest {
 export type VehicleMovementType = 
   | 'Traslado_Entrada'
   | 'Traslado_Salida'
+  | 'Traslado_Entre_Vehiculos'
   | 'Consumo_Proyecto'
   | 'Devolucion_Bodega_Central'
   | 'Ajuste';
@@ -88,6 +89,7 @@ export interface VehicleMovement {
   vehiculoId: string;
   vehiculoPlaca: string;
   targetVehiculoId?: string;
+  targetVehiculoPlaca?: string;
   requestId?: string;
   projectId?: string;
   projectName?: string;

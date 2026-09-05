@@ -75,6 +75,8 @@ export const VehicleMovementsTab: React.FC<Props> = ({
         return 'success';
       case 'Traslado_Salida':
         return 'info';
+      case 'Traslado_Entre_Vehiculos':
+        return 'info';
       case 'Consumo_Proyecto':
         return 'warning';
       case 'Devolucion_Bodega_Central':
@@ -87,6 +89,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({
   const getMovementLabel = (type: string) => {
     if (type === 'Traslado_Salida') return 'Transferencia Salida';
     if (type === 'Traslado_Entrada') return 'Abastecimiento Entrada';
+    if (type === 'Traslado_Entre_Vehiculos') return 'Traslado Entre Unidades';
     return type.replace(/_/g, ' ');
   };
 
@@ -110,7 +113,15 @@ export const VehicleMovementsTab: React.FC<Props> = ({
       header: 'Vehículo / Detalle',
       render: (mov) => (
         <div>
-          <span className="font-bold text-slate-700 text-xs">{mov.vehiculoPlaca}</span>
+          {mov.type === 'Traslado_Entre_Vehiculos' && mov.targetVehiculoPlaca ? (
+            <p className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+              <span>{mov.vehiculoPlaca}</span>
+              <span className="text-blue-600 font-extrabold">→</span>
+              <span>{mov.targetVehiculoPlaca}</span>
+            </p>
+          ) : (
+            <span className="font-bold text-slate-700 text-xs">{mov.vehiculoPlaca}</span>
+          )}
           {mov.reason && (
             <p className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[220px]" title={mov.reason}>
               {mov.reason}
@@ -300,7 +311,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({
                   className={`absolute top-0 left-0 w-1 h-full ${
                     mov.type === 'Traslado_Entrada'
                       ? 'bg-emerald-500'
-                      : mov.type === 'Traslado_Salida'
+                      : mov.type === 'Traslado_Salida' || mov.type === 'Traslado_Entre_Vehiculos'
                       ? 'bg-blue-500'
                       : mov.type === 'Consumo_Proyecto'
                       ? 'bg-amber-500'
@@ -317,7 +328,13 @@ export const VehicleMovementsTab: React.FC<Props> = ({
                   </div>
 
                   <div className="text-sm">
-                    {mov.reason ? (
+                    {mov.type === 'Traslado_Entre_Vehiculos' && mov.targetVehiculoPlaca ? (
+                      <p className="font-bold text-slate-800 text-xs flex items-center gap-1.5 flex-wrap">
+                        <span>{mov.vehiculoPlaca}</span>
+                        <span className="text-blue-600 font-extrabold">→</span>
+                        <span>{mov.targetVehiculoPlaca}</span>
+                      </p>
+                    ) : mov.reason ? (
                       <p className="font-bold text-slate-700 text-xs">{mov.reason}</p>
                     ) : (
                       <p className="font-bold text-slate-700 text-xs">{mov.vehiculoPlaca}</p>

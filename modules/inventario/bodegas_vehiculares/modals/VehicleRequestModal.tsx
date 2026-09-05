@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ActionButton, IconButton } from '../../../../design-system';
 import { FiX, FiCheck, FiTrash2, FiSearch, FiChevronDown } from 'react-icons/fi';
 import { mockVehicles, mockProjects, mockWarehouseItems } from '../mockData';
-import { VehicleMaterialRequest } from '../../../../types/vehicleWarehouse.types';
+import { VehicleMaterialRequest, VehicleWarehouseItem } from '../../../../types/vehicleWarehouse.types';
 
 interface Props {
   show: boolean;
@@ -10,6 +10,7 @@ interface Props {
   onSave: (req: VehicleMaterialRequest) => void;
   initialData?: VehicleMaterialRequest;
   initialVehicleId?: string;
+  warehouseItems?: VehicleWarehouseItem[];
 }
 
 export const VehicleRequestModal: React.FC<Props> = ({
@@ -17,8 +18,10 @@ export const VehicleRequestModal: React.FC<Props> = ({
   onClose,
   onSave,
   initialData,
-  initialVehicleId
+  initialVehicleId,
+  warehouseItems: externalWarehouseItems
 }) => {
+  const itemsList = externalWarehouseItems || mockWarehouseItems;
   // Vehicle Selection (pre-selected from inventory tab, but editable independently in modal)
   const [selectedVehicle, setSelectedVehicle] = useState<string>(
     initialData?.vehiculoId || initialVehicleId || (mockVehicles.length > 0 ? mockVehicles[0].id : '')
@@ -48,8 +51,8 @@ export const VehicleRequestModal: React.FC<Props> = ({
 
   // Available warehouse items for selected vehicle
   const availableMaterials = useMemo(() => {
-    return mockWarehouseItems.filter(i => i.vehiculoId === selectedVehicle);
-  }, [selectedVehicle]);
+    return itemsList.filter(i => i.vehiculoId === selectedVehicle);
+  }, [itemsList, selectedVehicle]);
 
   // Combined list of projects for autocomplete
   const allProjects = useMemo(() => {
@@ -146,7 +149,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
     setAdderQuantity(1);
     setAdderSearchTerm('');
     // Remove any items that are not available in the new vehicle
-    const newVehicleMaterials = mockWarehouseItems.filter(i => i.vehiculoId === newVehicleId);
+    const newVehicleMaterials = itemsList.filter(i => i.vehiculoId === newVehicleId);
     setItems(prev => prev.filter(item => {
       const exists = newVehicleMaterials.find(m => m.inventoryItemId === item.inventoryItemId);
       return exists && exists.availableStock > 0;

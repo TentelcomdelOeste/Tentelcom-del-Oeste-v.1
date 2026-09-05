@@ -189,6 +189,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               currentUser={currentUser}
               selectedVehicleId={selectedVehicleId}
               requests={requests}
+              items={items}
               onCreateRequest={handleCreateRequest}
               onUpdateRequest={handleUpdateRequest}
               onCancelRequest={handleCancelRequest}

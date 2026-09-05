@@ -4,7 +4,7 @@ import { mockMaterialRequests } from '../mockData';
 import { ActionButton, DataTable, TableColumn, StatusBadge, useConfirm } from '../../../../design-system';
 import { ActionButtons } from '../../../../components/ui/ActionButtons';
 import { FiCheckCircle } from 'react-icons/fi';
-import { VehicleMaterialRequest } from '../../../../types/vehicleWarehouse.types';
+import { VehicleMaterialRequest, VehicleWarehouseItem } from '../../../../types/vehicleWarehouse.types';
 import { VehicleRequestModal } from '../modals/VehicleRequestModal';
 import { VehicleRequestDetailModal } from '../modals/VehicleRequestDetailModal';
 import { CloseVehicleRequestModal } from '../modals/CloseVehicleRequestModal';
@@ -14,6 +14,7 @@ interface Props {
   currentUser?: User | null;
   selectedVehicleId?: string;
   requests?: VehicleMaterialRequest[];
+  items?: VehicleWarehouseItem[];
   onCreateRequest?: (req: VehicleMaterialRequest) => void;
   onUpdateRequest?: (req: VehicleMaterialRequest) => void;
   onCancelRequest?: (requestId: string) => void;
@@ -26,6 +27,7 @@ export const VehicleRequestsTab: React.FC<Props> = ({
   currentUser: _currentUser,
   selectedVehicleId,
   requests: externalRequests,
+  items,
   onCreateRequest,
   onUpdateRequest,
   onCancelRequest,
@@ -228,6 +230,7 @@ export const VehicleRequestsTab: React.FC<Props> = ({
       <VehicleRequestModal 
         show={showNewModal} 
         initialVehicleId={selectedVehicleId}
+        warehouseItems={items}
         onClose={() => setShowNewModal(false)}
         onSave={(newReq) => {
           if (onCreateRequest) {
@@ -249,6 +252,7 @@ export const VehicleRequestsTab: React.FC<Props> = ({
           show={true}
           initialData={requestToEdit}
           initialVehicleId={requestToEdit.vehiculoId || selectedVehicleId}
+          warehouseItems={items}
           onClose={() => setRequestToEdit(null)}
           onSave={(updatedReq) => {
             if (onUpdateRequest) {

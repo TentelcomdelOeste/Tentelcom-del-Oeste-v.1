@@ -102,13 +102,14 @@ export const vehicleWarehouseService = {
 
     const movementNumber = `MOV-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    const movementOut: VehicleMovement = {
-      id: `mov-${Date.now()}-out`,
+    const transferMovement: VehicleMovement = {
+      id: `mov-${Date.now()}`,
       movementNumber,
-      type: 'Traslado_Salida',
+      type: 'Traslado_Entre_Vehiculos',
       vehiculoId: originVehicleId,
-      vehiculoPlaca: originVeh?.placa || '',
+      vehiculoPlaca: originVeh?.alias || originVeh?.placa || originVehicleId,
       targetVehiculoId: targetVehicleId,
+      targetVehiculoPlaca: targetVeh?.alias || targetVeh?.placa || targetVehicleId,
       items: [
         {
           inventoryItemId,
@@ -122,43 +123,13 @@ export const vehicleWarehouseService = {
         }
       ],
       date: now,
-      reason: `Traslado a vehículo ${targetVeh?.alias || targetVehicleId}`,
+      reason: `Traslado de ${originVeh?.alias || originVehicleId} hacia ${targetVeh?.alias || targetVehicleId}`,
       performedBy: userId,
       performedByName: userName,
       createdAt: now
     };
 
-    const targetCurrentPhysical = targetItemIndex !== -1 ? newItems[targetItemIndex].physicalStock - quantity : 0;
-    const targetNewPhysical = targetItemIndex !== -1 ? newItems[targetItemIndex].physicalStock : quantity;
-    const targetCurrentCommitted = targetItemIndex !== -1 ? newItems[targetItemIndex].committedStock : 0;
-
-    const movementIn: VehicleMovement = {
-      id: `mov-${Date.now()}-in`,
-      movementNumber,
-      type: 'Traslado_Entrada',
-      vehiculoId: targetVehicleId,
-      vehiculoPlaca: targetVeh?.placa || '',
-      targetVehiculoId: originVehicleId,
-      items: [
-        {
-          inventoryItemId,
-          code: originItem.code,
-          description: originItem.description,
-          quantity,
-          previousPhysicalStock: targetCurrentPhysical,
-          newPhysicalStock: targetNewPhysical,
-          previousCommittedStock: targetCurrentCommitted,
-          newCommittedStock: targetCurrentCommitted
-        }
-      ],
-      date: now,
-      reason: `Traslado desde vehículo ${originVeh?.alias || originVehicleId}`,
-      performedBy: userId,
-      performedByName: userName,
-      createdAt: now
-    };
-
-    const newMovements = [movementOut, movementIn, ...movements];
+    const newMovements = [transferMovement, ...movements];
 
     return { items: newItems, movements: newMovements };
   },
