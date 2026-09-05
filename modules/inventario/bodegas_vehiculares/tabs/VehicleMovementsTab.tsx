@@ -35,8 +35,8 @@ export const VehicleMovementsTab: React.FC<Props> = ({
   const [internalMovements] = useState<VehicleMovement[]>(mockMovements);
   const rawMovements = externalMovements || internalMovements;
 
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
-  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -211,33 +211,33 @@ export const VehicleMovementsTab: React.FC<Props> = ({
       {/* 2. Fila Móvil: [ Selector de Sección ] [ Mes ] [ Año ] */}
       <div className="grid grid-cols-12 gap-1.5 sm:gap-2 md:hidden">
         {/* Selector de Sección */}
-        <div className="col-span-6 min-w-0">
+        <div className="col-span-5 min-w-0">
           <div className="relative">
             <select
               value={activeTab}
               onChange={(e) => onTabChange?.(e.target.value as any)}
-              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-5 truncate"
             >
-              <option value="inventory">📦 Inventario por vehículo</option>
-              <option value="requests">📋 Solicitudes de proyecto</option>
-              <option value="movements">🔄 Historial de Movimientos</option>
-              <option value="reports">📊 Reportes y Consumos</option>
+              <option value="inventory">📦 Inventario</option>
+              <option value="requests">📋 Solicitudes</option>
+              <option value="movements">🔄 Movimientos</option>
+              <option value="reports">📊 Reportes</option>
             </select>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
               ▼
             </div>
           </div>
         </div>
 
         {/* Filtro de Mes */}
-        <div className="col-span-3 min-w-0">
+        <div className="col-span-4 min-w-0">
           <div className="relative">
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-5 truncate"
             >
-              <option value="all">Mes: Todos</option>
+              <option value="all">Todos</option>
               {MONTH_NAMES.map((m, idx) => (
                 <option key={idx} value={String(idx)}>
                   {m}
@@ -258,7 +258,7 @@ export const VehicleMovementsTab: React.FC<Props> = ({
               onChange={(e) => setSelectedYear(e.target.value)}
               className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-5 truncate"
             >
-              <option value="all">Año: Todos</option>
+              <option value="all">Todos</option>
               {availableYears.map((yr) => (
                 <option key={yr} value={String(yr)}>
                   {yr}

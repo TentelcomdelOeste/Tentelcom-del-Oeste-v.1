@@ -126,10 +126,10 @@ export const VehicleRequestsTab: React.FC<Props> = ({
             onChange={(e) => onTabChange?.(e.target.value as any)}
             className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7 truncate"
           >
-            <option value="inventory">📦 Inventario por vehículo</option>
-            <option value="requests">📋 Solicitudes de proyecto</option>
-            <option value="movements">🔄 Historial de Movimientos</option>
-            <option value="reports">📊 Reportes y Consumos</option>
+            <option value="inventory">📦 Inventario</option>
+            <option value="requests">📋 Solicitudes</option>
+            <option value="movements">🔄 Movimientos</option>
+            <option value="reports">📊 Reportes</option>
           </select>
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
             ▼

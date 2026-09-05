@@ -53,10 +53,10 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               onChange={(e) => setActiveTab(e.target.value as any)}
               className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-10"
             >
-              <option value="inventory">📦 Inventario por vehículo</option>
-              <option value="requests">📋 Solicitudes de proyecto</option>
-              <option value="movements">🔄 Historial de Movimientos</option>
-              <option value="reports">📊 Reportes y Consumos</option>
+              <option value="inventory">📦 Inventario</option>
+              <option value="requests">📋 Solicitudes</option>
+              <option value="movements">🔄 Movimientos</option>
+              <option value="reports">📊 Reportes</option>
             </select>
             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
               ▼
