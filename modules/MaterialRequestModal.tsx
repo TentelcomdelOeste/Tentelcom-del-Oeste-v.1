@@ -579,7 +579,7 @@ export const MaterialRequestModal = ({
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">
                                     Destino de la Solicitud <span className="text-red-500">*</span>
                                 </label>
-                                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:grid-cols-2 gap-1.5 sm:gap-2 p-1 bg-slate-100 rounded-xl">
                                     <ActionButton
                                         type="button"
                                         onClick={() => {
@@ -588,7 +588,10 @@ export const MaterialRequestModal = ({
                                         }}
                                         variant={destinationType === 'project' ? 'primary' : 'ghost'}
                                         label="PROYECTO"
-                                        className="!py-2 !text-xs !font-bold"
+                                        fullWidth
+                                        className={`!w-full !py-2 !px-1.5 sm:!px-3 !text-[11px] sm:!text-xs !font-bold !tracking-tight sm:!tracking-wider ${
+                                            destinationType !== 'project' ? '!text-slate-600 hover:!text-slate-900' : ''
+                                        }`}
                                     />
                                     <ActionButton
                                         type="button"
@@ -598,7 +601,10 @@ export const MaterialRequestModal = ({
                                         }}
                                         variant={destinationType === 'vehicle' ? 'primary' : 'ghost'}
                                         label="BODEGA VEHICULAR"
-                                        className="!py-2 !text-xs !font-bold"
+                                        fullWidth
+                                        className={`!w-full !py-2 !px-1 sm:!px-3 !text-[10px] sm:!text-xs !font-bold !tracking-tight sm:!tracking-wider ${
+                                            destinationType !== 'vehicle' ? '!text-slate-600 hover:!text-slate-900' : ''
+                                        }`}
                                     />
                                 </div>
                             </div>
