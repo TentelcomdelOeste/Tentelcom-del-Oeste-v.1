@@ -121,9 +121,9 @@ export const VehicleMovementsTab: React.FC<Props> = ({
             </p>
           ) : mov.type === 'Traslado_Entrada' ? (
             <p className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
-              <span className="text-slate-500 font-medium">Bodega Principal</span>
+              <span className="text-slate-500 font-medium">{mov.origin || 'Bodega Principal'}</span>
               <span className="text-emerald-600 font-extrabold">→</span>
-              <span>{mov.vehiculoPlaca}</span>
+              <span>{mov.destination || mov.targetVehiculoPlaca || mov.vehiculoPlaca}</span>
             </p>
           ) : (
             <span className="font-bold text-slate-700 text-xs">{mov.vehiculoPlaca}</span>
@@ -339,6 +339,12 @@ export const VehicleMovementsTab: React.FC<Props> = ({
                         <span>{mov.vehiculoPlaca}</span>
                         <span className="text-blue-600 font-extrabold">→</span>
                         <span>{mov.targetVehiculoPlaca}</span>
+                      </p>
+                    ) : mov.type === 'Traslado_Entrada' ? (
+                      <p className="font-bold text-slate-800 text-xs flex items-center gap-1.5 flex-wrap">
+                        <span className="text-slate-500 font-medium">{mov.origin || 'Bodega Principal'}</span>
+                        <span className="text-emerald-600 font-extrabold">→</span>
+                        <span>{mov.destination || mov.targetVehiculoPlaca || mov.vehiculoPlaca}</span>
                       </p>
                     ) : mov.reason ? (
                       <p className="font-bold text-slate-700 text-xs">{mov.reason}</p>

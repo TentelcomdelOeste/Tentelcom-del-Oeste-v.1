@@ -8,6 +8,8 @@ import { updateVersionedDoc } from '../core/versionControl';
 import { useUserContext } from '../contexts/UserContext';
 
 import { logger } from '../utils/logger';
+import { VehicleWarehouseItem, VehicleMovement } from '../types/vehicleWarehouse.types';
+import { mockWarehouseItems, notifyWarehouseChanges } from '../modules/inventario/bodegas_vehiculares/mockData';
 
 export const useMaterialRequests = (currentUser: User | null) => {
   const { authReady } = useUserContext();
@@ -125,13 +127,16 @@ export const useMaterialRequests = (currentUser: User | null) => {
         return item;
     });
 
-    const isVehicleTransfer = (requestData as any).destinationType === 'vehicle';
+    const isVehicleTransfer = (requestData as any).destinationType === 'vehicle' || Boolean((requestData as any).targetVehiculoPlaca);
+    const targetVehiculoId = (requestData as any).targetVehiculoId;
+    const targetVehiculoPlaca = (requestData as any).targetVehiculoPlaca || '';
+    const targetVehiculoAlias = (requestData as any).targetVehiculoAlias || '';
 
     const newRequestData = sanitizeData({
         ...requestData,
         id,
         items: repairedItems,
-        status: (requestData as any).status || ('Pendiente' as RequestStatus),
+        status: (requestData as any).status || (isVehicleTransfer ? ('Despachada' as RequestStatus) : ('Pendiente' as RequestStatus)),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email,
@@ -168,14 +173,24 @@ export const useMaterialRequests = (currentUser: User | null) => {
 
     // Transactional creation with reservation and requestNumber generation
     let finalRequestNumber = '';
+    let finalMovementRef = '';
+    const movementDocId = `mov-${Date.now()}-${id}`;
+
     await runTransaction(db, async (transaction) => {
         // 1. READS (ALL)
         
         // A. Read counter
         const counterRef = doc(db, "counters", "requestNumber");
         const counterSnap = await transaction.get(counterRef);
+
+        // B. Read vehicle movement counter if vehicle transfer
+        const movCounterRef = doc(db, "counters", "vehicleMovement");
+        let movCounterSnap: any = null;
+        if (isVehicleTransfer) {
+            movCounterSnap = await transaction.get(movCounterRef);
+        }
         
-        // B. Read all inventory items
+        // C. Read all inventory items
         const itemSnaps = [];
         for (const item of repairedItems) {
             const itemRef = doc(db, "inventory_items", item.inventoryItemId);
@@ -183,11 +198,34 @@ export const useMaterialRequests = (currentUser: User | null) => {
             if (!itemSnap.exists()) {
                 throw new Error(`El ítem con ID ${item.inventoryItemId} (${item.code}) no existe en inventario.`);
             }
-            itemSnaps.push({ item, itemSnap });
+            itemSnaps.push({ item, itemSnap, itemRef });
+        }
+
+        // D. Read all vehicle warehouse items if vehicle transfer
+        const vehicleItemSnaps: { item: any; vehicleItemRef: any; snap: any }[] = [];
+        if (isVehicleTransfer && targetVehiculoId) {
+            for (const item of repairedItems) {
+                const vItemDocId = `${targetVehiculoId}_${item.inventoryItemId}`;
+                const vehicleItemRef = doc(db, "vehicle_warehouse_items", vItemDocId);
+                const snap = await transaction.get(vehicleItemRef);
+                vehicleItemSnaps.push({ item, vehicleItemRef, snap });
+            }
         }
 
         // 2. CALCULATIONS
         
+        // Validation: For vehicle transfer, strictly ensure ALL items have enough stock in Bodega Principal
+        if (isVehicleTransfer) {
+            for (const { item, itemSnap } of itemSnaps) {
+                const currentStock = itemSnap.data().stock || 0;
+                const currentReserved = itemSnap.data().reserved || 0;
+                const available = Math.max(0, currentStock - currentReserved);
+                if (item.quantityRequested > available) {
+                    throw new Error(`Stock insuficiente en Bodega Principal para el material ${item.code}. Solicitado: ${item.quantityRequested}, disponible: ${available} ${item.unit || ''}`);
+                }
+            }
+        }
+
         // Counter calculation
         let lastNumber = 0;
         if (counterSnap.exists()) {
@@ -196,10 +234,25 @@ export const useMaterialRequests = (currentUser: User | null) => {
         const newNumber = lastNumber + 1;
         finalRequestNumber = `SOL-${String(newNumber).padStart(4, '0')}`;
 
+        if (isVehicleTransfer) {
+            let lastMovNumber = 0;
+            if (movCounterSnap && movCounterSnap.exists()) {
+                lastMovNumber = movCounterSnap.data().lastNumber || 0;
+            }
+            const newMovNumber = lastMovNumber + 1;
+            finalMovementRef = `TRV-${String(newMovNumber).padStart(6, '0')}`;
+        }
+
         // 3. ESCRITURAS (transaction.update, transaction.set)
         
         // Update counter
         transaction.set(counterRef, { lastNumber: newNumber }, { merge: true });
+
+        // Update movement counter if vehicle transfer
+        if (isVehicleTransfer) {
+            const currentLastMov = movCounterSnap && movCounterSnap.exists() ? (movCounterSnap.data().lastNumber || 0) : 0;
+            transaction.set(movCounterRef, { lastNumber: currentLastMov + 1 }, { merge: true });
+        }
 
         // Update inventory items
         const updatedItems = [...repairedItems];
@@ -212,16 +265,19 @@ export const useMaterialRequests = (currentUser: User | null) => {
             
             if (isVehicleTransfer) {
                 // En traslados a bodega vehicular, descontamos stock físico directamente
-                const qtyToDeduct = Math.min(item.quantityRequested, currentStock);
+                const qtyToDeduct = item.quantityRequested;
                 updatedItems[i] = {
                     ...item,
-                    shortageQty: 0
+                    quantityDispatched: qtyToDeduct,
+                    quantityPending: 0,
+                    shortageQty: 0,
+                    status: 'completed'
                 };
-                if (qtyToDeduct > 0) {
-                    transaction.update(itemRef, {
-                        stock: increment(-qtyToDeduct)
-                    });
-                }
+                transaction.update(itemRef, {
+                    stock: increment(-qtyToDeduct),
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: currentUser.email
+                });
             } else {
                 // Solicitud normal de proyecto: reservamos solo lo disponible
                 const qtyToReserve = Math.min(item.quantityRequested, available);
@@ -238,14 +294,138 @@ export const useMaterialRequests = (currentUser: User | null) => {
             }
         }
 
+        // If vehicle transfer: increment vehicle items & create vehicle movement record
+        if (isVehicleTransfer && targetVehiculoId) {
+            const now = new Date().toISOString();
+            const movementItemsList: any[] = [];
+
+            for (let i = 0; i < vehicleItemSnaps.length; i++) {
+                const { item, vehicleItemRef, snap } = vehicleItemSnaps[i];
+                const itemSnap = itemSnaps[i].itemSnap;
+                const prevPhysical = snap.exists() ? (snap.data().physicalStock || 0) : 0;
+                const prevCommitted = snap.exists() ? (snap.data().committedStock || 0) : 0;
+                const newPhysical = prevPhysical + item.quantityRequested;
+                const newAvailable = Math.max(0, newPhysical - prevCommitted);
+
+                const vehicleItemPayload: VehicleWarehouseItem = {
+                    id: `${targetVehiculoId}_${item.inventoryItemId}`,
+                    vehiculoId: targetVehiculoId,
+                    vehiculoPlaca: targetVehiculoPlaca,
+                    vehiculoAlias: targetVehiculoAlias,
+                    inventoryItemId: item.inventoryItemId,
+                    code: item.code,
+                    description: item.description,
+                    category: itemSnap.data().category || 'General',
+                    unit: item.unit || itemSnap.data().unit || 'UND',
+                    physicalStock: newPhysical,
+                    committedStock: prevCommitted,
+                    availableStock: newAvailable,
+                    updatedAt: now,
+                    updatedBy: currentUser.email
+                };
+
+                transaction.set(vehicleItemRef, vehicleItemPayload, { merge: true });
+
+                movementItemsList.push({
+                    inventoryItemId: item.inventoryItemId,
+                    code: item.code,
+                    description: item.description,
+                    quantity: item.quantityRequested,
+                    previousPhysicalStock: prevPhysical,
+                    newPhysicalStock: newPhysical,
+                    previousCommittedStock: prevCommitted,
+                    newCommittedStock: prevCommitted
+                });
+            }
+
+            // Create single atomic VehicleMovement in vehicle_movements collection
+            const vehicleMovementData: VehicleMovement = {
+                id: movementDocId,
+                movementNumber: finalMovementRef,
+                reference: finalMovementRef,
+                type: 'Traslado_Entrada',
+                origin: 'Bodega Principal',
+                destination: `${targetVehiculoAlias || 'Vehículo'} - ${targetVehiculoPlaca || ''}`,
+                vehiculoId: targetVehiculoId,
+                vehiculoPlaca: targetVehiculoPlaca,
+                targetVehiculoId: targetVehiculoId,
+                targetVehiculoPlaca: `${targetVehiculoAlias || 'Vehículo'} - ${targetVehiculoPlaca || ''}`,
+                requestId: id,
+                items: movementItemsList,
+                date: (requestData as any).date || now.split('T')[0],
+                reason: (requestData as any).observations || `Abastecimiento desde Bodega Principal hacia ${targetVehiculoAlias} (${targetVehiculoPlaca})`,
+                performedBy: currentUser.id,
+                performedByName: currentUser.name || currentUser.email || 'Usuario',
+                createdAt: now
+            };
+
+            const movDocRef = doc(db, "vehicle_movements", movementDocId);
+            transaction.set(movDocRef, vehicleMovementData);
+        }
+
         // Create the request
         const reqRef = doc(db, "material_reports", id);
-        transaction.set(reqRef, { ...newRequestData, items: updatedItems, dispatchId, requestNumber: finalRequestNumber });
+        const finalStatus = isVehicleTransfer ? 'Despachada' : ((requestData as any).status || ('Pendiente' as RequestStatus));
+        transaction.set(reqRef, {
+            ...newRequestData,
+            items: updatedItems,
+            status: finalStatus,
+            dispatchId,
+            requestNumber: finalRequestNumber,
+            movementReference: isVehicleTransfer ? finalMovementRef : (newRequestData as any).movementReference
+        });
     });
     
-    setRequests(prev => [{ ...newRequestData, dispatchId, requestNumber: finalRequestNumber }, ...prev]);
+    const createdReq = {
+        ...newRequestData,
+        items: repairedItems,
+        status: isVehicleTransfer ? ('Despachada' as RequestStatus) : ((requestData as any).status || ('Pendiente' as RequestStatus)),
+        dispatchId,
+        requestNumber: finalRequestNumber,
+        movementReference: isVehicleTransfer ? finalMovementRef : (newRequestData as any).movementReference
+    };
 
-    return { id, requestNumber: finalRequestNumber };
+    setRequests(prev => [createdReq, ...prev]);
+
+    if (isVehicleTransfer && targetVehiculoId) {
+        // Sync in-memory cache for immediate responsiveness
+        for (const item of repairedItems) {
+            const idx = mockWarehouseItems.findIndex(
+                i => i.vehiculoId === targetVehiculoId && i.inventoryItemId === item.inventoryItemId
+            );
+            if (idx !== -1) {
+                const ex = mockWarehouseItems[idx];
+                const newPhys = ex.physicalStock + item.quantityRequested;
+                mockWarehouseItems[idx] = {
+                    ...ex,
+                    physicalStock: newPhys,
+                    availableStock: Math.max(0, newPhys - ex.committedStock),
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: currentUser.email
+                };
+            } else {
+                mockWarehouseItems.push({
+                    id: `${targetVehiculoId}_${item.inventoryItemId}`,
+                    vehiculoId: targetVehiculoId,
+                    vehiculoPlaca: targetVehiculoPlaca,
+                    vehiculoAlias: targetVehiculoAlias,
+                    inventoryItemId: item.inventoryItemId,
+                    code: item.code,
+                    description: item.description,
+                    category: 'General',
+                    unit: item.unit || 'UND',
+                    physicalStock: item.quantityRequested,
+                    committedStock: 0,
+                    availableStock: item.quantityRequested,
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: currentUser.email
+                });
+            }
+        }
+        notifyWarehouseChanges();
+    }
+
+    return { id, requestNumber: finalRequestNumber, movementReference: finalMovementRef };
   }, [currentUser]);
 
   const updateRequest = useCallback(async (id: string, updates: Partial<MaterialRequest>) => {

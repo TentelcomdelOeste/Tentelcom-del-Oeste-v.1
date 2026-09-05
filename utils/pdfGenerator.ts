@@ -780,45 +780,69 @@ export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
   docPdf.text("TENTELCOM DEL OESTE S.A.", headerTextX, textY);
   
   textY += 20;
-  docPdf.setFontSize(16);
-  docPdf.setTextColor(0, 0, 0);
-  docPdf.text("SOLICITUD DE MATERIALES", headerTextX, textY);
-  
-  textY += 15;
-  docPdf.setFont("helvetica", "normal");
-  docPdf.setFontSize(9);
-  docPdf.setTextColor(100, 116, 139); 
-  docPdf.text("Requisición de materiales para despliegue en campo y proyectos", headerTextX, textY);
+  const isVehicleTransfer = request.destinationType === 'vehicle' || Boolean(request.targetVehiculoPlaca);
+
+  if (isVehicleTransfer) {
+    docPdf.setFontSize(15);
+    docPdf.setTextColor(0, 0, 0);
+    docPdf.text("TRASLADO DE MATERIAL A BODEGA VEHICULAR", headerTextX, textY);
+    
+    textY += 15;
+    docPdf.setFont("helvetica", "normal");
+    docPdf.setFontSize(9);
+    docPdf.setTextColor(100, 116, 139); 
+    docPdf.text("Transferencia y abastecimiento de inventario hacia unidad vehicular", headerTextX, textY);
+  } else {
+    docPdf.setFontSize(16);
+    docPdf.setTextColor(0, 0, 0);
+    docPdf.text("SOLICITUD DE MATERIALES", headerTextX, textY);
+    
+    textY += 15;
+    docPdf.setFont("helvetica", "normal");
+    docPdf.setFontSize(9);
+    docPdf.setTextColor(100, 116, 139); 
+    docPdf.text("Requisición de materiales para despliegue en campo y proyectos", headerTextX, textY);
+  }
   
   // --- INFO SECTION ---
   let y = Math.max(textY, logoY + logoHeight) + 20;
 
-  const allFields: { label: string; value: string }[] = [
+  let allFields: { label: string; value: string; projectCode?: string }[] = [];
+
+  if (isVehicleTransfer) {
+    allFields = [
+      { label: "Tipo de operación:", value: "Traslado de material a Bodega Vehicular" },
+      { label: "Fecha:", value: request.date || '' },
+      { label: "Origen:", value: "Bodega Principal" },
+      { label: "Destino:", value: `${request.targetVehiculoAlias || 'Vehículo'} (${request.targetVehiculoPlaca || ''})` },
+      { label: "Usuario/Responsable:", value: (request.requestedByName || "").split('@')[0].toUpperCase() },
+      { label: "ID Solicitud:", value: request.requestNumber || '' },
+    ];
+    if (request.movementReference) {
+      allFields.push({ label: "Referencia Movimiento:", value: request.movementReference });
+    }
+  } else {
+    allFields = [
       { label: "ID Solicitud:", value: request.requestNumber || '' },
       { label: "Fecha:", value: request.date || '' },
       { label: "Solicitante:", value: (request.requestedByName || "").split('@')[0].toUpperCase() },
       { label: "Origen del Movimiento:", value: request.origin || 'N/A' },
-  ];
+    ];
 
-  if (request.destinationType === 'vehicle' || request.targetVehiculoPlaca) {
-      allFields.push({ label: "Destino:", value: "BODEGA VEHICULAR" });
-      allFields.push({ label: "Unidad Vehicular:", value: `${request.targetVehiculoAlias || 'Vehículo'} (${request.targetVehiculoPlaca || ''})` });
-      if (request.movementReference) {
-          allFields.push({ label: "Ref. Traslado:", value: request.movementReference });
-      }
-  } else if (request.origin === "IBUX-CLARO") {
+    if (request.origin === "IBUX-CLARO") {
       allFields.push({ label: "FDH:", value: request.fdh || '' });
       allFields.push({ label: "Torre:", value: request.torre || '' });
       allFields.push({ label: "Lugar / Distrito:", value: request.locationDetails || '' });
-  } else if (request.origin === "CNFL") {
+    } else if (request.origin === "CNFL") {
       allFields.push({ label: "Lugar / Plantel:", value: request.planta || (request as any).plantel || '' });
-  } else if (request.origin === "PRIVADO") {
+    } else if (request.origin === "PRIVADO") {
       allFields.push({ 
-          label: "Proyecto:", 
-          value: request.projectName || '',
-          // @ts-expect-error - projectCode is a custom property for the PDF layout
-          projectCode: request.projectCode 
+        label: "Proyecto:", 
+        value: request.projectName || '',
+        // @ts-expect-error - projectCode is a custom property for the PDF layout
+        projectCode: request.projectCode 
       });
+    }
   }
 
   const mid = Math.ceil(allFields.length / 2);
@@ -1067,22 +1091,27 @@ export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
       docPdf.text("TENTELCOM DEL OESTE S.A. – Documento generado automáticamente", pageWidth / 2, pageHeight - 15, { align: 'center' });
   }
 
-  let baseName = '';
-  if (request.destinationType === 'vehicle' || request.targetVehiculoPlaca) {
-      baseName = request.targetVehiculoPlaca || request.projectName || 'VEHICULO';
-  } else if (request.origin === "IBUX-CLARO") {
-      baseName = request.fdh || '';
-  } else if (request.origin === "CNFL") {
-      baseName = request.planta || (request as any).plantel || '';
-  } else if (request.origin === "PRIVADO") {
-      baseName = request.projectName || '';
-  }
+  let fileName = '';
+  if (isVehicleTransfer) {
+      const vehName = (request.targetVehiculoAlias || request.targetVehiculoPlaca || 'Vehiculo').replace(/[\s-]+/g, '_');
+      const ref = (request.movementReference || request.requestNumber || 'TRV').replace(/[\s-]+/g, '_');
+      fileName = `Traslado_Bodega_Vehicular_${vehName}_${ref}.pdf`;
+  } else {
+      let baseName = '';
+      if (request.origin === "IBUX-CLARO") {
+          baseName = request.fdh || '';
+      } else if (request.origin === "CNFL") {
+          baseName = request.planta || (request as any).plantel || '';
+      } else if (request.origin === "PRIVADO") {
+          baseName = request.projectName || '';
+      }
 
-  if (!baseName) {
-      baseName = request.projectName || request.requestNumber || request.id || 'SOL';
+      if (!baseName) {
+          baseName = request.projectName || request.requestNumber || request.id || 'SOL';
+      }
+      
+      fileName = `Solicitud_Materiales_${baseName.replace(/[\s-]+/g, '_')}.pdf`;
   }
-  
-  const fileName = `Solicitud_Materiales_${baseName.replace(/[\s-]+/g, '_')}.pdf`;
   const blob = docPdf.output('blob');
   triggerFileDownload(blob, fileName);
   return true;

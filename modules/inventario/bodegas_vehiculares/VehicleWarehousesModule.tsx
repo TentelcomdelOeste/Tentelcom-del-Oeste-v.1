@@ -3,6 +3,8 @@ import { ModulePage } from '../../../components/ui/ModulePage';
 import { ActionButton } from '../../../design-system';
 import { FiBox, FiClipboard, FiRefreshCw, FiPieChart } from 'react-icons/fi';
 import { User } from '../../../types';
+import { db } from '../../../firebase';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 import { VehicleInventoryTab } from './tabs/VehicleInventoryTab';
 import { VehicleRequestsTab } from './tabs/VehicleRequestsTab';
@@ -41,10 +43,72 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
   const [consumptions, setConsumptions] = useState<VehicleProjectConsumption[]>(mockConsumptions);
 
   useEffect(() => {
-    return subscribeWarehouseChanges(() => {
+    // 1. Suscripción en tiempo real al inventario de bodegas vehiculares en Firestore
+    const unsubItems = onSnapshot(collection(db, 'vehicle_warehouse_items'), (snapshot) => {
+      if (!snapshot.empty) {
+        const firestoreItems: VehicleWarehouseItem[] = [];
+        snapshot.forEach((docSnap) => {
+          firestoreItems.push(docSnap.data() as VehicleWarehouseItem);
+        });
+
+        // Combinar con ítems iniciales para mantener catálogo base si no ha sido transferido
+        const map = new Map<string, VehicleWarehouseItem>();
+        mockWarehouseItems.forEach(i => map.set(i.id, i));
+        firestoreItems.forEach(i => map.set(i.id, i));
+        const merged = Array.from(map.values());
+
+        setItems(merged);
+        mockWarehouseItems.length = 0;
+        mockWarehouseItems.push(...merged);
+      }
+    }, (err) => {
+      console.warn('Error suscribiendo a vehicle_warehouse_items:', err);
+    });
+
+    // 2. Suscripción en tiempo real a movimientos vehiculares en Firestore
+    const movQuery = query(collection(db, 'vehicle_movements'), orderBy('createdAt', 'desc'));
+    const unsubMovements = onSnapshot(movQuery, (snapshot) => {
+      if (!snapshot.empty) {
+        const firestoreMovements: VehicleMovement[] = [];
+        snapshot.forEach((docSnap) => {
+          firestoreMovements.push(docSnap.data() as VehicleMovement);
+        });
+
+        // Combinar evitando duplicados por id o referencia/movementNumber
+        const map = new Map<string, VehicleMovement>();
+        firestoreMovements.forEach(m => map.set(m.id || m.movementNumber, m));
+        mockMovements.forEach(m => {
+          const key = m.id || m.movementNumber;
+          if (!map.has(key) && !map.has(m.reference || '')) {
+            map.set(key, m);
+          }
+        });
+
+        const merged = Array.from(map.values()).sort((a, b) => {
+          const timeA = new Date(a.createdAt || a.date).getTime();
+          const timeB = new Date(b.createdAt || b.date).getTime();
+          return timeB - timeA;
+        });
+
+        setMovements(merged);
+        mockMovements.length = 0;
+        mockMovements.push(...merged);
+      }
+    }, (err) => {
+      console.warn('Error suscribiendo a vehicle_movements:', err);
+    });
+
+    // 3. Suscripción a cambios en memoria internos
+    const unsubInternal = subscribeWarehouseChanges(() => {
       setItems([...mockWarehouseItems]);
       setMovements([...mockMovements]);
     });
+
+    return () => {
+      unsubItems();
+      unsubMovements();
+      unsubInternal();
+    };
   }, []);
 
   const handleRegisterMovement = (newMov: VehicleMovement) => {

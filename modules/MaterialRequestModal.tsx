@@ -367,24 +367,9 @@ export const MaterialRequestModal = ({
                   throw new Error("El vehículo seleccionado no existe en el catálogo.");
               }
 
-              // 1. Ejecutar traslado a Bodega Vehicular (actualiza mockWarehouseItems y genera 1 único movimiento atómico)
-              const transferRes = vehicleWarehouseService.transferFromMainWarehouse(
-                  targetVehicleId,
-                  addedItems.map(i => {
-                      const qty = typeof i.quantity === 'string' ? parseFloat(i.quantity) : i.quantity;
-                      return {
-                          inventoryItemId: i.inventoryItemId,
-                          code: i.code,
-                          description: i.description,
-                          unit: i.unit,
-                          quantity: isNaN(qty) ? 0 : qty
-                      };
-                  }),
-                  observations || `Abastecimiento desde Bodega Principal hacia ${targetVeh.alias || targetVeh.placa}`,
-                  currentUser
-              );
-
-              // 2. Construir payload para el registro de la solicitud/traslado
+              // Construir payload para el registro de la solicitud/traslado hacia Bodega Vehicular
+              // La persistencia atómica en Firestore (descuento en Bodega Principal, incremento en Bodega Vehicular y registro de movimiento único)
+              // es ejecutada íntegramente dentro de la transacción de onSubmit.
               const payload = {
                   destinationType: 'vehicle' as RequestDestinationType,
                   origin: 'BODEGA PRINCIPAL' as ProjectOrigin,
@@ -394,7 +379,6 @@ export const MaterialRequestModal = ({
                   targetVehiculoId: targetVehicleId,
                   targetVehiculoPlaca: targetVeh.placa,
                   targetVehiculoAlias: targetVeh.alias,
-                  movementReference: transferRes.movement.movementNumber,
                   requestedBy: initialData ? initialData.requestedBy : currentUser.id,
                   requestedByName: initialData ? initialData.requestedByName : currentUser.email,
                   date: initialData ? initialData.date : new Date().toISOString().split('T')[0],
@@ -417,7 +401,7 @@ export const MaterialRequestModal = ({
                           comment: i.comment
                       };
                   }),
-                  observations
+                  observations: observations || `Abastecimiento desde Bodega Principal hacia ${targetVeh.alias || targetVeh.placa}`
               };
 
               await onSubmit(payload);
@@ -543,7 +527,7 @@ export const MaterialRequestModal = ({
 
             {/* Body */}
             <div 
-                className="p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar bg-white" 
+                className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto flex-1 custom-scrollbar bg-white" 
                 onClick={(e) => {
                     // Solo cerrar si el click no viene de un selector o input que debería mantenerlos abiertos
                     if (!(e.target as HTMLElement).closest('.suggestions-container')) {
@@ -569,7 +553,7 @@ export const MaterialRequestModal = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Columna Izquierda: Configuración y Datos */}
                     <div className="space-y-4">
-                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                                 <FiCircle className="text-blue-500" /> Información General
                             </p>
@@ -579,7 +563,7 @@ export const MaterialRequestModal = ({
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">
                                     Destino de la Solicitud <span className="text-red-500">*</span>
                                 </label>
-                                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:grid-cols-2 gap-1.5 sm:gap-2 p-1 bg-slate-100 rounded-xl">
+                                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)] sm:grid-cols-2 gap-1 sm:gap-2 p-1 bg-slate-100 rounded-xl">
                                     <ActionButton
                                         type="button"
                                         onClick={() => {
@@ -587,9 +571,9 @@ export const MaterialRequestModal = ({
                                             setError(null);
                                         }}
                                         variant={destinationType === 'project' ? 'primary' : 'ghost'}
-                                        label="PROYECTO"
+                                        label={<span className="text-[10.5px] sm:text-xs font-black tracking-tight sm:tracking-wider leading-none">PROYECTO</span>}
                                         fullWidth
-                                        className={`!w-full !py-2 !px-1.5 sm:!px-3 !text-[11px] sm:!text-xs !font-bold !tracking-tight sm:!tracking-wider ${
+                                        className={`!w-full !py-2 !px-1 sm:!px-3 !min-h-[40px] sm:!min-h-[44px] ${
                                             destinationType !== 'project' ? '!text-slate-600 hover:!text-slate-900' : ''
                                         }`}
                                     />
@@ -600,9 +584,9 @@ export const MaterialRequestModal = ({
                                             setError(null);
                                         }}
                                         variant={destinationType === 'vehicle' ? 'primary' : 'ghost'}
-                                        label="BODEGA VEHICULAR"
+                                        label={<span className="text-[9.5px] xs:text-[10px] sm:text-xs font-black tracking-tighter sm:tracking-wider leading-none whitespace-nowrap">BODEGA VEHICULAR</span>}
                                         fullWidth
-                                        className={`!w-full !py-2 !px-1 sm:!px-3 !text-[10px] sm:!text-xs !font-bold !tracking-tight sm:!tracking-wider ${
+                                        className={`!w-full !py-2 !px-1 sm:!px-3 !min-h-[40px] sm:!min-h-[44px] ${
                                             destinationType !== 'vehicle' ? '!text-slate-600 hover:!text-slate-900' : ''
                                         }`}
                                     />

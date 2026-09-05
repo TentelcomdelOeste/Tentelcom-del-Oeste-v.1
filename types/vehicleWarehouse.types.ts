@@ -85,7 +85,14 @@ export interface VehicleMovementItem {
 export interface VehicleMovement {
   id: string;
   movementNumber: string;
+  reference?: string;
   type: VehicleMovementType;
+  origin?: string;
+  destination?: string;
+  originVehiculoId?: string;
+  originVehiculoPlaca?: string;
+  originVehiculoAlias?: string;
+  targetVehiculoAlias?: string;
   vehiculoId: string;
   vehiculoPlaca: string;
   targetVehiculoId?: string;
