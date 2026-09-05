@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User } from '../../../../types';
 import { mockVehicles, mockWarehouseItems } from '../mockData';
 import { ActionButton, DataTable, TableColumn, Select } from '../../../../design-system';
-import { FiTruck, FiUploadCloud, FiSearch, FiX } from 'react-icons/fi';
+import { FiUploadCloud, FiSearch, FiX } from 'react-icons/fi';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
 
@@ -11,6 +11,12 @@ interface Props {
   items?: VehicleWarehouseItem[];
   setItems?: React.Dispatch<React.SetStateAction<VehicleWarehouseItem[]>>;
   onRegisterMovement?: (movement: VehicleMovement) => void;
+  onTransfer?: (data: {
+    originVehicleId: string;
+    targetVehicleId: string;
+    inventoryItemId: string;
+    quantity: number;
+  }) => void;
   selectedVehicleId?: string;
   onSelectVehicleId?: (id: string) => void;
   activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
@@ -22,6 +28,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   items: externalItems,
   setItems: externalSetItems,
   onRegisterMovement,
+  onTransfer,
   selectedVehicleId: externalSelectedVehicleId,
   onSelectVehicleId,
   activeTab = 'inventory',
@@ -133,6 +140,15 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     inventoryItemId: string;
     quantity: number;
   }) => {
+    if (onTransfer) {
+      try {
+        onTransfer({ originVehicleId, targetVehicleId, inventoryItemId, quantity });
+      } catch (err: any) {
+        alert(err.message || 'Error en la transferencia');
+      }
+      return;
+    }
+
     const originItem = items.find(
       i => i.vehiculoId === originVehicleId && i.inventoryItemId === inventoryItemId
     );

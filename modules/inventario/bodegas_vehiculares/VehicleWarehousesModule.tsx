@@ -21,6 +21,7 @@ import {
   VehicleMaterialRequest,
   VehicleProjectConsumption
 } from '../../../types/vehicleWarehouse.types';
+import { vehicleWarehouseService } from './services/vehicleWarehouseService';
 
 interface VehicleWarehousesModuleProps {
   currentUser?: User | null;
@@ -40,6 +41,63 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
 
   const handleRegisterMovement = (newMov: VehicleMovement) => {
     setMovements(prev => [newMov, ...prev]);
+  };
+
+  const handleTransfer = ({
+    originVehicleId,
+    targetVehicleId,
+    inventoryItemId,
+    quantity
+  }: {
+    originVehicleId: string;
+    targetVehicleId: string;
+    inventoryItemId: string;
+    quantity: number;
+  }) => {
+    const res = vehicleWarehouseService.transferItem(
+      items,
+      movements,
+      originVehicleId,
+      targetVehicleId,
+      inventoryItemId,
+      quantity,
+      currentUser
+    );
+    setItems(res.items);
+    setMovements(res.movements);
+  };
+
+  const handleCreateRequest = (newReq: VehicleMaterialRequest) => {
+    const res = vehicleWarehouseService.createRequest(requests, items, newReq);
+    setRequests(res.requests);
+    setItems(res.items);
+  };
+
+  const handleUpdateRequest = (updatedReq: VehicleMaterialRequest) => {
+    const res = vehicleWarehouseService.updateRequest(requests, items, updatedReq);
+    setRequests(res.requests);
+    setItems(res.items);
+  };
+
+  const handleCancelRequest = (requestId: string) => {
+    const res = vehicleWarehouseService.cancelRequest(requests, items, requestId);
+    setRequests(res.requests);
+    setItems(res.items);
+  };
+
+  const handleCloseRequest = (closedReq: VehicleMaterialRequest) => {
+    const res = vehicleWarehouseService.closeRequest(
+      requests,
+      items,
+      consumptions,
+      movements,
+      closedReq,
+      currentUser
+    );
+    setRequests(res.requests);
+    setItems(res.items);
+    setConsumptions(res.consumptions);
+    setMovements(res.movements);
   };
 
   return (
@@ -119,6 +177,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               items={items}
               setItems={setItems}
               onRegisterMovement={handleRegisterMovement}
+              onTransfer={handleTransfer}
               selectedVehicleId={selectedVehicleId}
               onSelectVehicleId={setSelectedVehicleId}
               activeTab={activeTab}
@@ -129,6 +188,11 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
             <VehicleRequestsTab
               currentUser={currentUser}
               selectedVehicleId={selectedVehicleId}
+              requests={requests}
+              onCreateRequest={handleCreateRequest}
+              onUpdateRequest={handleUpdateRequest}
+              onCancelRequest={handleCancelRequest}
+              onCloseRequest={handleCloseRequest}
               activeTab={activeTab}
               onTabChange={setActiveTab}
             />
@@ -144,6 +208,9 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
           {activeTab === 'reports' && (
             <VehicleReportsTab
               currentUser={currentUser}
+              consumptions={consumptions}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
             />
           )}
         </div>

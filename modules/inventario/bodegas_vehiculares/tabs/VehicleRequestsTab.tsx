@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../../../../types';
-import { mockMaterialRequests, mockVehicles, mockProjects } from '../mockData';
+import { mockMaterialRequests } from '../mockData';
 import { ActionButton, DataTable, TableColumn, StatusBadge, useConfirm } from '../../../../design-system';
 import { ActionButtons } from '../../../../components/ui/ActionButtons';
 import { FiCheckCircle } from 'react-icons/fi';
@@ -13,24 +13,36 @@ import { format } from 'date-fns';
 interface Props {
   currentUser?: User | null;
   selectedVehicleId?: string;
+  requests?: VehicleMaterialRequest[];
+  onCreateRequest?: (req: VehicleMaterialRequest) => void;
+  onUpdateRequest?: (req: VehicleMaterialRequest) => void;
+  onCancelRequest?: (requestId: string) => void;
+  onCloseRequest?: (req: VehicleMaterialRequest) => void;
   activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
   onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
 }
 
 export const VehicleRequestsTab: React.FC<Props> = ({
-  currentUser,
+  currentUser: _currentUser,
   selectedVehicleId,
+  requests: externalRequests,
+  onCreateRequest,
+  onUpdateRequest,
+  onCancelRequest,
+  onCloseRequest,
   activeTab = 'requests',
   onTabChange
 }) => {
   const confirm = useConfirm();
   const [localRequests, setLocalRequests] = useState<VehicleMaterialRequest[]>(mockMaterialRequests);
+  const requests = externalRequests || localRequests;
+
   const [showNewModal, setShowNewModal] = useState(false);
   const [requestToEdit, setRequestToEdit] = useState<VehicleMaterialRequest | null>(null);
   const [requestToView, setRequestToView] = useState<VehicleMaterialRequest | null>(null);
   const [requestToClose, setRequestToClose] = useState<VehicleMaterialRequest | null>(null);
 
-  const sortedRequests = [...localRequests].sort((a, b) => {
+  const sortedRequests = [...requests].sort((a, b) => {
     if (a.status === 'Abierta' && b.status !== 'Abierta') return -1;
     if (a.status !== 'Abierta' && b.status === 'Abierta') return 1;
     return new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime();
@@ -39,12 +51,20 @@ export const VehicleRequestsTab: React.FC<Props> = ({
   const handleDelete = async (req: VehicleMaterialRequest) => {
     const confirmed = await confirm({
       title: '¿Eliminar solicitud?',
-      description: 'Esta acción eliminará la solicitud y sus materiales asociados. ¿Desea continuar?',
-      confirmLabel: 'Eliminar',
+      description: 'Esta acción cancelará la solicitud y liberará el stock comprometido. ¿Desea continuar?',
+      confirmLabel: 'Continuar',
       variant: 'danger'
     });
     if (confirmed) {
-      setLocalRequests(prev => prev.filter(r => r.id !== req.id));
+      if (onCancelRequest) {
+        try {
+          onCancelRequest(req.id);
+        } catch (err: any) {
+          alert(err.message || 'Error al cancelar solicitud');
+        }
+      } else {
+        setLocalRequests(prev => prev.filter(r => r.id !== req.id));
+      }
     }
   };
 
@@ -210,7 +230,17 @@ export const VehicleRequestsTab: React.FC<Props> = ({
         initialVehicleId={selectedVehicleId}
         onClose={() => setShowNewModal(false)}
         onSave={(newReq) => {
-          setLocalRequests([newReq, ...localRequests.filter(r => r.id !== newReq.id)]);
+          if (onCreateRequest) {
+            try {
+              onCreateRequest(newReq);
+            } catch (err: any) {
+              alert(err.message || 'Error al crear solicitud');
+              return;
+            }
+          } else {
+            setLocalRequests([newReq, ...localRequests]);
+          }
+          setShowNewModal(false);
         }}
       />
       
@@ -221,7 +251,16 @@ export const VehicleRequestsTab: React.FC<Props> = ({
           initialVehicleId={requestToEdit.vehiculoId || selectedVehicleId}
           onClose={() => setRequestToEdit(null)}
           onSave={(updatedReq) => {
-            setLocalRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
+            if (onUpdateRequest) {
+              try {
+                onUpdateRequest(updatedReq);
+              } catch (err: any) {
+                alert(err.message || 'Error al actualizar solicitud');
+                return;
+              }
+            } else {
+              setLocalRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
+            }
             setRequestToEdit(null);
           }}
         />
@@ -249,7 +288,16 @@ export const VehicleRequestsTab: React.FC<Props> = ({
           request={requestToClose}
           onClose={() => setRequestToClose(null)}
           onSimulateClose={(updatedReq) => {
-            setLocalRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
+            if (onCloseRequest) {
+              try {
+                onCloseRequest(updatedReq);
+              } catch (err: any) {
+                alert(err.message || 'Error al cerrar solicitud');
+                return;
+              }
+            } else {
+              setLocalRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
+            }
             setRequestToClose(null);
           }}
         />

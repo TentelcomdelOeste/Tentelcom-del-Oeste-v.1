@@ -442,7 +442,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
                     ))
                   ) : (
                     <div className="p-3 text-xs text-slate-500 text-center">
-                      Presiona fuera para usar <strong className="text-slate-700">"{projectInput}"</strong> como nuevo proyecto.
+                      Presiona fuera para usar <strong className="text-slate-700">&quot;{projectInput}&quot;</strong> como nuevo proyecto.
                     </div>
                   )}
                 </div>
@@ -588,7 +588,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
             {items.length === 0 ? (
               <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 border-dashed text-center">
                 <p className="text-xs font-medium text-slate-500">
-                  Aún no hay materiales en esta solicitud. Seleccione un material arriba y pulse "Agregar".
+                  Aún no hay materiales en esta solicitud. Seleccione un material arriba y pulse &quot;Agregar&quot;.
                 </p>
               </div>
             ) : (
