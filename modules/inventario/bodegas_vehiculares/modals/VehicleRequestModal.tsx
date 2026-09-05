@@ -246,7 +246,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
 
     // Validate quantities
     for (const item of items) {
-      const mat = mockWarehouseItems.find(m => m.vehiculoId === v.id && m.inventoryItemId === item.inventoryItemId);
+      const mat = itemsList.find(m => m.vehiculoId === v.id && m.inventoryItemId === item.inventoryItemId);
       if (!mat) {
         setErrorMessage('Uno o más materiales no pertenecen al vehículo seleccionado.');
         return;
@@ -289,7 +289,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
 
     // Map request items
     const requestItems = items.map(i => {
-      const mat = mockWarehouseItems.find(m => m.vehiculoId === v.id && m.inventoryItemId === i.inventoryItemId);
+      const mat = itemsList.find(m => m.vehiculoId === v.id && m.inventoryItemId === i.inventoryItemId);
       if (!mat) return null;
       return {
         inventoryItemId: i.inventoryItemId,

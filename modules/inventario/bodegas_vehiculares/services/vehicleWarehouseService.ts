@@ -268,8 +268,55 @@ export const vehicleWarehouseService = {
     consumptions: VehicleProjectConsumption[];
     movements: VehicleMovement[];
   } {
-    const newItems = [...items];
+    const req = requests.find(r => r.id === closedRequest.id);
+    if (!req) {
+      throw new Error(`La solicitud con ID ${closedRequest.id} no existe.`);
+    }
+    if (req.status !== 'Abierta') {
+      throw new Error(`La solicitud ${req.requestNumber} no está abierta para cierre.`);
+    }
+
     const vehiculoId = closedRequest.vehiculoId;
+
+    // 1. VALIDATE ALL LINES FIRST (Atomic validation)
+    for (const reqItem of closedRequest.items) {
+      const used = reqItem.quantityUsed ?? 0;
+      const committed = reqItem.quantityCommitted;
+
+      if (used < 0) {
+        throw new Error(`Cantidad utilizada no puede ser negativa para ${reqItem.code}.`);
+      }
+      if (used > committed) {
+        throw new Error(`Cantidad utilizada (${used}) no puede ser mayor que la cantidad comprometida (${committed}) para ${reqItem.code}.`);
+      }
+
+      const idx = items.findIndex(
+        i => i.vehiculoId === vehiculoId && i.inventoryItemId === reqItem.inventoryItemId
+      );
+
+      if (idx === -1) {
+        throw new Error(`Inventario inconsistente: el material ${reqItem.code} no existe en el inventario del vehículo.`);
+      }
+
+      const current = items[idx];
+      if (current.physicalStock < used) {
+        throw new Error(`Inventario inconsistente: el material ${reqItem.code} tiene ${current.physicalStock} unidades físicas pero se intentan consumir ${used}.`);
+      }
+      if (current.committedStock < committed) {
+        throw new Error(`Inventario inconsistente: el material ${reqItem.code} tiene ${current.committedStock} unidades comprometidas pero se intentan liberar ${committed}.`);
+      }
+
+      const newPhysical = current.physicalStock - used;
+      const newCommitted = current.committedStock - committed;
+      const newAvailable = newPhysical - newCommitted;
+
+      if (newPhysical < 0 || newCommitted < 0 || newAvailable < 0) {
+        throw new Error(`Inventario inconsistente: resultado negativo para el material ${reqItem.code}.`);
+      }
+    }
+
+    // 2. APPLY CHANGES ONLY AFTER ALL VALIDATIONS PASSED
+    const newItems = [...items];
     const now = new Date().toISOString();
     const userName = currentUser?.name || currentUser?.email || closedRequest.closedByName || 'Usuario';
     const userId = currentUser?.id || closedRequest.closedBy || 'system';
@@ -288,8 +335,8 @@ export const vehicleWarehouseService = {
 
       if (idx !== -1) {
         const current = newItems[idx];
-        const newPhysical = Math.max(0, current.physicalStock - used);
-        const newCommitted = Math.max(0, current.committedStock - committed);
+        const newPhysical = current.physicalStock - used;
+        const newCommitted = current.committedStock - committed;
         const newAvailable = newPhysical - newCommitted;
 
         newItems[idx] = {
