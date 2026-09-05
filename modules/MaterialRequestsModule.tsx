@@ -93,9 +93,14 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
     const baseFiltered = (requests || []).filter(req => {
       const projectName = (req.projectName || "").toLowerCase();
       const requestedByName = (req.requestedByName || "").toLowerCase();
+      const vehAlias = (req.targetVehiculoAlias || "").toLowerCase();
+      const vehPlaca = (req.targetVehiculoPlaca || "").toLowerCase();
       const term = searchTerm.toLowerCase();
       
-      const matchesSearch = projectName.includes(term) || requestedByName.includes(term);
+      const matchesSearch = projectName.includes(term) || 
+                            requestedByName.includes(term) || 
+                            vehAlias.includes(term) || 
+                            vehPlaca.includes(term);
       const matchesStatus = statusFilter === 'Todos' || req.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -212,8 +217,31 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
       mobileGrid: 'full',
       mobileOrder: 2,
       render: (req) => {
+        const isVehicle = req.destinationType === 'vehicle' || !!req.targetVehiculoPlaca;
         const isIBUX = req.origin === 'IBUX-CLARO' || (req.projectName || "").toUpperCase().includes('IBUX');
         const isCNFL = req.origin === 'CNFL';
+
+        if (isVehicle) {
+          return (
+            <div className="flex flex-col gap-1">
+              <div>
+                <p className="font-bold text-blue-900 leading-tight">
+                  {req.targetVehiculoAlias || req.projectName || 'Unidad Vehicular'} {req.targetVehiculoPlaca ? `(${req.targetVehiculoPlaca})` : ''}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 rounded uppercase tracking-tight">
+                    BODEGA VEHICULAR
+                  </span>
+                  {req.movementReference && (
+                    <span className="text-[9px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 rounded">
+                      {req.movementReference}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
 
         return (
           <div className="flex flex-col gap-1">

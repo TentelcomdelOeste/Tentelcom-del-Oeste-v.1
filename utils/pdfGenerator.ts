@@ -800,7 +800,13 @@ export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
       { label: "Origen del Movimiento:", value: request.origin || 'N/A' },
   ];
 
-  if (request.origin === "IBUX-CLARO") {
+  if (request.destinationType === 'vehicle' || request.targetVehiculoPlaca) {
+      allFields.push({ label: "Destino:", value: "BODEGA VEHICULAR" });
+      allFields.push({ label: "Unidad Vehicular:", value: `${request.targetVehiculoAlias || 'Vehículo'} (${request.targetVehiculoPlaca || ''})` });
+      if (request.movementReference) {
+          allFields.push({ label: "Ref. Traslado:", value: request.movementReference });
+      }
+  } else if (request.origin === "IBUX-CLARO") {
       allFields.push({ label: "FDH:", value: request.fdh || '' });
       allFields.push({ label: "Torre:", value: request.torre || '' });
       allFields.push({ label: "Lugar / Distrito:", value: request.locationDetails || '' });
@@ -1062,7 +1068,9 @@ export const generateMaterialRequestPDF = async (request: MaterialRequest) => {
   }
 
   let baseName = '';
-  if (request.origin === "IBUX-CLARO") {
+  if (request.destinationType === 'vehicle' || request.targetVehiculoPlaca) {
+      baseName = request.targetVehiculoPlaca || request.projectName || 'VEHICULO';
+  } else if (request.origin === "IBUX-CLARO") {
       baseName = request.fdh || '';
   } else if (request.origin === "CNFL") {
       baseName = request.planta || (request as any).plantel || '';

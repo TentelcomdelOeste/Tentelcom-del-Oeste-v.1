@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { User, Quote } from '@/utils/types';
 import { InventoryItem } from '@/inventoryTypes';
-import { ProjectOrigin, MaterialRequest } from '@/dispatchTypes';
+import { ProjectOrigin, MaterialRequest, RequestDestinationType } from '@/dispatchTypes';
 import { getYearFromDateString } from '@/utils/dateUtils';
 import useLockBodyScroll from '@/hooks/useLockBodyScroll';
 import { useAuditPermanence } from '@/hooks/useAuditPermanence';
@@ -12,6 +12,8 @@ import { ActionButton, IconButton, Select } from '../design-system';
 import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { ItemStatus } from '@/dispatchTypes';
+import { mockVehicles } from './inventario/bodegas_vehiculares/mockData';
+import { vehicleWarehouseService } from './inventario/bodegas_vehiculares/services/vehicleWarehouseService';
 
 interface MaterialRequestModalProps {
   show: boolean;
@@ -52,6 +54,8 @@ export const MaterialRequestModal = ({
   useLockBodyScroll(show);
 
   const [origin, setOrigin] = useState<ProjectOrigin | ''>('');
+  const [destinationType, setDestinationType] = useState<RequestDestinationType>('project');
+  const [targetVehicleId, setTargetVehicleId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [planta, setPlanta] = useState('');
   const [plantaSuggestions, setPlantaSuggestions] = useState<string[]>([]);
@@ -99,7 +103,15 @@ export const MaterialRequestModal = ({
 
         if (initialData) {
             // Modo Edición: Cargar datos existentes
-            setOrigin(initialData.origin);
+            if (initialData.destinationType === 'vehicle' || initialData.targetVehiculoId) {
+                setDestinationType('vehicle');
+                setTargetVehicleId(initialData.targetVehiculoId || '');
+                setOrigin(initialData.origin || 'BODEGA PRINCIPAL');
+            } else {
+                setDestinationType('project');
+                setTargetVehicleId('');
+                setOrigin(initialData.origin);
+            }
             const proj = approvedQuotes.find(q => q.id.toString() === initialData.projectId);
             if (proj) {
                 setProjectId(initialData.projectId);
@@ -133,6 +145,8 @@ export const MaterialRequestModal = ({
             setAddedItems(items);
         } else {
             // Modo Creación: Resetear
+            setDestinationType('project');
+            setTargetVehicleId('');
             setOrigin('');
             setProjectId('');
             setObservations('');
@@ -248,6 +262,11 @@ export const MaterialRequestModal = ({
           return;
       }
 
+      if (destinationType === 'vehicle' && qty > availableStock) {
+          setError(`Stock insuficiente en Bodega Principal. Solo hay ${availableStock} ${selectedInventoryItem.unit} disponibles.`);
+          return;
+      }
+
       const shortageAtCreation = Math.max(0, qty - availableStock);
 
       setAddedItems([...addedItems, {
@@ -296,7 +315,10 @@ export const MaterialRequestModal = ({
     
     const shortageAtCreation = Math.max(0, newQty - maxAllowed);
     
-    const itemError = null;
+    let itemError = null;
+    if (destinationType === 'vehicle' && newQty > maxAllowed) {
+        itemError = `Supera el disponible (${maxAllowed} ${item.unit})`;
+    }
     setAddedItems(addedItems.map(i => i.id === id ? { ...i, quantity: val, quantityRequested: isNaN(newQty) ? 0 : newQty, quantityPending: isNaN(newQty) ? 0 : newQty, shortageQty: shortageAtCreation, error: itemError } : i));
   };
 
@@ -308,6 +330,107 @@ export const MaterialRequestModal = ({
       e.preventDefault();
       setError(null);
 
+      // CASO BODEGA VEHICULAR: Traslado directo desde Bodega Principal
+      if (destinationType === 'vehicle') {
+          if (!targetVehicleId) {
+              setError("Debe seleccionar la Unidad Vehicular destino.");
+              return;
+          }
+
+          if (addedItems.length === 0) {
+              setError("Debe agregar al menos un material.");
+              return;
+          }
+
+          if (addedItems.some(i => i.error)) {
+              setError("Corrija los errores en el listado de materiales.");
+              return;
+          }
+
+          // Validar disponibilidad de stock físico en Bodega Principal
+          for (const item of addedItems) {
+              const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity;
+              const invItem = inventoryItems.find(inv => 
+                  inv.id === item.inventoryItemId || inv.code.trim().toUpperCase() === item.code.trim().toUpperCase()
+              );
+              const available = invItem ? Math.max(0, (invItem.stock || 0) - (invItem.reserved || 0)) : 0;
+              if (qty > available) {
+                  setError(`Stock insuficiente en Bodega Principal para el material ${item.code}. Disponible: ${available} ${item.unit}`);
+                  return;
+              }
+          }
+
+          setIsSubmitting(true);
+          try {
+              const targetVeh = mockVehicles.find(v => v.id === targetVehicleId);
+              if (!targetVeh) {
+                  throw new Error("El vehículo seleccionado no existe en el catálogo.");
+              }
+
+              // 1. Ejecutar traslado a Bodega Vehicular (actualiza mockWarehouseItems y genera 1 único movimiento atómico)
+              const transferRes = vehicleWarehouseService.transferFromMainWarehouse(
+                  targetVehicleId,
+                  addedItems.map(i => {
+                      const qty = typeof i.quantity === 'string' ? parseFloat(i.quantity) : i.quantity;
+                      return {
+                          inventoryItemId: i.inventoryItemId,
+                          code: i.code,
+                          description: i.description,
+                          unit: i.unit,
+                          quantity: isNaN(qty) ? 0 : qty
+                      };
+                  }),
+                  observations || `Abastecimiento desde Bodega Principal hacia ${targetVeh.alias || targetVeh.placa}`,
+                  currentUser
+              );
+
+              // 2. Construir payload para el registro de la solicitud/traslado
+              const payload = {
+                  destinationType: 'vehicle' as RequestDestinationType,
+                  origin: 'BODEGA PRINCIPAL' as ProjectOrigin,
+                  projectId: `VEH-${targetVehicleId}`,
+                  projectName: `${targetVeh.alias} (${targetVeh.placa})`,
+                  projectCode: targetVeh.placa,
+                  targetVehiculoId: targetVehicleId,
+                  targetVehiculoPlaca: targetVeh.placa,
+                  targetVehiculoAlias: targetVeh.alias,
+                  movementReference: transferRes.movement.movementNumber,
+                  requestedBy: initialData ? initialData.requestedBy : currentUser.id,
+                  requestedByName: initialData ? initialData.requestedByName : currentUser.email,
+                  date: initialData ? initialData.date : new Date().toISOString().split('T')[0],
+                  status: 'Despachada' as RequestStatus,
+                  items: addedItems.map(i => {
+                      const qty = typeof i.quantity === 'string' ? parseFloat(i.quantity) : i.quantity;
+                      const invItem = inventoryItems.find(inv => 
+                        inv.code.trim().toUpperCase() === i.code.trim().toUpperCase()
+                      );
+                      return {
+                          inventoryItemId: invItem ? invItem.id : i.inventoryItemId,
+                          code: i.code,
+                          description: i.description,
+                          unit: i.unit,
+                          quantityRequested: isNaN(qty) ? 0 : qty,
+                          quantityDispatched: isNaN(qty) ? 0 : qty,
+                          quantityPending: 0,
+                          shortageQty: 0,
+                          status: 'completed' as ItemStatus,
+                          comment: i.comment
+                      };
+                  }),
+                  observations
+              };
+
+              await onSubmit(payload);
+              onClose();
+          } catch (err: any) {
+              setError(err.message);
+          } finally {
+              setIsSubmitting(false);
+          }
+          return;
+      }
+
+      // CASO PROYECTO (Flujo existente intacto)
       if (!origin) {
           setError("Debe seleccionar el Origen del movimiento.");
           return;
@@ -450,111 +573,175 @@ export const MaterialRequestModal = ({
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                                 <FiCircle className="text-blue-500" /> Información General
                             </p>
-                            
-                            {/* 1. Origen */}
-                            <div className="suggestions-container" onClick={e => e.stopPropagation()}>
-                                <Select
-                                    label="Origen del Movimiento"
-                                    options={[
-                                        { label: '-- Seleccione Origen --', value: '' },
-                                        { label: 'IBUX-CLARO', value: 'IBUX-CLARO' },
-                                        { label: 'CNFL', value: 'CNFL' },
-                                        { label: 'PRIVADO', value: 'PRIVADO' }
-                                    ]}
-                                    value={origin}
-                                    onChange={val => setOrigin(val as ProjectOrigin)}
-                                    required
-                                />
-                            </div>
 
-                            {/* 2. Proyecto (Searchable) */}
-                            {origin !== 'CNFL' && (
-                                <div className="relative suggestions-container" onClick={e => e.stopPropagation()}>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
-                                        Proyecto Asociado {!isIBUX && <span className="text-red-500">*</span>}
-                                    </label>
-                                    <div className="relative">
-                                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
-                                        <input 
-                                            type="text" 
-                                            value={projectSearch}
-                                            onChange={e => {
-                                                setProjectSearch(e.target.value);
-                                                if (projectId) setProjectId('');
-                                                setShowProjectSuggestions(true);
-                                            }}
-                                            onFocus={() => setShowProjectSuggestions(true)}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (isMobile) setShowMobileProjectSelector(true);
-                                            }}
-                                            placeholder="Buscar proyecto..."
-                                            className={`w-full pl-9 pr-10 py-3 rounded-xl bg-white border text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all ${!projectId && !isIBUX && origin !== '' ? 'border-red-200 ring-1 ring-red-50' : 'border-slate-200 shadow-sm'}`}
-                                        />
-                                        {projectSearch && (
-                                            <IconButton 
-                                                icon={<FiX />}
-                                                onClick={() => {
-                                                    setProjectId('');
-                                                    setProjectSearch('');
-                                                    setShowProjectSuggestions(false);
-                                                }}
-                                                variant="ghost"
-                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition-colors"
-                                            />
-                                        )}
+                            {/* 0. Destino de la Solicitud */}
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">
+                                    Destino de la Solicitud <span className="text-red-500">*</span>
+                                </label>
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                                    <ActionButton
+                                        type="button"
+                                        onClick={() => {
+                                            setDestinationType('project');
+                                            setError(null);
+                                        }}
+                                        variant={destinationType === 'project' ? 'primary' : 'ghost'}
+                                        label="PROYECTO"
+                                        className="!py-2 !text-xs !font-bold"
+                                    />
+                                    <ActionButton
+                                        type="button"
+                                        onClick={() => {
+                                            setDestinationType('vehicle');
+                                            setError(null);
+                                        }}
+                                        variant={destinationType === 'vehicle' ? 'primary' : 'ghost'}
+                                        label="BODEGA VEHICULAR"
+                                        className="!py-2 !text-xs !font-bold"
+                                    />
+                                </div>
+                            </div>
+                            
+                            {destinationType === 'vehicle' ? (
+                                <div className="space-y-4 pt-1">
+                                    {/* Origen informativo */}
+                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Origen de Materiales</p>
+                                        <p className="text-xs font-black text-slate-800 flex items-center gap-2 mt-0.5">
+                                            <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                                            BODEGA PRINCIPAL
+                                        </p>
                                     </div>
-                                    
-                                    {showProjectSuggestions && (
-                                        <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-2 z-[210] max-h-60 overflow-y-auto custom-scrollbar border-t-4 border-t-blue-500">
-                                            {filteredProjects.length === 0 ? (
-                                                <p className="p-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">No se encontraron proyectos</p>
-                                            ) : (
-                                                filteredProjects.map(q => (
-                                                    <div 
-                                                        key={q.id}
+
+                                    {/* Selector de Unidad Vehicular */}
+                                    <div className="suggestions-container" onClick={e => e.stopPropagation()}>
+                                        <Select
+                                            label="Unidad Vehicular Destino"
+                                            options={[
+                                                { label: '-- Seleccione Unidad --', value: '' },
+                                                ...mockVehicles.map(v => ({
+                                                    label: `${v.alias} (${v.placa})`,
+                                                    value: v.id
+                                                }))
+                                            ]}
+                                            value={targetVehicleId}
+                                            onChange={val => {
+                                                setTargetVehicleId(val);
+                                                setError(null);
+                                            }}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* 1. Origen */}
+                                    <div className="suggestions-container" onClick={e => e.stopPropagation()}>
+                                        <Select
+                                            label="Origen del Movimiento"
+                                            options={[
+                                                { label: '-- Seleccione Origen --', value: '' },
+                                                { label: 'IBUX-CLARO', value: 'IBUX-CLARO' },
+                                                { label: 'CNFL', value: 'CNFL' },
+                                                { label: 'PRIVADO', value: 'PRIVADO' }
+                                            ]}
+                                            value={origin}
+                                            onChange={val => setOrigin(val as ProjectOrigin)}
+                                            required
+                                        />
+                                    </div>
+
+                                    {/* 2. Proyecto (Searchable) */}
+                                    {origin !== 'CNFL' && (
+                                        <div className="relative suggestions-container" onClick={e => e.stopPropagation()}>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                                                Proyecto Asociado {!isIBUX && <span className="text-red-500">*</span>}
+                                            </label>
+                                            <div className="relative">
+                                                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
+                                                <input 
+                                                    type="text" 
+                                                    value={projectSearch} 
+                                                    onChange={e => {
+                                                        setProjectSearch(e.target.value);
+                                                        if (projectId) setProjectId('');
+                                                        setShowProjectSuggestions(true);
+                                                    }}
+                                                    onFocus={() => setShowProjectSuggestions(true)}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (isMobile) setShowMobileProjectSelector(true);
+                                                    }}
+                                                    placeholder="Buscar proyecto..."
+                                                    className={`w-full pl-9 pr-10 py-3 rounded-xl bg-white border text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all ${!projectId && !isIBUX && origin !== '' ? 'border-red-200 ring-1 ring-red-50' : 'border-slate-200 shadow-sm'}`}
+                                                />
+                                                {projectSearch && (
+                                                    <IconButton 
+                                                        icon={<FiX />}
                                                         onClick={() => {
-                                                            setProjectId(q.id.toString());
-                                                            setProjectSearch(`#${q.id.toString().padStart(3, '0')}-${getYearFromDateString(q.fecha)} | ${q.empresa}`);
+                                                            setProjectId('');
+                                                            setProjectSearch('');
                                                             setShowProjectSuggestions(false);
                                                         }}
-                                                        className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
-                                                    >
-                                                        <p className="text-[11px] font-black text-blue-600 uppercase tracking-tight">
-                                                            #{q.id.toString().padStart(3, '0')}-{getYearFromDateString(q.fecha)}
-                                                        </p>
-                                                        <p className="text-xs font-bold text-slate-700">{q.empresa}</p>
-                                                    </div>
-                                                ))
+                                                        variant="ghost"
+                                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition-colors"
+                                                    />
+                                                )}
+                                            </div>
+                                            
+                                            {showProjectSuggestions && (
+                                                <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-2 z-[210] max-h-60 overflow-y-auto custom-scrollbar border-t-4 border-t-blue-500">
+                                                    {filteredProjects.length === 0 ? (
+                                                        <p className="p-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">No se encontraron proyectos</p>
+                                                    ) : (
+                                                        filteredProjects.map(q => (
+                                                            <div 
+                                                                key={q.id}
+                                                                onClick={() => {
+                                                                    setProjectId(q.id.toString());
+                                                                    setProjectSearch(`#${q.id.toString().padStart(3, '0')}-${getYearFromDateString(q.fecha)} | ${q.empresa}`);
+                                                                    setShowProjectSuggestions(false);
+                                                                }}
+                                                                className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
+                                                            >
+                                                                <p className="text-[11px] font-black text-blue-600 uppercase tracking-tight">
+                                                                    #{q.id.toString().padStart(3, '0')}-{getYearFromDateString(q.fecha)}
+                                                                </p>
+                                                                <p className="text-xs font-bold text-slate-700">{q.empresa}</p>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                     )}
-                                </div>
-                            )}
 
-                            {/* 2.1 Lugar / Plantel (CNFL) */}
-                            {isCNFL && (
-                                <div className="relative suggestions-container" onClick={e => e.stopPropagation()}>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
-                                        Lugar / Plantel <span className="text-red-500">*</span>
-                                    </label>
-                                    <input 
-                                        type="text" 
-                                        list="planta-list"
-                                        value={planta}
-                                        onChange={e => setPlanta(e.target.value.toUpperCase())}
-                                        placeholder="Seleccione o escriba la planta..."
-                                        className="w-full p-3 rounded-xl bg-white border border-slate-200 text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
-                                    />
-                                    <datalist id="planta-list">
-                                        {plantaSuggestions.map(p => <option key={p} value={p} />)}
-                                    </datalist>
-                                </div>
+                                    {/* 2.1 Lugar / Plantel (CNFL) */}
+                                    {isCNFL && (
+                                        <div className="relative suggestions-container" onClick={e => e.stopPropagation()}>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                                                Lugar / Plantel <span className="text-red-500">*</span>
+                                            </label>
+                                            <input 
+                                                type="text" 
+                                                list="planta-list"
+                                                value={planta}
+                                                onChange={e => setPlanta(e.target.value.toUpperCase())}
+                                                placeholder="Seleccione o escriba la planta..."
+                                                className="w-full p-3 rounded-xl bg-white border border-slate-200 text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
+                                            />
+                                            <datalist id="planta-list">
+                                                {plantaSuggestions.map(p => <option key={p} value={p} />)}
+                                            </datalist>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
 
                         {/* 3. Campos IBUX (Condicional) */}
-                        {(isIBUX || (origin === 'IBUX-CLARO')) && (
+                        {destinationType === 'project' && (isIBUX || (origin === 'IBUX-CLARO')) && (
                             <div className="grid grid-cols-2 gap-3 bg-blue-50 p-4 rounded-xl border border-blue-100 animate-in fade-in">
                                 <div className="col-span-2 text-[10px] font-black text-blue-600 uppercase tracking-widest border-b border-blue-200 pb-1 mb-2">
                                     Datos IBUX Requeridos
@@ -720,7 +907,7 @@ export const MaterialRequestModal = ({
                                     </div>
                                     {remainingStock < 0 && (
                                         <p className="mt-2 text-[9px] font-bold text-amber-600 flex items-center gap-1 justify-center">
-                                            <FiAlertTriangle /> Se generará un faltante de {Math.abs(remainingStock)} {selectedInventoryItem.unit}
+                                            <FiAlertTriangle /> {destinationType === 'vehicle' ? `Stock insuficiente en Bodega Principal (disponible: ${availableStock})` : `Se generará un faltante de ${Math.abs(remainingStock)} ${selectedInventoryItem.unit}`}
                                         </p>
                                     )}
                                 </div>
@@ -820,7 +1007,7 @@ export const MaterialRequestModal = ({
                     type="submit" 
                     disabled={isSubmitting} 
                     isLoading={isSubmitting}
-                    label={initialData ? 'Guardar' : 'Enviar Solicitud'}
+                    label={initialData ? 'Guardar' : (destinationType === 'vehicle' ? 'Registrar Traslado' : 'Enviar Solicitud')}
                     variant="primary"
                     className="flex-1 !py-2.5 !text-[10px] !font-black !uppercase !rounded-xl"
                 />

@@ -350,3 +350,24 @@ export const mockConsumptions: VehicleProjectConsumption[] = [
     totalItemsConsumed: 42
   }
 ];
+
+type WarehouseListener = () => void;
+const warehouseListeners = new Set<WarehouseListener>();
+
+export const subscribeWarehouseChanges = (listener: WarehouseListener) => {
+  warehouseListeners.add(listener);
+  return () => {
+    warehouseListeners.delete(listener);
+  };
+};
+
+export const notifyWarehouseChanges = () => {
+  warehouseListeners.forEach(listener => {
+    try {
+      listener();
+    } catch (e) {
+      console.error('Error in warehouse listener', e);
+    }
+  });
+};
+

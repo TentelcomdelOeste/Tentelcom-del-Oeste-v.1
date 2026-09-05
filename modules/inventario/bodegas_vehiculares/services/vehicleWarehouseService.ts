@@ -5,7 +5,7 @@ import {
   VehicleProjectConsumption,
   VehicleProjectConsumptionItem
 } from '../../../../types/vehicleWarehouse.types';
-import { mockVehicles } from '../mockData';
+import { mockVehicles, mockWarehouseItems, mockMovements, notifyWarehouseChanges } from '../mockData';
 
 export const vehicleWarehouseService = {
   // 1. Transfer item between vehicles
@@ -416,6 +416,129 @@ export const vehicleWarehouseService = {
       items: newItems,
       consumptions: updatedConsumptions,
       movements: updatedMovements
+    };
+  },
+
+  // 6. Transfer items from Main Warehouse (Bodega Principal) to Vehicle Warehouse
+  transferFromMainWarehouse(
+    targetVehicleId: string,
+    transferItems: {
+      inventoryItemId: string;
+      code: string;
+      description: string;
+      category?: string;
+      unit: string;
+      quantity: number;
+    }[],
+    reason?: string,
+    currentUser?: { id: string; name?: string; email?: string } | null,
+    requestNumber?: string
+  ): {
+    items: VehicleWarehouseItem[];
+    movements: VehicleMovement[];
+    movement: VehicleMovement;
+  } {
+    if (!targetVehicleId) {
+      throw new Error('Debe seleccionar el vehículo destino.');
+    }
+
+    const targetVeh = mockVehicles.find(v => v.id === targetVehicleId);
+    if (!targetVeh) {
+      throw new Error(`El vehículo seleccionado no existe en el catálogo.`);
+    }
+
+    if (!transferItems || transferItems.length === 0) {
+      throw new Error('Debe especificar al menos un material para el traslado.');
+    }
+
+    const now = new Date().toISOString();
+    const userName = currentUser?.name || currentUser?.email || 'Usuario Sistema';
+    const userId = currentUser?.id || 'system';
+
+    const movementItems: any[] = [];
+
+    transferItems.forEach(item => {
+      if (item.quantity <= 0) {
+        throw new Error(`La cantidad para ${item.code} debe ser mayor a 0.`);
+      }
+
+      const existingIndex = mockWarehouseItems.findIndex(
+        i => i.vehiculoId === targetVehicleId && (i.inventoryItemId === item.inventoryItemId || i.code.trim().toUpperCase() === item.code.trim().toUpperCase())
+      );
+
+      let prevPhysical = 0;
+      let newPhysical = item.quantity;
+      let prevCommitted = 0;
+
+      if (existingIndex !== -1) {
+        const existing = mockWarehouseItems[existingIndex];
+        prevPhysical = existing.physicalStock;
+        prevCommitted = existing.committedStock;
+        newPhysical = prevPhysical + item.quantity;
+        const newAvailable = newPhysical - prevCommitted;
+
+        mockWarehouseItems[existingIndex] = {
+          ...existing,
+          physicalStock: newPhysical,
+          availableStock: newAvailable,
+          updatedAt: now,
+          updatedBy: userName
+        };
+      } else {
+        const newItemId = `${targetVehicleId}_${item.inventoryItemId}`;
+        const newItem: VehicleWarehouseItem = {
+          id: newItemId,
+          vehiculoId: targetVehicleId,
+          vehiculoPlaca: targetVeh.placa || 'PLACA',
+          vehiculoAlias: targetVeh.alias || targetVeh.name || 'Vehículo',
+          inventoryItemId: item.inventoryItemId,
+          code: item.code,
+          description: item.description,
+          category: item.category || 'General',
+          unit: item.unit,
+          physicalStock: item.quantity,
+          committedStock: 0,
+          availableStock: item.quantity,
+          updatedAt: now,
+          updatedBy: userName
+        };
+        mockWarehouseItems.push(newItem);
+      }
+
+      movementItems.push({
+        inventoryItemId: item.inventoryItemId,
+        code: item.code,
+        description: item.description,
+        quantity: item.quantity,
+        previousPhysicalStock: prevPhysical,
+        newPhysicalStock: newPhysical,
+        previousCommittedStock: prevCommitted,
+        newCommittedStock: prevCommitted
+      });
+    });
+
+    const movementNumber = `MOV-${Math.floor(100000 + Math.random() * 900000)}`;
+    const movement: VehicleMovement = {
+      id: `mov-${Date.now()}-main`,
+      movementNumber,
+      type: 'Traslado_Entrada',
+      vehiculoId: targetVehicleId,
+      vehiculoPlaca: targetVeh.alias || targetVeh.placa || targetVehicleId,
+      items: movementItems,
+      date: now.split('T')[0],
+      reason: reason || `Abastecimiento desde Bodega Principal hacia ${targetVeh.alias || targetVeh.placa}`,
+      performedBy: userId,
+      performedByName: userName,
+      createdAt: now
+    };
+
+    mockMovements.unshift(movement);
+    notifyWarehouseChanges();
+
+    return {
+      items: [...mockWarehouseItems],
+      movements: [...mockMovements],
+      movement
     };
   }
 };

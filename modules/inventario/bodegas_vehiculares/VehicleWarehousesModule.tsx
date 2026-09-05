@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ModulePage } from '../../../components/ui/ModulePage';
 import { ActionButton } from '../../../design-system';
 import { FiBox, FiClipboard, FiRefreshCw, FiPieChart } from 'react-icons/fi';
@@ -13,7 +13,8 @@ import {
   mockWarehouseItems,
   mockMovements,
   mockMaterialRequests,
-  mockConsumptions
+  mockConsumptions,
+  subscribeWarehouseChanges
 } from './mockData';
 import {
   VehicleWarehouseItem,
@@ -38,6 +39,13 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
   const [movements, setMovements] = useState<VehicleMovement[]>(mockMovements);
   const [requests, setRequests] = useState<VehicleMaterialRequest[]>(mockMaterialRequests);
   const [consumptions, setConsumptions] = useState<VehicleProjectConsumption[]>(mockConsumptions);
+
+  useEffect(() => {
+    return subscribeWarehouseChanges(() => {
+      setItems([...mockWarehouseItems]);
+      setMovements([...mockMovements]);
+    });
+  }, []);
 
   const handleRegisterMovement = (newMov: VehicleMovement) => {
     setMovements(prev => [newMov, ...prev]);

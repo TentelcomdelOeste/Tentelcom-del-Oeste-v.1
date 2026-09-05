@@ -125,11 +125,13 @@ export const useMaterialRequests = (currentUser: User | null) => {
         return item;
     });
 
+    const isVehicleTransfer = (requestData as any).destinationType === 'vehicle';
+
     const newRequestData = sanitizeData({
         ...requestData,
         id,
         items: repairedItems,
-        status: 'Pendiente' as RequestStatus,
+        status: (requestData as any).status || ('Pendiente' as RequestStatus),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email,
@@ -208,19 +210,31 @@ export const useMaterialRequests = (currentUser: User | null) => {
             const currentReserved = itemSnap.data().reserved || 0;
             const available = Math.max(0, currentStock - currentReserved);
             
-            // Reservamos solo lo que esté disponible, sin exceder lo solicitado
-            const qtyToReserve = Math.min(item.quantityRequested, available);
-            
-            // Actualizamos el faltante real basado en lo que pudimos reservar en este momento
-            updatedItems[i] = {
-                ...item,
-                shortageQty: Math.max(0, item.quantityRequested - qtyToReserve)
-            };
+            if (isVehicleTransfer) {
+                // En traslados a bodega vehicular, descontamos stock físico directamente
+                const qtyToDeduct = Math.min(item.quantityRequested, currentStock);
+                updatedItems[i] = {
+                    ...item,
+                    shortageQty: 0
+                };
+                if (qtyToDeduct > 0) {
+                    transaction.update(itemRef, {
+                        stock: increment(-qtyToDeduct)
+                    });
+                }
+            } else {
+                // Solicitud normal de proyecto: reservamos solo lo disponible
+                const qtyToReserve = Math.min(item.quantityRequested, available);
+                updatedItems[i] = {
+                    ...item,
+                    shortageQty: Math.max(0, item.quantityRequested - qtyToReserve)
+                };
 
-            if (qtyToReserve > 0) {
-                transaction.update(itemRef, {
-                    reserved: increment(qtyToReserve)
-                });
+                if (qtyToReserve > 0) {
+                    transaction.update(itemRef, {
+                        reserved: increment(qtyToReserve)
+                    });
+                }
             }
         }
 

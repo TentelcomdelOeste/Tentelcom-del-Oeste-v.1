@@ -1,6 +1,7 @@
 
 export type RequestStatus = 'Pendiente' | 'Aprobada' | 'Parcial' | 'Despachada' | 'Rechazada' | 'Eliminada';
-export type ProjectOrigin = 'IBUX-CLARO' | 'CNFL' | 'PRIVADO';
+export type ProjectOrigin = 'IBUX-CLARO' | 'CNFL' | 'PRIVADO' | 'BODEGA PRINCIPAL' | 'BODEGA VEHICULAR';
+export type RequestDestinationType = 'project' | 'vehicle';
 export type ShortageStatus = 'Pendiente' | 'En proceso de compra' | 'Material recibido' | 'Cerrado';
 export type ItemStatus = 'pending' | 'partial' | 'completed';
 
@@ -50,6 +51,13 @@ export interface MaterialRequest {
   status: RequestStatus;
   items: RequestItem[];
   
+  // Destino y Bodega Vehicular
+  destinationType?: RequestDestinationType;
+  targetVehiculoId?: string;
+  targetVehiculoPlaca?: string;
+  targetVehiculoAlias?: string;
+  movementReference?: string;
+
   // Campos condicionales IBUX
   fdh?: string;
   torre?: string;

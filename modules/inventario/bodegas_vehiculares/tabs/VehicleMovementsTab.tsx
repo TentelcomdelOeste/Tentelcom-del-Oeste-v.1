@@ -119,6 +119,12 @@ export const VehicleMovementsTab: React.FC<Props> = ({
               <span className="text-blue-600 font-extrabold">→</span>
               <span>{mov.targetVehiculoPlaca}</span>
             </p>
+          ) : mov.type === 'Traslado_Entrada' ? (
+            <p className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+              <span className="text-slate-500 font-medium">Bodega Principal</span>
+              <span className="text-emerald-600 font-extrabold">→</span>
+              <span>{mov.vehiculoPlaca}</span>
+            </p>
           ) : (
             <span className="font-bold text-slate-700 text-xs">{mov.vehiculoPlaca}</span>
           )}
