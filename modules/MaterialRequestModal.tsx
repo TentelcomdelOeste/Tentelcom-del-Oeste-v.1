@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { User, Quote } from '@/utils/types';
 import { InventoryItem } from '@/inventoryTypes';
-import { ProjectOrigin, MaterialRequest, RequestDestinationType } from '@/dispatchTypes';
+import { ProjectOrigin, MaterialRequest, RequestDestinationType, RequestStatus } from '@/dispatchTypes';
 import { getYearFromDateString } from '@/utils/dateUtils';
 import useLockBodyScroll from '@/hooks/useLockBodyScroll';
 import { useAuditPermanence } from '@/hooks/useAuditPermanence';
@@ -13,6 +13,8 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { ItemStatus } from '@/dispatchTypes';
 import { mockVehicles } from './inventario/bodegas_vehiculares/mockData';
+import { getProjects } from './project_management/services/projectService';
+import { Project } from './project_management/types';
 
 interface MaterialRequestModalProps {
   show: boolean;
@@ -47,7 +49,7 @@ export const MaterialRequestModal = ({
     module: 'Inventario',
     submodule: initialData ? 'Editar Solicitud Material' : 'Nueva Solicitud Material',
     recordId: initialData?.id,
-    recordCode: initialData?.otCode,
+    recordCode: initialData?.requestNumber,
     enabled: show
   });
   useLockBodyScroll(show);
@@ -81,7 +83,14 @@ export const MaterialRequestModal = ({
   const [showMobileSelector, setShowMobileSelector] = useState(false);
   const [showMobileProjectSelector, setShowMobileProjectSelector] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
   const qtyInputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (show) {
+      getProjects().then(setProjects).catch(console.error);
+    }
+  }, [show]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -111,10 +120,14 @@ export const MaterialRequestModal = ({
                 setTargetVehicleId('');
                 setOrigin(initialData.origin);
             }
-            const proj = approvedQuotes.find(q => q.id.toString() === initialData.projectId);
+            const proj = projects.find(q => q.id === initialData.projectId);
             if (proj) {
+                setProjectId(proj.id);
+                setProjectSearch(`${proj.projectNumber} | ${proj.clientName || 'Sin Cliente'}`);
+            } else if (initialData.projectId) {
+                // Keep the projectId even if the project is not yet loaded or not found
                 setProjectId(initialData.projectId);
-                setProjectSearch(`#${proj.id.toString().padStart(3, '0')}-${getYearFromDateString(proj.fecha)} | ${proj.empresa}`);
+                setProjectSearch(initialData.projectName && initialData.projectName !== 'SIN PROYECTO' && initialData.projectName !== 'IBUX-CLARO' && initialData.projectName !== 'N/A' ? initialData.projectName : '');
             } else {
                 setProjectId('');
                 setProjectSearch(initialData.projectName && initialData.projectName !== 'SIN PROYECTO' && initialData.projectName !== 'IBUX-CLARO' && initialData.projectName !== 'N/A' ? initialData.projectName : '');
@@ -166,12 +179,21 @@ export const MaterialRequestModal = ({
     }
   }, [show, initialData]); // Reduced dependencies to prevent accidental resets
 
+  useEffect(() => {
+      if (initialData && initialData.projectId && projects.length > 0 && (!projectSearch || projectSearch === initialData.projectName)) {
+          const proj = projects.find(q => q.id === initialData.projectId);
+          if (proj) {
+              setProjectSearch(`${proj.projectNumber} | ${proj.clientName || 'Sin Cliente'}`);
+          }
+      }
+  }, [projects, initialData]);
+
   const selectedProject = useMemo(() => 
-      approvedQuotes.find(q => q.id.toString() === projectId),
-  [approvedQuotes, projectId]);
+      projects.find(q => q.id === projectId),
+  [projects, projectId]);
 
   const isIBUX = useMemo(() => {
-    const projectName = selectedProject?.empresa || '';
+    const projectName = selectedProject?.name || selectedProject?.clientName || '';
     return origin === 'IBUX-CLARO' || projectName.toUpperCase().includes('IBUX');
   }, [origin, selectedProject]);
 
@@ -194,14 +216,15 @@ export const MaterialRequestModal = ({
   }, [isCNFL]);
 
   const filteredProjects = useMemo(() => {
-      if (!projectSearch) return approvedQuotes.slice(0, 10);
+      if (!projectSearch) return projects.slice(0, 10);
       const term = projectSearch.toLowerCase();
-      return approvedQuotes.filter(q => {
-          const projectCode = `#${q.id.toString().padStart(3, '0')}-${getYearFromDateString(q.fecha)}`.toLowerCase();
-          const company = q.empresa.toLowerCase();
-          return projectCode.includes(term) || company.includes(term);
+      return projects.filter(p => {
+          const projectCode = (p.projectNumber || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+          const company = (p.clientName || '').toLowerCase();
+          return projectCode.includes(term) || name.includes(term) || company.includes(term);
       }).slice(0, 20);
-  }, [approvedQuotes, projectSearch]);
+  }, [projects, projectSearch]);
 
   const filteredItems = useMemo(() => {
       if (!itemSearch) return inventoryItems.slice(0, 10);
@@ -449,15 +472,14 @@ export const MaterialRequestModal = ({
 
       setIsSubmitting(true);
       try {
-        // FIX: Safe navigation for projectCode
         const projectCodeValue = selectedProject 
-            ? `#${selectedProject.id.toString().padStart(3, '0')}-${getYearFromDateString(selectedProject.fecha)}` 
+            ? selectedProject.projectNumber
             : (origin === 'PRIVADO' ? 'PRIVADO' : 'S/C');
 
           const payload = {
               origin: origin.replace(" MANTENIMIENTO", ""),
-              projectId: selectedProject ? selectedProject.id.toString() : (projectId || (origin === 'PRIVADO' ? 'MANUAL' : (isIBUX ? 'IBUX' : 'N/A'))),
-              projectName: selectedProject ? selectedProject.empresa.replace(" MANTENIMIENTO", "") : (projectSearch.trim() || (isIBUX ? 'IBUX-CLARO' : 'SIN PROYECTO')),
+              projectId: selectedProject ? selectedProject.id : (projectId || (origin === 'PRIVADO' ? 'MANUAL' : (isIBUX ? 'IBUX' : 'N/A'))),
+              projectName: selectedProject ? selectedProject.name : (projectSearch.trim() || (isIBUX ? 'IBUX-CLARO' : 'SIN PROYECTO')),
               projectCode: projectCodeValue,
               // Mantenemos el solicitante original si estamos editando, o el actual si es nuevo
               requestedBy: initialData ? initialData.requestedBy : currentUser.id,
@@ -519,7 +541,7 @@ export const MaterialRequestModal = ({
                 <IconButton
                     icon={<FiX />}
                     onClick={onClose}
-                    variant="ghost"
+                    variant="neutral"
                     className="text-slate-400 hover:text-red-500 transition-colors"
                 />
             </div>
@@ -673,7 +695,7 @@ export const MaterialRequestModal = ({
                                                             setProjectSearch('');
                                                             setShowProjectSuggestions(false);
                                                         }}
-                                                        variant="ghost"
+                                                        variant="neutral"
                                                         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition-colors"
                                                     />
                                                 )}
@@ -688,16 +710,17 @@ export const MaterialRequestModal = ({
                                                             <div 
                                                                 key={q.id}
                                                                 onClick={() => {
-                                                                    setProjectId(q.id.toString());
-                                                                    setProjectSearch(`#${q.id.toString().padStart(3, '0')}-${getYearFromDateString(q.fecha)} | ${q.empresa}`);
+                                                                    setProjectId(q.id);
+                                                                    setProjectSearch(`${q.projectNumber} | ${q.clientName || 'Sin Cliente'}`);
                                                                     setShowProjectSuggestions(false);
                                                                 }}
                                                                 className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
                                                             >
                                                                 <p className="text-[11px] font-black text-blue-600 uppercase tracking-tight">
-                                                                    #{q.id.toString().padStart(3, '0')}-{getYearFromDateString(q.fecha)}
+                                                                    {q.projectNumber}
                                                                 </p>
-                                                                <p className="text-xs font-bold text-slate-700">{q.empresa}</p>
+                                                                <p className="text-xs font-bold text-slate-700">{q.name}</p>
+                                                                {q.clientName && <p className="text-[10px] text-slate-500 mt-0.5">{q.clientName}</p>}
                                                             </div>
                                                         ))
                                                     )}
@@ -944,7 +967,7 @@ export const MaterialRequestModal = ({
                                                         <IconButton
                                                             icon={<FiX />}
                                                             onClick={() => setAddedItems(addedItems.filter(i => i.id !== item.id))}
-                                                            variant="ghost"
+                                                            variant="neutral"
                                                             size="sm"
                                                             className="text-slate-300 hover:text-red-500 transition-colors p-1"
                                                         />
@@ -1025,8 +1048,8 @@ export const MaterialRequestModal = ({
         onClose={() => setShowMobileProjectSelector(false)}
         projects={filteredProjects}
         onSelect={(q) => {
-            setProjectId(q.id.toString());
-            setProjectSearch(`#${q.id.toString().padStart(3, '0')}-${getYearFromDateString(q.fecha)} | ${q.empresa}`);
+            setProjectId(q.id);
+            setProjectSearch(`${q.projectNumber} | ${q.clientName || 'Sin Cliente'}`);
             setShowMobileProjectSelector(false);
         }}
         searchTerm={projectSearch}
@@ -1041,8 +1064,8 @@ export const MaterialRequestModal = ({
 const MobileProjectSelector: React.FC<{
   show: boolean;
   onClose: () => void;
-  projects: Quote[];
-  onSelect: (project: Quote) => void;
+  projects: Project[];
+  onSelect: (project: Project) => void;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
 }> = ({ show, onClose, projects, onSelect, searchTerm, setSearchTerm }) => {
@@ -1061,7 +1084,7 @@ const MobileProjectSelector: React.FC<{
           <IconButton
             icon={<FiX />}
             onClick={onClose}
-            variant="ghost"
+            variant="neutral"
             className="text-slate-400 hover:text-red-500 transition-colors"
           />
         </div>
@@ -1094,10 +1117,11 @@ const MobileProjectSelector: React.FC<{
               >
                 <div className="flex justify-between items-start">
                   <span className="text-xs font-black text-blue-600 uppercase tracking-wider">
-                    #{q.id.toString().padStart(3, '0')}-{getYearFromDateString(q.fecha)}
+                    {q.projectNumber}
                   </span>
                 </div>
-                <p className="text-sm font-bold text-slate-700 leading-tight">{q.empresa}</p>
+                <p className="text-sm font-bold text-slate-700 leading-tight">{q.name}</p>
+                {q.clientName && <p className="text-[10px] font-bold text-slate-500 leading-tight">{q.clientName}</p>}
               </div>
             ))}
           </div>
@@ -1132,7 +1156,7 @@ const MobileMaterialSelector: React.FC<{
           <IconButton
             icon={<FiX />}
             onClick={onClose}
-            variant="ghost"
+            variant="neutral"
             className="text-slate-400 hover:text-red-500 transition-colors"
           />
         </div>

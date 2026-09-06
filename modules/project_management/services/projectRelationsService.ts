@@ -14,7 +14,7 @@ export const getProjectJobs = async (projectId: string) => {
 
 export const getProjectMaterialRequests = async (projectId: string) => {
   try {
-    const q = query(collection(db, 'material_requests'), where('projectId', '==', projectId));
+    const q = query(collection(db, 'material_reports'), where('projectId', '==', projectId));
     const snap = await getDocs(q);
     return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
