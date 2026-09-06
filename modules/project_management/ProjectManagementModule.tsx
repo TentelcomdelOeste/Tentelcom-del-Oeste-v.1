@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { ModulePage } from '../../components/ui/ModulePage';
-import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
 import { ActionButton, SearchInput, ConfirmModal } from '../../design-system';
 import { ActionButtons } from '../../components/ui/ActionButtons';
 import { User } from '../../utils/types';
@@ -91,8 +90,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
-        <ModuleToolbar className="sm:flex-row sm:items-center gap-3">
-          <div className="flex-1 min-w-0 w-full sm:w-auto">
+        <div className="flex flex-row items-center gap-2 sm:gap-3 w-full mb-4">
+          <div className="flex-1 min-w-0">
             <SearchInput 
                value={search} 
                onChange={(e) => setSearch(e.target.value)} 
@@ -102,16 +101,16 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
           </div>
           {canCreate && (
             <ActionButton 
-               onClick={() => {
+              onClick={() => {
                 setProjectToEdit(null);
                 setShowModal(true);
               }} 
-               label="NUEVO PROYECTO" 
-               variant="primary"
-               className="w-full sm:w-auto shrink-0 whitespace-nowrap" 
+              label="NUEVO" 
+              variant="primary"
+              className="!w-auto shrink-0 whitespace-nowrap px-4 sm:px-6" 
             />
           )}
-        </ModuleToolbar>
+        </div>
 
         <div className="flex-1 overflow-auto py-6">
         {loading ? (
