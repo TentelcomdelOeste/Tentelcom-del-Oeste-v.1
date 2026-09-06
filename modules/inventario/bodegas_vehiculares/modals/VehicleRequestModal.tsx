@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ActionButton, IconButton } from '../../../../design-system';
 import { FiX, FiCheck, FiTrash2, FiSearch, FiChevronDown } from 'react-icons/fi';
-import { mockVehicles, mockProjects, mockWarehouseItems } from '../mockData';
+import { getVehicleCatalog } from '../services/vehicleWarehouseService';
+import { subscribeToProjects } from '../../../project_management/services/projectService';
+import { Project } from '../../../project_management/types';
+
 import { VehicleMaterialRequest, VehicleWarehouseItem } from '../../../../types/vehicleWarehouse.types';
 
 interface Props {
@@ -11,6 +14,7 @@ interface Props {
   initialData?: VehicleMaterialRequest;
   initialVehicleId?: string;
   warehouseItems?: VehicleWarehouseItem[];
+  currentUser?: any;
 }
 
 export const VehicleRequestModal: React.FC<Props> = ({
@@ -19,12 +23,14 @@ export const VehicleRequestModal: React.FC<Props> = ({
   onSave,
   initialData,
   initialVehicleId,
-  warehouseItems: externalWarehouseItems
+  warehouseItems: externalWarehouseItems,
+  currentUser
 }) => {
-  const itemsList = externalWarehouseItems || mockWarehouseItems;
+  const itemsList = externalWarehouseItems || [];
+  const vehicles = useMemo(() => getVehicleCatalog(), []);
   // Vehicle Selection (pre-selected from inventory tab, but editable independently in modal)
   const [selectedVehicle, setSelectedVehicle] = useState<string>(
-    initialData?.vehiculoId || initialVehicleId || (mockVehicles.length > 0 ? mockVehicles[0].id : '')
+    initialData?.vehiculoId || initialVehicleId || (vehicles.length > 0 ? vehicles[0].id : '')
   );
 
   // Project Autocomplete / Free-text State
@@ -49,26 +55,37 @@ export const VehicleRequestModal: React.FC<Props> = ({
   // Form error message
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Projects list state
+  const [projects, setProjects] = useState<Project[]>([]);
+
   // Available warehouse items for selected vehicle
   const availableMaterials = useMemo(() => {
     return itemsList.filter(i => i.vehiculoId === selectedVehicle);
   }, [itemsList, selectedVehicle]);
 
-  // Combined list of projects for autocomplete
-  const allProjects = useMemo(() => {
-    return mockProjects;
+  useEffect(() => {
+    const unsub = subscribeToProjects((loadedProjects) => {
+      setProjects(loadedProjects || []);
+    });
+    return () => unsub();
   }, []);
 
   // Filtered projects for autocomplete dropdown
   const filteredProjects = useMemo(() => {
     const q = projectInput.trim().toLowerCase();
-    if (!q) return allProjects;
-    return allProjects.filter(p => 
-      p.code.toLowerCase().includes(q) ||
-      p.name.toLowerCase().includes(q) ||
-      `${p.code} ${p.name}`.toLowerCase().includes(q)
-    );
-  }, [allProjects, projectInput]);
+    if (!q) return projects;
+    return projects.filter(p => {
+      const pNum = (p.projectNumber || (p as any).code || '').toLowerCase();
+      const pName = (p.name || '').toLowerCase();
+      const pClient = (p.clientName || '').toLowerCase();
+      return (
+        pNum.includes(q) ||
+        pName.includes(q) ||
+        pClient.includes(q) ||
+        `${pNum} ${pName}`.includes(q)
+      );
+    });
+  }, [projects, projectInput]);
 
   // Filtered materials for adder search
   const filteredAdderMaterials = useMemo(() => {
@@ -120,7 +137,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
           quantity: i.quantityCommitted
         })));
       } else {
-        const defaultVehicle = initialVehicleId || (mockVehicles.length > 0 ? mockVehicles[0].id : '');
+        const defaultVehicle = initialVehicleId || (getVehicleCatalog().length > 0 ? getVehicleCatalog()[0].id : '');
         setSelectedVehicle(defaultVehicle);
         setProjectInput('');
         setItems([]);
@@ -227,7 +244,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
 
   // Save / Submit request
   const handleSave = () => {
-    const v = mockVehicles.find(x => x.id === selectedVehicle);
+    const v = vehicles.find(x => x.id === selectedVehicle);
     if (!v) {
       setErrorMessage('Por favor seleccione un vehículo origen válido.');
       return;
@@ -266,16 +283,22 @@ export const VehicleRequestModal: React.FC<Props> = ({
     let projectCode = trimmedProject;
     let projectName = trimmedProject;
 
-    // Check if matching existing project in mockProjects
-    const matchedProject = mockProjects.find(
-      p => p.code.toLowerCase() === trimmedProject.toLowerCase() ||
-           `${p.code} | ${p.name}`.toLowerCase() === trimmedProject.toLowerCase() ||
-           p.name.toLowerCase() === trimmedProject.toLowerCase()
-    );
+    // Check if matching existing project in projects
+    const matchedProject = projects.find(p => {
+      const pCode = (p.projectNumber || (p as any).code || '').toLowerCase();
+      const pName = (p.name || '').toLowerCase();
+      const lowerTrimmed = trimmedProject.toLowerCase();
+      return (
+        pCode === lowerTrimmed ||
+        pName === lowerTrimmed ||
+        `${pCode} | ${pName}` === lowerTrimmed ||
+        `${pCode} - ${pName}` === lowerTrimmed
+      );
+    });
 
     if (matchedProject) {
       projectId = matchedProject.id;
-      projectCode = matchedProject.code;
+      projectCode = matchedProject.projectNumber || (matchedProject as any).code || matchedProject.name;
       projectName = matchedProject.name;
     } else if (trimmedProject.includes('|')) {
       const parts = trimmedProject.split('|');
@@ -296,9 +319,14 @@ export const VehicleRequestModal: React.FC<Props> = ({
         code: mat.code,
         description: mat.description,
         unit: mat.unit,
+        quantity: i.quantity,
         quantityCommitted: i.quantity
       };
     }).filter(Boolean) as any[];
+
+    const currentUserId = currentUser?.id || 'system';
+    const currentUserName = currentUser?.name || currentUser?.email || 'Usuario';
+    const currentUserEmail = currentUser?.email || 'Usuario';
 
     if (initialData) {
       const updatedReq: VehicleMaterialRequest = {
@@ -310,7 +338,8 @@ export const VehicleRequestModal: React.FC<Props> = ({
         projectCode,
         projectName,
         items: requestItems,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUserEmail
       };
       onSave(updatedReq);
     } else {
@@ -323,8 +352,8 @@ export const VehicleRequestModal: React.FC<Props> = ({
         projectId: projectId,
         projectCode,
         projectName,
-        responsibleId: 'sim-user',
-        responsibleName: 'Usuario Simulado',
+        responsibleId: currentUserId,
+        responsibleName: currentUserName,
         status: 'Abierta',
         openedAt: new Date().toISOString(),
         items: requestItems,
@@ -332,15 +361,15 @@ export const VehicleRequestModal: React.FC<Props> = ({
           {
             additionId: `add-${Date.now()}`,
             date: new Date().toISOString(),
-            addedBy: 'sim-user',
-            addedByName: 'Usuario Simulado',
+            addedBy: currentUserId,
+            addedByName: currentUserName,
             items: requestItems.map(i => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantityCommitted }))
           }
         ],
         createdAt: new Date().toISOString(),
-        createdBy: 'sim-user',
+        createdBy: currentUserEmail,
         updatedAt: new Date().toISOString(),
-        updatedBy: 'sim-user'
+        updatedBy: currentUserEmail
       };
       onSave(newReq);
     }
@@ -387,7 +416,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
                   onChange={(e) => handleVehicleChange(e.target.value)}
                   className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-10"
                 >
-                  {mockVehicles.map(v => (
+                  {vehicles.map(v => (
                     <option key={v.id} value={v.id}>{v.alias} - {v.placa}</option>
                   ))}
                 </select>
@@ -428,21 +457,26 @@ export const VehicleRequestModal: React.FC<Props> = ({
               {isProjectDropdownOpen && (
                 <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                   {filteredProjects.length > 0 ? (
-                    filteredProjects.map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setProjectInput(`${p.code} | ${p.name}`);
-                          setIsProjectDropdownOpen(false);
-                          setErrorMessage(null);
-                        }}
-                        className="w-full text-left p-2.5 hover:bg-blue-50 border-b border-slate-100 last:border-b-0 transition-colors"
-                      >
-                        <p className="text-xs font-bold text-slate-800">{p.code}</p>
-                        <p className="text-[11px] text-slate-500 truncate">{p.name}</p>
-                      </button>
-                    ))
+                    filteredProjects.map(p => {
+                      const pCode = p.projectNumber || (p as any).code || p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setProjectInput(`${pCode} | ${p.name}`);
+                            setIsProjectDropdownOpen(false);
+                            setErrorMessage(null);
+                          }}
+                          className="w-full text-left p-2.5 hover:bg-blue-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                        >
+                          <p className="text-xs font-bold text-slate-800">{pCode}</p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {p.name}{p.clientName ? ` • ${p.clientName}` : ''}
+                          </p>
+                        </button>
+                      );
+                    })
                   ) : (
                     <div className="p-3 text-xs text-slate-500 text-center">
                       Presiona fuera para usar <strong className="text-slate-700">&quot;{projectInput}&quot;</strong> como nuevo proyecto.

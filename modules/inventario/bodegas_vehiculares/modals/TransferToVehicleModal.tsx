@@ -1,32 +1,36 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ActionButton, Select } from '../../../../design-system';
 import { FiX, FiCheck, FiArrowRight, FiSearch, FiTruck, FiAlertCircle } from 'react-icons/fi';
-import { mockVehicles } from '../mockData';
+
 import { VehicleWarehouseItem } from '../../../../types/vehicleWarehouse.types';
 
 interface Props {
   show: boolean;
   onClose: () => void;
-  originVehicle?: typeof mockVehicles[0];
+  item?: VehicleWarehouseItem | null;
+  originVehicle?: any;
   originItems: VehicleWarehouseItem[];
-  allVehicles?: typeof mockVehicles;
+  allVehicles?: any[];
   allItems?: VehicleWarehouseItem[];
-  onTransfer: (data: {
+  onTransfer?: (data: {
     originVehicleId: string;
     targetVehicleId: string;
     inventoryItemId: string;
     quantity: number;
   }) => void;
+  onConfirm?: (targetVehicleId: string, quantity: number) => void;
 }
 
 export const TransferToVehicleModal: React.FC<Props> = ({
   show,
   onClose,
+  item: initialSelectedItem,
   originVehicle,
   originItems,
-  allVehicles = mockVehicles,
+  allVehicles = [],
   allItems = [],
-  onTransfer
+  onTransfer,
+  onConfirm
 }) => {
   // Available destination vehicles (excluding origin vehicle and inherently excluding U3/U7)
   const destinationVehicles = useMemo(() => {
@@ -91,7 +95,9 @@ export const TransferToVehicleModal: React.FC<Props> = ({
         setTargetVehicleId('');
       }
 
-      if (transferableMaterials.length > 0) {
+      if (initialSelectedItem) {
+        setSelectedInventoryItemId(initialSelectedItem.inventoryItemId);
+      } else if (transferableMaterials.length > 0) {
         setSelectedInventoryItemId(transferableMaterials[0].inventoryItemId);
       } else {
         setSelectedInventoryItemId('');
@@ -144,12 +150,16 @@ export const TransferToVehicleModal: React.FC<Props> = ({
     }
 
     // Execute transfer
-    onTransfer({
-      originVehicleId: originVehicle.id,
-      targetVehicleId,
-      inventoryItemId: selectedItem.inventoryItemId,
-      quantity: parsedQty
-    });
+    if (onTransfer) {
+      onTransfer({
+        originVehicleId: originVehicle.id,
+        targetVehicleId,
+        inventoryItemId: selectedItem.inventoryItemId,
+        quantity: parsedQty
+      });
+    } else if (onConfirm) {
+      onConfirm(targetVehicleId, parsedQty);
+    }
 
     onClose();
   };

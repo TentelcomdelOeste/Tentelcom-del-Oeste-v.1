@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom';
 import { User, Quote } from '@/utils/types';
 import { InventoryItem } from '@/inventoryTypes';
 import { ProjectOrigin, MaterialRequest, RequestDestinationType, RequestStatus } from '@/dispatchTypes';
-import { getYearFromDateString } from '@/utils/dateUtils';
 import useLockBodyScroll from '@/hooks/useLockBodyScroll';
 import { useAuditPermanence } from '@/hooks/useAuditPermanence';
 import { FiX, FiCircle, FiSearch, FiAlertCircle, FiAlertTriangle } from "react-icons/fi";
@@ -12,7 +11,8 @@ import { ActionButton, IconButton, Select } from '../design-system';
 import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { ItemStatus } from '@/dispatchTypes';
-import { mockVehicles } from './inventario/bodegas_vehiculares/mockData';
+import { getVehicleCatalog } from './inventario/bodegas_vehiculares/services/vehicleWarehouseService';
+
 import { getProjects } from './project_management/services/projectService';
 import { Project } from './project_management/types';
 
@@ -384,7 +384,7 @@ export const MaterialRequestModal = ({
 
           setIsSubmitting(true);
           try {
-              const targetVeh = mockVehicles.find(v => v.id === targetVehicleId);
+              const targetVeh = getVehicleCatalog().find(v => v.id === targetVehicleId);
               if (!targetVeh) {
                   throw new Error("El vehículo seleccionado no existe en el catálogo.");
               }
@@ -632,7 +632,7 @@ export const MaterialRequestModal = ({
                                             label="Unidad Vehicular Destino"
                                             options={[
                                                 { label: '-- Seleccione Unidad --', value: '' },
-                                                ...mockVehicles.map(v => ({
+                                                ...getVehicleCatalog().map(v => ({
                                                     label: `${v.alias} (${v.placa})`,
                                                     value: v.id
                                                 }))

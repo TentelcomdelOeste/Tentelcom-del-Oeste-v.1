@@ -262,7 +262,9 @@ export const pdfOfflineQueue = {
     saveWebQueueToLocalStorage() {
         try {
             localStorage.setItem('telecom_pdf_upload_queue', JSON.stringify(Array.from(webFallbackQueue.entries())));
-        } catch (_) {}
+        } catch {
+            // Ignorar errores de cuota o acceso a localStorage
+        }
     },
 
     loadWebQueueFromLocalStorage() {
@@ -274,6 +276,8 @@ export const pdfOfflineQueue = {
                     parsed.forEach(([id, entry]) => webFallbackQueue.set(id, entry));
                 }
             }
-        } catch (_) {}
+        } catch {
+            // Ignorar errores de formato en localStorage
+        }
     }
 };

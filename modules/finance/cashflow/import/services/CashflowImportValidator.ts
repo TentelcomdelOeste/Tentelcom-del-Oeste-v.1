@@ -1,5 +1,5 @@
 import { IntermediateEntry, ValidatedEntry, ImportValidationResult, ImportError, ImportWarning } from '../types';
-import { Quote, CashflowEntry } from '../../../../utils/types';
+import { Quote, CashflowEntry } from '../../../../../utils/types';
 import * as XLSX from 'xlsx';
 
 export class CashflowImportValidator {
@@ -34,7 +34,7 @@ export class CashflowImportValidator {
       let parsedDate: string | undefined;
       let parsedTotal: number | undefined;
       let parsedCurrency: 'CRC' | 'USD' | undefined;
-      let parsedType: 'Ingreso' | 'Egreso' | undefined;
+      const parsedType: 'Ingreso' | 'Egreso' = 'Egreso';
       let parsedSubtype: string | undefined = undefined;
       let parsedProjectId: string | null = null;
       let isClosedMonth = false;
@@ -159,8 +159,7 @@ export class CashflowImportValidator {
       }
 
       // 5. Movement Type (Ingreso / Egreso)
-      // All imported rows in this wizard represent EGRESOS (operational expenses)
-      parsedType = 'Egreso';
+      // All imported rows in this wizard represent EGRESOS (operational expenses) (declared as const above)
 
       // 6. Category Mapping (ExpenseSubtype for Egresos)
       // Defaults to 'Gasto Operativo' as this wizard handles operational expenses Excel files

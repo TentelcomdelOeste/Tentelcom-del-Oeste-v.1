@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { getVehicleCatalog } from '../services/vehicleWarehouseService';
 import { User } from '../../../../types';
-import { mockMaterialRequests } from '../mockData';
+
 import { ActionButton, DataTable, TableColumn, StatusBadge, useConfirm } from '../../../../design-system';
 import { ActionButtons } from '../../../../components/ui/ActionButtons';
 import { FiCheckCircle } from 'react-icons/fi';
@@ -15,10 +16,10 @@ interface Props {
   selectedVehicleId?: string;
   requests?: VehicleMaterialRequest[];
   items?: VehicleWarehouseItem[];
-  onCreateRequest?: (req: VehicleMaterialRequest) => void;
-  onUpdateRequest?: (req: VehicleMaterialRequest) => void;
+  onCreateRequest?: (payload: any) => void;
+  onUpdateRequest?: (payload: any) => void;
   onCancelRequest?: (requestId: string) => void;
-  onCloseRequest?: (req: VehicleMaterialRequest) => void;
+  onCloseRequest?: (payload: any) => void;
   activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
   onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
 }
@@ -32,17 +33,18 @@ export const VehicleRequestsTab: React.FC<Props> = ({
   onUpdateRequest,
   onCancelRequest,
   onCloseRequest,
-  activeTab = 'requests',
-  onTabChange
+  activeTab: _activeTab = 'requests',
+  onTabChange: _onTabChange
 }) => {
   const confirm = useConfirm();
-  const [localRequests, setLocalRequests] = useState<VehicleMaterialRequest[]>(mockMaterialRequests);
-  const requests = externalRequests || localRequests;
+  
+  const requests = externalRequests || [];
 
   const [showNewModal, setShowNewModal] = useState(false);
   const [requestToEdit, setRequestToEdit] = useState<VehicleMaterialRequest | null>(null);
   const [requestToView, setRequestToView] = useState<VehicleMaterialRequest | null>(null);
   const [requestToClose, setRequestToClose] = useState<VehicleMaterialRequest | null>(null);
+  const [vehicles] = useState<any[]>(getVehicleCatalog());
 
   const sortedRequests = [...requests].sort((a, b) => {
     if (a.status === 'Abierta' && b.status !== 'Abierta') return -1;
@@ -60,12 +62,10 @@ export const VehicleRequestsTab: React.FC<Props> = ({
     if (confirmed) {
       if (onCancelRequest) {
         try {
-          onCancelRequest(req.id);
+          await onCancelRequest(req.id);
         } catch (err: any) {
           alert(err.message || 'Error al cancelar solicitud');
         }
-      } else {
-        setLocalRequests(prev => prev.filter(r => r.id !== req.id));
       }
     }
   };
@@ -125,44 +125,17 @@ export const VehicleRequestsTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 md:gap-4">
+      <div className="flex justify-between items-center gap-4">
         <div>
           <h3 className="text-lg font-black text-slate-800">Solicitudes de Proyectos</h3>
           <p className="text-sm text-slate-500">Gestión de materiales asignados a proyectos.</p>
         </div>
-        <div className="hidden md:block">
+        <div>
           <ActionButton 
             label="Nueva Solicitud" 
             variant="primary" 
             onClick={() => setShowNewModal(true)}
             className="w-auto justify-center"
-          />
-        </div>
-      </div>
-
-      {/* Fila móvil: Selector de Secciones + Botón Nueva Solicitud */}
-      <div className="flex items-center gap-2 md:hidden">
-        <div className="relative flex-1 min-w-0">
-          <select
-            value={activeTab}
-            onChange={(e) => onTabChange?.(e.target.value as any)}
-            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7 truncate"
-          >
-            <option value="inventory">📦 Inventario</option>
-            <option value="requests">📋 Solicitudes</option>
-            <option value="movements">🔄 Movimientos</option>
-            <option value="reports">📊 Reportes</option>
-          </select>
-          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
-            ▼
-          </div>
-        </div>
-        <div className="shrink-0">
-          <ActionButton 
-            label="Nueva Solicitud" 
-            variant="primary" 
-            onClick={() => setShowNewModal(true)}
-            className="!text-xs !py-2.5 !px-3 justify-center whitespace-nowrap"
           />
         </div>
       </div>
@@ -227,25 +200,37 @@ export const VehicleRequestsTab: React.FC<Props> = ({
         </>
       )}
 
-      <VehicleRequestModal 
-        show={showNewModal} 
-        initialVehicleId={selectedVehicleId}
-        warehouseItems={items}
-        onClose={() => setShowNewModal(false)}
-        onSave={(newReq) => {
-          if (onCreateRequest) {
-            try {
-              onCreateRequest(newReq);
-            } catch (err: any) {
-              alert(err.message || 'Error al crear solicitud');
-              return;
+      {showNewModal && (
+        <VehicleRequestModal 
+          show={showNewModal} 
+          initialVehicleId={selectedVehicleId}
+          warehouseItems={items}
+          currentUser={_currentUser}
+          onClose={() => setShowNewModal(false)}
+          onSave={async (newReq) => {
+            if (onCreateRequest) {
+              try {
+                await onCreateRequest({
+                  vehiculoId: newReq.vehiculoId,
+                  projectId: newReq.projectId,
+                  items: newReq.items.map(i => ({
+                    inventoryItemId: i.inventoryItemId,
+                    quantity: (i as any).quantity || (i as any).quantityCommitted || 0,
+                    code: i.code,
+                    description: i.description,
+                    unit: i.unit
+                  })),
+                  observations: (newReq as any).observations
+                });
+              } catch (err: any) {
+                alert(err.message || 'Error al crear solicitud');
+                return;
+              }
             }
-          } else {
-            setLocalRequests([newReq, ...localRequests]);
-          }
-          setShowNewModal(false);
-        }}
-      />
+            setShowNewModal(false);
+          }}
+        />
+      )}
       
       {requestToEdit && (
         <VehicleRequestModal 
@@ -253,17 +238,26 @@ export const VehicleRequestsTab: React.FC<Props> = ({
           initialData={requestToEdit}
           initialVehicleId={requestToEdit.vehiculoId || selectedVehicleId}
           warehouseItems={items}
+          currentUser={_currentUser}
           onClose={() => setRequestToEdit(null)}
-          onSave={(updatedReq) => {
+          onSave={async (updatedReq) => {
             if (onUpdateRequest) {
               try {
-                onUpdateRequest(updatedReq);
+                await onUpdateRequest({
+                  requestId: updatedReq.id,
+                  newItems: updatedReq.items.map(i => ({
+                    inventoryItemId: i.inventoryItemId,
+                    quantity: (i as any).quantity || (i as any).quantityCommitted || 0,
+                    code: i.code,
+                    description: i.description,
+                    unit: i.unit
+                  })),
+                  observations: (updatedReq as any).observations
+                });
               } catch (err: any) {
                 alert(err.message || 'Error al actualizar solicitud');
                 return;
               }
-            } else {
-              setLocalRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
             }
             setRequestToEdit(null);
           }}
@@ -290,17 +284,16 @@ export const VehicleRequestsTab: React.FC<Props> = ({
         <CloseVehicleRequestModal
           show={true}
           request={requestToClose}
+          currentUser={_currentUser}
           onClose={() => setRequestToClose(null)}
-          onSimulateClose={(updatedReq) => {
+          onCloseConfirm={async (payload) => {
             if (onCloseRequest) {
               try {
-                onCloseRequest(updatedReq);
+                await onCloseRequest(payload);
               } catch (err: any) {
                 alert(err.message || 'Error al cerrar solicitud');
                 return;
               }
-            } else {
-              setLocalRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
             }
             setRequestToClose(null);
           }}

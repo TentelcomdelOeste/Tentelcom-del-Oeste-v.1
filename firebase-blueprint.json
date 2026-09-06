@@ -256,6 +256,18 @@
     "/system_access_logs": {
       "schema": "SystemAccessLog",
       "description": "Audit logs of user access and module navigation"
+    },
+    "/vehicle_warehouse_items": {
+      "description": "Inventory items stored in vehicle warehouses"
+    },
+    "/vehicle_movements": {
+      "description": "Stock movements involving vehicle warehouses (transfers, consumptions)"
+    },
+    "/vehicle_material_requests": {
+      "description": "Material requests raised from vehicle warehouses for assigned projects"
+    },
+    "/vehicle_consumptions": {
+      "description": "Material consumption records closed against projects from vehicle warehouses"
     }
   }
 }

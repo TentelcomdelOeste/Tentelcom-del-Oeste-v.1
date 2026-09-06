@@ -333,7 +333,9 @@ export default function SharedTimeline({
                 try {
                   const legacyRef = doc(db, legacyPath, evt.id);
                   await updateDoc(legacyRef, { timestamp: evt.createdAt, _repaired: true });
-                } catch(e2) {}
+                } catch {
+                  // Ignorar error al reparar registro legacy
+                }
              }
           }
         });

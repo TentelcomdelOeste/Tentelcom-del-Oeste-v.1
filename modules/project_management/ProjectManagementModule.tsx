@@ -6,7 +6,7 @@ import { User } from '../../utils/types';
 import { can, isAdmin } from '../../utils/permissions';
 import { Project } from './types';
 import { ProjectFormModal } from './components/ProjectFormModal';
-import { getProjects, deleteProject, subscribeToProjects } from './services/projectService';
+import { deleteProject, subscribeToProjects } from './services/projectService';
 import ProjectExpediente from './ProjectExpediente';
 import { FiUser, FiBriefcase, FiCalendar } from 'react-icons/fi';
 

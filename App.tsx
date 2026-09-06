@@ -25,7 +25,9 @@ function safeLazy<T extends React.ComponentType<any>>(
           try {
             const names = await caches.keys();
             await Promise.all(names.map(name => caches.delete(name)));
-          } catch (e) {}
+          } catch {
+            // Ignorar errores al vaciar cachés
+          }
         }
         window.location.reload();
       }

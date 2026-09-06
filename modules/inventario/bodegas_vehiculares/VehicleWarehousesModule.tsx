@@ -11,20 +11,12 @@ import { VehicleRequestsTab } from './tabs/VehicleRequestsTab';
 import { VehicleMovementsTab } from './tabs/VehicleMovementsTab';
 import { VehicleReportsTab } from './tabs/VehicleReportsTab';
 import {
-  mockVehicles,
-  mockWarehouseItems,
-  mockMovements,
-  mockMaterialRequests,
-  mockConsumptions,
-  subscribeWarehouseChanges
-} from './mockData';
-import {
   VehicleWarehouseItem,
   VehicleMovement,
   VehicleMaterialRequest,
   VehicleProjectConsumption
 } from '../../../types/vehicleWarehouse.types';
-import { vehicleWarehouseService } from './services/vehicleWarehouseService';
+import { vehicleWarehouseService, getVehicleCatalog } from './services/vehicleWarehouseService';
 
 interface VehicleWarehousesModuleProps {
   currentUser?: User | null;
@@ -32,90 +24,75 @@ interface VehicleWarehousesModuleProps {
 
 const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<'inventory' | 'requests' | 'movements' | 'reports'>('inventory');
+  
+  const vehicles = getVehicleCatalog();
+  const initialVehicleId = vehicles.length > 0 ? vehicles[0].id : '';
 
   // Shared state across the tabs
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(
-    mockVehicles.length > 0 ? mockVehicles[0].id : ''
-  );
-  const [items, setItems] = useState<VehicleWarehouseItem[]>(mockWarehouseItems);
-  const [movements, setMovements] = useState<VehicleMovement[]>(mockMovements);
-  const [requests, setRequests] = useState<VehicleMaterialRequest[]>(mockMaterialRequests);
-  const [consumptions, setConsumptions] = useState<VehicleProjectConsumption[]>(mockConsumptions);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(initialVehicleId);
+  const [items, setItems] = useState<VehicleWarehouseItem[]>([]);
+  const [movements, setMovements] = useState<VehicleMovement[]>([]);
+  const [requests, setRequests] = useState<VehicleMaterialRequest[]>([]);
+  const [consumptions, setConsumptions] = useState<VehicleProjectConsumption[]>([]);
 
   useEffect(() => {
-    // 1. Suscripción en tiempo real al inventario de bodegas vehiculares en Firestore
+    // 1. Suscripción en tiempo real al inventario
     const unsubItems = onSnapshot(collection(db, 'vehicle_warehouse_items'), (snapshot) => {
-      if (!snapshot.empty) {
-        const firestoreItems: VehicleWarehouseItem[] = [];
-        snapshot.forEach((docSnap) => {
-          firestoreItems.push(docSnap.data() as VehicleWarehouseItem);
-        });
-
-        // Combinar con ítems iniciales para mantener catálogo base si no ha sido transferido
-        const map = new Map<string, VehicleWarehouseItem>();
-        mockWarehouseItems.forEach(i => map.set(i.id, i));
-        firestoreItems.forEach(i => map.set(i.id, i));
-        const merged = Array.from(map.values());
-
-        setItems(merged);
-        mockWarehouseItems.length = 0;
-        mockWarehouseItems.push(...merged);
-      }
+      const firestoreItems: VehicleWarehouseItem[] = [];
+      snapshot.forEach((docSnap) => {
+        firestoreItems.push(docSnap.data() as VehicleWarehouseItem);
+      });
+      setItems(firestoreItems);
     }, (err) => {
       console.warn('Error suscribiendo a vehicle_warehouse_items:', err);
     });
 
-    // 2. Suscripción en tiempo real a movimientos vehiculares en Firestore
+    // 2. Suscripción en tiempo real a movimientos
     const movQuery = query(collection(db, 'vehicle_movements'), orderBy('createdAt', 'desc'));
     const unsubMovements = onSnapshot(movQuery, (snapshot) => {
-      if (!snapshot.empty) {
-        const firestoreMovements: VehicleMovement[] = [];
-        snapshot.forEach((docSnap) => {
-          firestoreMovements.push(docSnap.data() as VehicleMovement);
-        });
-
-        // Combinar evitando duplicados por id o referencia/movementNumber
-        const map = new Map<string, VehicleMovement>();
-        firestoreMovements.forEach(m => map.set(m.id || m.movementNumber, m));
-        mockMovements.forEach(m => {
-          const key = m.id || m.movementNumber;
-          if (!map.has(key) && !map.has(m.reference || '')) {
-            map.set(key, m);
-          }
-        });
-
-        const merged = Array.from(map.values()).sort((a, b) => {
-          const timeA = new Date(a.createdAt || a.date).getTime();
-          const timeB = new Date(b.createdAt || b.date).getTime();
-          return timeB - timeA;
-        });
-
-        setMovements(merged);
-        mockMovements.length = 0;
-        mockMovements.push(...merged);
-      }
+      const firestoreMovements: VehicleMovement[] = [];
+      snapshot.forEach((docSnap) => {
+        firestoreMovements.push({ id: docSnap.id, ...docSnap.data() } as VehicleMovement);
+      });
+      setMovements(firestoreMovements);
     }, (err) => {
       console.warn('Error suscribiendo a vehicle_movements:', err);
     });
 
-    // 3. Suscripción a cambios en memoria internos
-    const unsubInternal = subscribeWarehouseChanges(() => {
-      setItems([...mockWarehouseItems]);
-      setMovements([...mockMovements]);
+    // 3. Suscripción en tiempo real a solicitudes
+    const reqQuery = query(collection(db, 'vehicle_material_requests'), orderBy('createdAt', 'desc'));
+    const unsubRequests = onSnapshot(reqQuery, (snapshot) => {
+      const firestoreRequests: VehicleMaterialRequest[] = [];
+      snapshot.forEach((docSnap) => {
+        firestoreRequests.push({ id: docSnap.id, ...docSnap.data() } as VehicleMaterialRequest);
+      });
+      setRequests(firestoreRequests);
+    }, (err) => {
+      console.warn('Error suscribiendo a vehicle_material_requests:', err);
+    });
+
+    // 4. Suscripción en tiempo real a consumos
+    const consQuery = query(collection(db, 'vehicle_consumptions'), orderBy('closedAt', 'desc'));
+    const unsubConsumptions = onSnapshot(consQuery, (snapshot) => {
+      const firestoreCons = [];
+      snapshot.forEach((docSnap) => {
+        firestoreCons.push({ id: docSnap.id, ...docSnap.data() } as VehicleProjectConsumption);
+      });
+      setConsumptions(firestoreCons);
+    }, (err) => {
+      console.warn('Error suscribiendo a vehicle_consumptions:', err);
     });
 
     return () => {
       unsubItems();
       unsubMovements();
-      unsubInternal();
+      unsubRequests();
+      unsubConsumptions();
     };
   }, []);
 
-  const handleRegisterMovement = (newMov: VehicleMovement) => {
-    setMovements(prev => [newMov, ...prev]);
-  };
-
-  const handleTransfer = ({
+  // Removed handleRegisterMovement as it's now handled by firestore
+  const handleTransfer = async ({
     originVehicleId,
     targetVehicleId,
     inventoryItemId,
@@ -126,57 +103,58 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
     inventoryItemId: string;
     quantity: number;
   }) => {
-    const res = vehicleWarehouseService.transferItem(
-      items,
-      movements,
+    await vehicleWarehouseService.transferItem(
       originVehicleId,
       targetVehicleId,
       inventoryItemId,
       quantity,
       currentUser
     );
-    setItems(res.items);
-    setMovements(res.movements);
   };
 
-  const handleCreateRequest = (newReq: VehicleMaterialRequest) => {
-    const res = vehicleWarehouseService.createRequest(requests, items, newReq);
-    setRequests(res.requests);
-    setItems(res.items);
-  };
-
-  const handleUpdateRequest = (updatedReq: VehicleMaterialRequest) => {
-    const res = vehicleWarehouseService.updateRequest(requests, items, updatedReq);
-    setRequests(res.requests);
-    setItems(res.items);
-  };
-
-  const handleCancelRequest = (requestId: string) => {
-    const res = vehicleWarehouseService.cancelRequest(requests, items, requestId);
-    setRequests(res.requests);
-    setItems(res.items);
-  };
-
-  const handleCloseRequest = (closedReq: VehicleMaterialRequest) => {
-    const res = vehicleWarehouseService.closeRequest(
-      requests,
-      items,
-      consumptions,
-      movements,
-      closedReq,
-      currentUser
+  const handleCreateRequest = async (payload: any) => {
+    await vehicleWarehouseService.createRequest(
+      payload.vehiculoId,
+      payload.projectId,
+      payload.items,
+      currentUser,
+      payload.observations
     );
-    setRequests(res.requests);
-    setItems(res.items);
-    setConsumptions(res.consumptions);
-    setMovements(res.movements);
+  };
+
+  const handleUpdateRequest = async (payload: any) => {
+    await vehicleWarehouseService.updateRequest(
+      payload.requestId,
+      payload.newItems,
+      currentUser,
+      payload.observations
+    );
+  };
+
+  const handleCancelRequest = async (payload: { requestId: string; observations?: string }) => {
+    await vehicleWarehouseService.cancelRequest(
+      payload.requestId,
+      currentUser,
+      payload.observations
+    );
+  };
+
+  const handleCloseRequest = async (payload: { requestId: string; usedItems: any[]; observations?: string }) => {
+    await vehicleWarehouseService.closeRequest(
+      payload.requestId,
+      payload.usedItems,
+      currentUser,
+      payload.observations
+    );
   };
 
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
-      <ModulePage title="Bodegas Vehiculares" subtitle="Gestión de inventario de flota y solicitudes por vehículo.">
-        {/* Navegación por pestañas: Dropdown en móvil (manejado en cada pestaña), Botones en desktop */}
-        <div className="hidden md:block mb-6">
+      <ModulePage
+        title="Bodegas Vehiculares"
+        subtitle="Gestión de inventario de flota y solicitudes por vehículo."
+      >
+        <div className="mb-6">
           <div className="block md:hidden relative">
             <select
               value={activeTab}
@@ -192,63 +170,44 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               ▼
             </div>
           </div>
-
+          
           <div className="hidden md:flex items-center gap-2">
             <ActionButton
               label="Inventario por Vehículo"
               icon={<FiBox />}
               variant={activeTab === 'inventory' ? 'primary' : 'secondary'}
               onClick={() => setActiveTab('inventory')}
-              className={`whitespace-nowrap ${
-                activeTab !== 'inventory'
-                  ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none'
-                  : ''
-              }`}
+              className={`whitespace-nowrap ${activeTab !== 'inventory' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
             />
             <ActionButton
               label="Solicitudes de Proyecto"
               icon={<FiClipboard />}
               variant={activeTab === 'requests' ? 'primary' : 'secondary'}
               onClick={() => setActiveTab('requests')}
-              className={`whitespace-nowrap ${
-                activeTab !== 'requests'
-                  ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none'
-                  : ''
-              }`}
+              className={`whitespace-nowrap ${activeTab !== 'requests' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
             />
             <ActionButton
               label="Historial de Movimientos"
               icon={<FiRefreshCw />}
               variant={activeTab === 'movements' ? 'primary' : 'secondary'}
               onClick={() => setActiveTab('movements')}
-              className={`whitespace-nowrap ${
-                activeTab !== 'movements'
-                  ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none'
-                  : ''
-              }`}
+              className={`whitespace-nowrap ${activeTab !== 'movements' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
             />
             <ActionButton
               label="Reportes y Consumos"
               icon={<FiPieChart />}
               variant={activeTab === 'reports' ? 'primary' : 'secondary'}
               onClick={() => setActiveTab('reports')}
-              className={`whitespace-nowrap ${
-                activeTab !== 'reports'
-                  ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none'
-                  : ''
-              }`}
+              className={`whitespace-nowrap ${activeTab !== 'reports' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
             />
           </div>
         </div>
 
-        {/* Contenido de la pestaña */}
         <div>
           {activeTab === 'inventory' && (
             <VehicleInventoryTab
               currentUser={currentUser}
               items={items}
-              setItems={setItems}
-              onRegisterMovement={handleRegisterMovement}
               onTransfer={handleTransfer}
               selectedVehicleId={selectedVehicleId}
               onSelectVehicleId={setSelectedVehicleId}
@@ -256,6 +215,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               onTabChange={setActiveTab}
             />
           )}
+
           {activeTab === 'requests' && (
             <VehicleRequestsTab
               currentUser={currentUser}
@@ -270,6 +230,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               onTabChange={setActiveTab}
             />
           )}
+
           {activeTab === 'movements' && (
             <VehicleMovementsTab
               currentUser={currentUser}
@@ -278,6 +239,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               onTabChange={setActiveTab}
             />
           )}
+
           {activeTab === 'reports' && (
             <VehicleReportsTab
               currentUser={currentUser}

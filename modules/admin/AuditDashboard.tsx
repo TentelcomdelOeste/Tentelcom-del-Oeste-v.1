@@ -12,11 +12,12 @@ import {
   FiClock,
   FiUserCheck
 } from 'react-icons/fi';
-import { ActionButton, IconButton } from '../../design-system';
+import { ActionButton, IconButton, useConfirm } from '../../design-system';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default function AuditDashboard() {
+  const confirm = useConfirm();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchUser, setSearchUser] = useState('');
@@ -65,12 +66,18 @@ export default function AuditDashboard() {
   }, [logs, searchUser, filterModule, filterAction]);
 
   const handleCleanup = async () => {
-    if (!window.confirm("¿Está seguro de que desea eliminar los registros de auditoría de más de 12 meses?")) return;
+    const isConfirmed = await confirm({
+      title: "¿Eliminar registros antiguos?",
+      message: "¿Está seguro de que desea eliminar los registros de auditoría de más de 12 meses?",
+      confirmText: "Eliminar",
+      cancelText: "Cancelar"
+    });
+    if (!isConfirmed) return;
     try {
       await auditService.cleanupOldLogs();
       fetchLogs();
-    } catch (error) {
-      alert("Error al limpiar registros antiguos.");
+    } catch {
+      console.error("Error al limpiar registros antiguos.");
     }
   };
 

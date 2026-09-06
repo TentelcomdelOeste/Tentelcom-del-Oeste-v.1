@@ -100,6 +100,10 @@ async function bootstrap() {
       </ErrorBoundary>
     );
 
+    // Limpiar contadores de recarga si la aplicación inició correctamente
+    sessionStorage.removeItem('chunk_reload_count');
+    sessionStorage.removeItem('dynamic_import_reload');
+
     // Ocultar splash screen una vez renderizado React
     setTimeout(() => {
       const splash = document.getElementById('startup-splash');

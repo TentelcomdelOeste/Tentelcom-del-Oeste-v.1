@@ -7,13 +7,27 @@ interface Props {
   show: boolean;
   request: VehicleMaterialRequest;
   onClose: () => void;
-  onSimulateClose: (updatedReq: VehicleMaterialRequest) => void;
+  onCloseConfirm?: (data: {
+    requestId: string;
+    usedItems: { inventoryItemId: string; usedQuantity: number }[];
+    observations?: string;
+  }) => void;
+  onSimulateClose?: (updatedReq: VehicleMaterialRequest) => void;
+  currentUser?: any;
 }
 
-export const CloseVehicleRequestModal: React.FC<Props> = ({ show, request, onClose, onSimulateClose }) => {
+export const CloseVehicleRequestModal: React.FC<Props> = ({
+  show,
+  request,
+  onClose,
+  onCloseConfirm,
+  onSimulateClose,
+  currentUser
+}) => {
   const [usedQuantities, setUsedQuantities] = useState<Record<string, number>>(
     request.items.reduce((acc, item) => ({ ...acc, [item.inventoryItemId]: item.quantityCommitted }), {})
   );
+  const [closingObservations, setClosingObservations] = useState<string>('');
 
   if (!show) return null;
 
@@ -27,23 +41,40 @@ export const CloseVehicleRequestModal: React.FC<Props> = ({ show, request, onClo
       }
     }
 
-    const updatedReq: VehicleMaterialRequest = {
-      ...request,
-      status: 'Cerrada',
-      closedAt: new Date().toISOString(),
-      closedBy: 'sim-user',
-      closedByName: 'Usuario Simulado',
-      items: request.items.map(item => {
-        const used = usedQuantities[item.inventoryItemId] ?? 0;
-        return {
-          ...item,
-          quantityUsed: used,
-          quantitySurplus: item.quantityCommitted - used
-        };
-      })
-    };
+    const usedItemsList = request.items.map(item => ({
+      inventoryItemId: item.inventoryItemId,
+      usedQuantity: usedQuantities[item.inventoryItemId] ?? 0
+    }));
 
-    onSimulateClose(updatedReq);
+    if (onCloseConfirm) {
+      onCloseConfirm({
+        requestId: request.id,
+        usedItems: usedItemsList,
+        observations: closingObservations.trim() || undefined
+      });
+      return;
+    }
+
+    if (onSimulateClose) {
+      const currentUserId = currentUser?.id || 'system';
+      const currentUserName = currentUser?.name || currentUser?.email || 'Usuario';
+      const updatedReq: VehicleMaterialRequest = {
+        ...request,
+        status: 'Cerrada',
+        closedAt: new Date().toISOString(),
+        closedBy: currentUserId,
+        closedByName: currentUserName,
+        items: request.items.map(item => {
+          const used = usedQuantities[item.inventoryItemId] ?? 0;
+          return {
+            ...item,
+            quantityUsed: used,
+            quantitySurplus: item.quantityCommitted - used
+          };
+        })
+      };
+      onSimulateClose(updatedReq);
+    }
   };
 
   return (
@@ -129,6 +160,19 @@ export const CloseVehicleRequestModal: React.FC<Props> = ({ show, request, onClo
                   return <p key={`surp-${item.inventoryItemId}`} className="text-xs font-bold text-emerald-700">{surplus} {item.unit} <span className="opacity-75 font-normal truncate inline-block max-w-[80px] align-bottom">{item.description}</span></p>
                 })}
               </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Observaciones / Notas de Cierre (Opcional)
+              </label>
+              <textarea
+                value={closingObservations}
+                onChange={(e) => setClosingObservations(e.target.value)}
+                placeholder="Detalles sobre el uso de materiales o ejecución en terreno..."
+                rows={2}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+              />
             </div>
           </div>
         </div>

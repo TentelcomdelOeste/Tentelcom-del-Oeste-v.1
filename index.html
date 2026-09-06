@@ -189,7 +189,8 @@
                 console.warn('⚡ [AutoHeal] Restableciendo caché por actualización de la app...');
                 clearAndReload();
             } else {
-                console.error('❌ [AutoHeal] Bucle de reintentos evitado.');
+                console.warn('⚠️ [AutoHeal] Límite de reintentos alcanzado.');
+                sessionStorage.removeItem('chunk_reload_count');
                 var splash = document.getElementById('startup-splash');
                 if (splash) splash.remove();
             }
@@ -198,14 +199,15 @@
         // Capturar errores de carga de JS/Módulos
         window.addEventListener('error', function(e) {
             var msg = (e && e.message) ? String(e.message) : '';
-            var src = (e && e.target && e.target.src) ? String(e.target.src) : '';
+            var target = e && e.target;
+            var isScriptTag = target && (target.tagName === 'SCRIPT');
+            // Solo activar AutoHeal si es un error genuino de descarga de chunk/módulo
             if (
                 msg.includes('Loading chunk') ||
                 msg.includes('Failed to fetch') ||
                 msg.includes('dynamically imported module') ||
                 msg.includes('Importing a module script failed') ||
-                src.includes('.tsx') ||
-                src.includes('.js')
+                (isScriptTag && !msg && !e.error)
             ) {
                 autoRecoverFromChunkError();
             }

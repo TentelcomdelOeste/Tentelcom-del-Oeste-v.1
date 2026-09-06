@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FiArrowLeft, FiChevronDown, FiBriefcase, FiUsers, FiTruck, FiBox, FiDollarSign, FiFileText, FiCheckCircle, FiCalendar, FiUser, FiPackage } from 'react-icons/fi';
 import { User } from '../../utils/types';
 import { Project } from './types';
-import { getProjectJobs, getProjectMaterialRequests, getProjectInvoices, getProjectPurchases, subscribeToProjectJobs, subscribeToProjectMaterialRequests, subscribeToProjectInvoices, subscribeToProjectPurchases } from './services/projectRelationsService';
+import { subscribeToProjectJobs, subscribeToProjectMaterialRequests, subscribeToProjectInvoices, subscribeToProjectPurchases } from './services/projectRelationsService';
 import { ActionButton } from '../../design-system';
 
 interface ProjectExpedienteProps {

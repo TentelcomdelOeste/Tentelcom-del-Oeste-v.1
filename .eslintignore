@@ -1,6 +1,9 @@
 functions/
+functions-onedrive/
 dist/
 node_modules/
+patch_*.js
+test-*.js
 find_item.ts
 read_logos.js
 read_logos.ts

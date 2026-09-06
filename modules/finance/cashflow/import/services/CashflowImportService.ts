@@ -3,7 +3,7 @@ import { CashflowImportValidator } from './CashflowImportValidator';
 import { CashflowImportMapper } from './CashflowImportMapper';
 import { CashflowBatchImporter } from './CashflowBatchImporter';
 import { IntermediateEntry, ValidatedEntry, ImportValidationResult } from '../types';
-import { Quote, CashflowEntry, User } from '../../../../utils/types';
+import { Quote, CashflowEntry, User } from '../../../../../utils/types';
 
 export interface ParseAndMapResult {
   parseInfo: ParseResult;

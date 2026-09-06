@@ -1,8 +1,8 @@
-import { CashflowEntry } from '../../../../utils/types';
+import { CashflowEntry } from '../../../../../utils/types';
 import { ImportResult, ImportProgress } from '../types';
 import { db } from '../../../../../firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
-import { User } from '../../../../utils/types';
+import { User } from '../../../../../utils/types';
 
 export class CashflowBatchImporter {
   /**

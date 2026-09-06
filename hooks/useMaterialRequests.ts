@@ -9,7 +9,7 @@ import { useUserContext } from '../contexts/UserContext';
 
 import { logger } from '../utils/logger';
 import { VehicleWarehouseItem, VehicleMovement } from '../types/vehicleWarehouse.types';
-import { mockWarehouseItems, notifyWarehouseChanges } from '../modules/inventario/bodegas_vehiculares/mockData';
+
 
 export const useMaterialRequests = (currentUser: User | null) => {
   const { authReady } = useUserContext();
@@ -386,44 +386,6 @@ export const useMaterialRequests = (currentUser: User | null) => {
     };
 
     setRequests(prev => [createdReq, ...prev]);
-
-    if (isVehicleTransfer && targetVehiculoId) {
-        // Sync in-memory cache for immediate responsiveness
-        for (const item of repairedItems) {
-            const idx = mockWarehouseItems.findIndex(
-                i => i.vehiculoId === targetVehiculoId && i.inventoryItemId === item.inventoryItemId
-            );
-            if (idx !== -1) {
-                const ex = mockWarehouseItems[idx];
-                const newPhys = ex.physicalStock + item.quantityRequested;
-                mockWarehouseItems[idx] = {
-                    ...ex,
-                    physicalStock: newPhys,
-                    availableStock: Math.max(0, newPhys - ex.committedStock),
-                    updatedAt: new Date().toISOString(),
-                    updatedBy: currentUser.email
-                };
-            } else {
-                mockWarehouseItems.push({
-                    id: `${targetVehiculoId}_${item.inventoryItemId}`,
-                    vehiculoId: targetVehiculoId,
-                    vehiculoPlaca: targetVehiculoPlaca,
-                    vehiculoAlias: targetVehiculoAlias,
-                    inventoryItemId: item.inventoryItemId,
-                    code: item.code,
-                    description: item.description,
-                    category: 'General',
-                    unit: item.unit || 'UND',
-                    physicalStock: item.quantityRequested,
-                    committedStock: 0,
-                    availableStock: item.quantityRequested,
-                    updatedAt: new Date().toISOString(),
-                    updatedBy: currentUser.email
-                });
-            }
-        }
-        notifyWarehouseChanges();
-    }
 
     return { id, requestNumber: finalRequestNumber, movementReference: finalMovementRef };
   }, [currentUser]);
