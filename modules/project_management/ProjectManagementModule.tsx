@@ -9,7 +9,7 @@ import { Project } from './types';
 import { ProjectFormModal } from './components/ProjectFormModal';
 import { getProjects, deleteProject } from './services/projectService';
 import ProjectExpediente from './ProjectExpediente';
-import { FiChevronRight, FiUser, FiBriefcase, FiCalendar } from 'react-icons/fi';
+import { FiUser, FiBriefcase, FiCalendar } from 'react-icons/fi';
 
 interface ProjectManagementModuleProps {
   currentUser: User;
@@ -93,12 +93,12 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
         <ModuleToolbar>
           <div className="flex flex-col md:flex-row gap-4 items-center w-full justify-between">
-            <div className="w-full md:w-auto flex-1">
+            <div className="w-full flex-1">
               <SearchInput 
                  value={search} 
                  onChange={(e) => setSearch(e.target.value)} 
                  placeholder="Buscar por nombre, número o cliente..." 
-                 className="w-full md:max-w-md" 
+                 className="w-full" 
                />
             </div>
             {canCreate && (
@@ -185,13 +185,6 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                   
 
                 </div>
-
-                {/* Footer */}
-                <div className="mt-3 pt-3 border-t border-slate-100 flex justify-end">
-                    <div className="flex items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-                        {canViewExpediente ? <><span className="mr-1">Ver Expediente</span> <FiChevronRight /></> : <span className="text-slate-400">Sin acceso al expediente</span>}
-                    </div>
-                </div>
               </div>
 
             ))}
@@ -205,11 +198,28 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
           setShowModal(false);
           setProjectToEdit(null);
         }}
-        onSave={(p) => {
-          if (projectToEdit) {
-            setProjects(prev => prev.map(x => x.id === p.id ? p : x));
-          } else {
-            setProjects([p, ...projects]);
+        onSave={(p, unlinkedProjectId) => {
+          setProjects(prev => {
+            let list = prev;
+            if (unlinkedProjectId) {
+              list = list.map(item => {
+                if (item.id === unlinkedProjectId) {
+                  const copy = { ...item, origin: 'Manual' as const };
+                  delete copy.quoteId;
+                  delete copy.quoteCommercialId;
+                  return copy;
+                }
+                return item;
+              });
+            }
+            const exists = list.some(x => x.id === p.id);
+            if (exists) {
+              return list.map(x => x.id === p.id ? p : x);
+            } else {
+              return [p, ...list];
+            }
+          });
+          if (!projectToEdit) {
             setCurrentProject(p);
           }
         }}

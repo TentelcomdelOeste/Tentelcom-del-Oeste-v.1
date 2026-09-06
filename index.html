@@ -162,74 +162,78 @@
             return false;
         };
 
-        // Función para limpiar todo y recargar
+        // Función para limpiar todo y recargar silenciosamente
         function clearAndReload() {
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    for(let registration of registrations) {
-                        registration.unregister();
-                    }
-                });
-            }
-            if ('caches' in window) {
-                caches.keys().then(function(names) {
-                    for (let name of names) caches.delete(name);
-                });
-            }
+            try {
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                        for(let registration of registrations) {
+                            registration.unregister();
+                        }
+                    }).catch(function() {});
+                }
+                if ('caches' in window) {
+                    caches.keys().then(function(names) {
+                        for (let name of names) caches.delete(name);
+                    }).catch(function() {});
+                }
+            } catch (e) {}
             window.location.reload(true);
         }
 
-        // Timeout de seguridad para el splash (12 segundos)
-        setTimeout(function() {
-            var splash = document.getElementById('startup-splash');
-            if (splash) {
-                var reloadBtn = document.getElementById('reload-btn');
-                if (reloadBtn) reloadBtn.style.display = 'block';
-                var clearBtn = document.getElementById('clear-cache-btn');
-                if (clearBtn) clearBtn.style.display = 'block';
-                var errorDiv = document.getElementById('loading-error');
-                if (errorDiv) {
-                    errorDiv.style.display = 'block';
-                    errorDiv.innerHTML = "<strong>La aplicación está tardando demasiado en iniciar.</strong><br>Esto puede deberse a una conexión lenta o caché obsoleta.<br><small>Haz clic en 'Limpiar Caché y Forzar' para restablecer los recursos.</small>";
-                }
+        // Auto-recuperación silenciosa ante errores de carga de script/módulo
+        function autoRecoverFromChunkError() {
+            var reloadCount = parseInt(sessionStorage.getItem('chunk_reload_count') || '0', 10);
+            if (reloadCount < 2) {
+                sessionStorage.setItem('chunk_reload_count', String(reloadCount + 1));
+                console.warn('⚡ [AutoHeal] Restableciendo caché por actualización de la app...');
+                clearAndReload();
+            } else {
+                console.error('❌ [AutoHeal] Bucle de reintentos evitado.');
+                var splash = document.getElementById('startup-splash');
+                if (splash) splash.remove();
             }
-        }, 12000);
-    </script>
-    <script>
-        // Captura errores de carga de módulos (chunks) con protección de bucle
+        }
+
+        // Capturar errores de carga de JS/Módulos
         window.addEventListener('error', function(e) {
-            if (e.message && (
-                e.message.includes('Loading chunk') ||
-                e.message.includes('Failed to fetch dynamically imported module') ||
-                e.message.includes('Importing a module script failed') ||
-                e.message.includes('error loading dynamically imported module')
-            )) {
-                var reloadCount = parseInt(sessionStorage.getItem('chunk_reload_count') || '0', 10);
-                if (reloadCount < 1) {
-                    sessionStorage.setItem('chunk_reload_count', '1');
-                    console.warn('Chunk load error detected. Forcing reload to get latest version...');
-                    window.location.reload(true);
-                } else {
-                    console.error('Chunk loading failed repeatedly. Halting reload loop.');
-                    sessionStorage.removeItem('chunk_reload_count');
-                }
+            var msg = (e && e.message) ? String(e.message) : '';
+            var src = (e && e.target && e.target.src) ? String(e.target.src) : '';
+            if (
+                msg.includes('Loading chunk') ||
+                msg.includes('Failed to fetch') ||
+                msg.includes('dynamically imported module') ||
+                msg.includes('Importing a module script failed') ||
+                src.includes('.tsx') ||
+                src.includes('.js')
+            ) {
+                autoRecoverFromChunkError();
             }
         }, true);
 
-        // Captura errores no manejados de promesas (ej. imports dinámicos fallidos)
+        // Capturar rechazos no manejados de promesas (imports dinámicos de Vite)
         window.onunhandledrejection = function(e) {
-            if (e.reason && (e.reason.name === 'ChunkLoadError' || (e.reason.message && e.reason.message.includes('Loading chunk')))) {
-                var reloadCount = parseInt(sessionStorage.getItem('chunk_reload_count') || '0', 10);
-                if (reloadCount < 1) {
-                    sessionStorage.setItem('chunk_reload_count', '1');
-                    console.warn('Unhandled ChunkLoadError detected. Forcing reload...');
-                    window.location.reload(true);
-                } else {
-                    console.error('Chunk loading failed repeatedly. Halting reload loop.');
-                    sessionStorage.removeItem('chunk_reload_count');
-                }
+            var reason = e ? (e.reason || e) : null;
+            var msg = reason ? (reason.message || String(reason)) : '';
+            if (
+                msg.includes('Loading chunk') ||
+                msg.includes('Failed to fetch') ||
+                msg.includes('dynamically imported module') ||
+                msg.includes('Importing a module script failed')
+            ) {
+                autoRecoverFromChunkError();
             }
         };
+
+        // Timeout de seguridad de 4s: Remueve el splash automáticamente sin mostrar banderas rojas de error
+        setTimeout(function() {
+            var splash = document.getElementById('startup-splash');
+            if (splash) {
+                splash.style.opacity = '0';
+                splash.style.transition = 'opacity 0.3s ease';
+                setTimeout(function() { if (splash && splash.parentNode) splash.parentNode.removeChild(splash); }, 300);
+            }
+        }, 4000);
     </script>
 </head>
 <body class="text-slate-900">
@@ -240,9 +244,6 @@
         </style>
         <div class="spinner"></div>
         <p style="color: #64748b; font-weight: bold; font-family: sans-serif;">Cargando interfaz...</p>
-        <div id="loading-error" style="display:none; color: #ef4444; font-size: 14px; margin-top: 20px; max-width: 300px; background: #fee2e2; padding: 15px; border-radius: 12px; border: 1px solid #fecaca; text-align: center;"></div>
-        <button id="reload-btn" style="display:none; margin-top: 20px; padding: 12px 24px; background: #1e3a8a; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; width: 200px;" onclick="window.location.reload(true)">Recargar</button>
-        <button id="clear-cache-btn" style="display:none; margin-top: 10px; padding: 12px 24px; background: #64748b; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; width: 200px;" onclick="clearAndReload()">Limpiar Caché y Forzar</button>
     </div>
     <div id="root"></div>
     <div id="modal-root"></div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FiChevronDown, FiSearch } from 'react-icons/fi';
-import { createProject, getApprovedQuotes, checkQuoteHasProject, updateProject } from '../services/projectService';
+import { getProjects, getApprovedQuotes, createProjectWithQuoteHandling, updateProjectWithQuoteHandling } from '../services/projectService';
 import { Project } from '../types';
 import { Client, Quote, User } from '../../../utils/types';
 import { useClients } from '../../../hooks/useClients';
@@ -10,7 +10,7 @@ import { ClientDirectoryModal } from '../../quotes/ClientDirectoryModal';
 interface ProjectFormModalProps {
   show: boolean;
   onClose: () => void;
-  onSave: (p: Project) => void;
+  onSave: (p: Project, unlinkedProjectId?: string) => void;
   currentUser: User;
   initialData?: Project | null;
 }
@@ -39,6 +39,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [approvedQuotes, setApprovedQuotes] = useState<Quote[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [quotesError, setQuotesError] = useState<string | null>(null);
 
@@ -71,24 +72,27 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       setClientName(initialData.clientName || '');
       setStartDate(initialData.startDate || getTodayLocalDate());
       setSelectedQuoteId(initialData.quoteId || '');
-      setOriginSelection(initialData.origin === 'Cotización' ? 'quote' : 'manual');
-      
-      if (initialData.clientId) {
-        const client = savedClients.find(c => c.id === initialData.clientId);
-        if (client) {
-          setClientName(client.empresa);
-        }
-      }
+      setOriginSelection(initialData.origin === 'Cotización' && initialData.quoteId ? 'quote' : 'manual');
     } else {
+      setName('');
+      setStatus('Planificación');
+      setClientId('');
+      setClientName('');
       setStartDate(getTodayLocalDate());
+      setSelectedQuoteId('');
+      setOriginSelection('manual');
     }
 
-    const loadQuotes = async () => {
+    const loadFormOptions = async () => {
       setLoadingQuotes(true);
       setQuotesError(null);
       try {
-        const quotes = await getApprovedQuotes();
+        const [quotes, projects] = await Promise.all([
+          getApprovedQuotes(),
+          getProjects()
+        ]);
         setApprovedQuotes(quotes);
+        setAllProjects(projects);
       } catch (error) {
         console.error('Error loading approved quotes:', error);
         setQuotesError('No fue posible cargar las cotizaciones aprobadas.');
@@ -98,8 +102,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       }
     };
 
-    loadQuotes();
-  }, [show, initialData, savedClients]);
+    loadFormOptions();
+  }, [show, initialData]);
 
   const findSelectedQuote = (quoteId: string) =>
     approvedQuotes.find(
@@ -130,22 +134,15 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
   };
 
   const handleQuoteSelect = (quoteId: string) => {
-    const isManual = !quoteId;
-    setOriginSelection(isManual ? 'manual' : 'quote');
     setSelectedQuoteId(quoteId);
-
-    if (isManual) {
-      setClientId('');
-      setClientName('');
+    if (!quoteId) {
+      setOriginSelection('manual');
       return;
     }
 
+    setOriginSelection('quote');
     const quote = findSelectedQuote(quoteId);
-    if (!quote) {
-      setClientId('');
-      setClientName('');
-      return;
-    }
+    if (!quote) return;
 
     const client = findClientForQuote(quote);
 
@@ -153,8 +150,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       setClientId(client.id);
       setClientName(client.empresa);
     } else {
-      setClientId(quote.clientId || quote.codigoCliente || '');
-      setClientName(quote.empresa || '');
+      setClientId(quote.clientId || quote.codigoCliente || 'CLIENT_QUOTE');
+      setClientName(quote.empresa || 'Cliente de Cotización');
     }
   };
 
@@ -175,7 +172,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       return;
     }
 
-    if (!clientId.trim()) {
+    if (!clientId.trim() || !clientName.trim()) {
       setErrorMsg('Debe seleccionar un cliente del directorio.');
       return;
     }
@@ -185,68 +182,53 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       return;
     }
 
-    if (!isEditing && originSelection === 'quote' && !selectedQuoteId) {
-      setErrorMsg('Debe seleccionar una cotización aprobada.');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
+      let quoteCommercialId: string | undefined;
+      if (selectedQuoteId) {
+        const q = findSelectedQuote(selectedQuoteId);
+        if (q && q.id !== undefined) {
+          quoteCommercialId = String(q.id);
+        }
+      }
+
       if (isEditing && initialData) {
-        const updateData: Partial<Project> = {
-          name: trimmedName,
-          status,
-          clientId: clientId.trim(),
-          clientName: clientName.trim(),
-          startDate,
-        };
-        await updateProject(initialData.id, updateData);
-        onSave({ ...initialData, ...updateData });
+        const { updatedProject, unlinkedProjectId } = await updateProjectWithQuoteHandling({
+          id: initialData.id,
+          projectData: {
+            name: trimmedName,
+            status,
+            clientId: clientId.trim(),
+            clientName: clientName.trim(),
+            startDate,
+          },
+          selectedQuoteId: selectedQuoteId || undefined,
+          selectedQuoteCommercialId: quoteCommercialId,
+        });
+
+        onSave(updatedProject, unlinkedProjectId);
         onClose();
         return;
+      } else {
+        const { newProject, unlinkedProjectId } = await createProjectWithQuoteHandling({
+          projectData: {
+            name: trimmedName,
+            status: 'Planificación',
+            clientId: clientId.trim(),
+            clientName: clientName.trim(),
+            startDate,
+          },
+          selectedQuoteId: selectedQuoteId || undefined,
+          selectedQuoteCommercialId: quoteCommercialId,
+          createdBy: currentUser?.uid || currentUser?.id || 'unknown',
+          createdByDisplayName: currentUser?.name || currentUser?.displayName || currentUser?.email || 'Usuario',
+        });
+
+        onSave(newProject, unlinkedProjectId);
+        onClose();
       }
-
-      let origin: Project['origin'] = 'Manual';
-      let quoteIdToSave: string | undefined;
-
-      if (originSelection === 'quote') {
-        const quote = findSelectedQuote(selectedQuoteId);
-        if (!quote) {
-          throw new Error('La cotización seleccionada ya no está disponible.');
-        }
-
-        const stableQuoteId = quote.docId || quote.id?.toString() || selectedQuoteId;
-        const existingProject = await checkQuoteHasProject(stableQuoteId);
-
-        if (existingProject) {
-          setErrorMsg(`Esta cotización ya está asociada al proyecto ${existingProject.projectNumber}.`);
-          setIsSubmitting(false);
-          return;
-        }
-
-        origin = 'Cotización';
-        quoteIdToSave = stableQuoteId;
-      }
-
-      const projectData: Omit<Project, 'id' | 'projectNumber' | 'isActive' | 'createdAt' | 'updatedAt'> = {
-        name: trimmedName,
-        status: 'Planificación',
-        origin,
-        clientId: clientId.trim(),
-        clientName: clientName.trim(),
-        quoteId: quoteIdToSave,
-        quoteCommercialId: originSelection === 'quote' ? findSelectedQuote(selectedQuoteId)?.id?.toString() : undefined,
-        startDate,
-      };
-
-      const newProject = await createProject(
-        projectData, 
-        currentUser?.uid || currentUser?.id || 'unknown',
-        currentUser?.name || currentUser?.displayName || currentUser?.email || 'Usuario'
-      );
-      onSave(newProject);
-      onClose();
     } catch (error: any) {
+      console.error("Error saving project:", error);
       setErrorMsg(error.message || 'Error al guardar el proyecto');
     } finally {
       setIsSubmitting(false);
@@ -267,46 +249,43 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
         maxWidth="max-w-md"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!isEditing ? (
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cotización de origen</label>
-              <div className="relative">
-                <select
-                  value={selectedQuoteId}
-                  onChange={e => handleQuoteSelect(e.target.value)}
-                  className="w-full appearance-none px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm font-medium"
-                  disabled={loadingQuotes}
-                >
-                  <option value="">Ninguna (Proyecto Manual)</option>
-                  {approvedQuotes.map(q => {
-                    const commercialId = q.id !== undefined ? `#${String(q.id).padStart(3, '0')}` : `#${q.docId?.slice(-4)}`;
-                    return (
-                      <option key={q.docId || q.id} value={q.docId || q.id?.toString()}>
-                        {commercialId} — {q.empresa || 'Sin Cliente'}
-                      </option>
-                    );
-                  })}
-                </select>
-                <FiChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              </div>
-              {loadingQuotes && (
-                <p className="text-[11px] text-slate-400 mt-1 animate-pulse">Cargando cotizaciones aprobadas...</p>
-              )}
-              {quotesError && (
-                <p className="text-[11px] text-red-500 font-medium mt-1">{quotesError}</p>
-              )}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cotización de origen</label>
+            <div className="relative">
+              <select
+                value={selectedQuoteId}
+                onChange={e => handleQuoteSelect(e.target.value)}
+                className="w-full appearance-none px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm font-medium"
+                disabled={loadingQuotes}
+              >
+                <option value="">Ninguna (Proyecto Manual)</option>
+                {approvedQuotes.map(q => {
+                  const qDocId = q.docId || q.id?.toString() || '';
+                  const commercialId = q.id !== undefined && !isNaN(Number(q.id))
+                    ? `#${String(q.id).padStart(3, '0')}`
+                    : `#${qDocId.slice(-4)}`;
+                  
+                  const linkedProj = allProjects.find(
+                    p => p.quoteId === qDocId || (q.id && p.quoteCommercialId === String(q.id))
+                  );
+                  const isOtherProject = linkedProj && linkedProj.id !== initialData?.id;
+
+                  return (
+                    <option key={qDocId} value={qDocId}>
+                      Cotización {commercialId} — {q.empresa || 'Sin Cliente'}{isOtherProject ? ` (Vinculada a ${linkedProj.projectNumber})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <FiChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
-          ) : (
-            initialData?.quoteId && (
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cotización de origen (Referencia)</label>
-                <div className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm font-medium text-slate-700">
-                  {/* For display, we can try to find the quote or just show the ID */}
-                  Cotización {initialData.quoteCommercialId ? `#${String(initialData.quoteCommercialId).padStart(3, '0')}` : (findSelectedQuote(initialData.quoteId)?.id ? `#${String(findSelectedQuote(initialData.quoteId)?.id).padStart(3, '0')}` : `#${initialData.quoteId.slice(-6)}`)}
-                </div>
-              </div>
-            )
-          )}
+            {loadingQuotes && (
+              <p className="text-[11px] text-slate-400 mt-1 animate-pulse">Cargando cotizaciones aprobadas...</p>
+            )}
+            {quotesError && (
+              <p className="text-[11px] text-red-500 font-medium mt-1">{quotesError}</p>
+            )}
+          </div>
 
           {isEditing && (
             <div>
@@ -357,6 +336,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
               </div>
               {!clientIsLockedByQuote && (
                 <IconButton
+                  type="button"
                   onClick={() => setShowClientModal(true)}
                   icon={<FiSearch size={20} />}
                   variant="primary"
@@ -365,8 +345,10 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
                 />
               )}
             </div>
-            {clientIsLockedByQuote && (
-              <p className="text-[11px] text-slate-400 mt-1">Bloqueado por cotización.</p>
+            {clientIsLockedByQuote ? (
+              <p className="text-[11px] text-slate-400 mt-1">Bloqueado porque proviene de la cotización seleccionada.</p>
+            ) : (
+              <p className="text-[11px] text-slate-400 mt-1">Seleccione un cliente del directorio para proyecto manual.</p>
             )}
           </div>
 
@@ -389,6 +371,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
 
           <div className="pt-6 flex gap-3">
             <ActionButton
+              type="button"
               variant="secondary"
               onClick={onClose}
               label="CANCELAR"

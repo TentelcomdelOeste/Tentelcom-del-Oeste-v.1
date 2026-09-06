@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, addDoc, updateDoc, deleteDoc, deleteField } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
@@ -34,6 +34,7 @@ export const getProjectById = async (id: string): Promise<Project | null> => {
 };
 
 export const getProjectByQuoteId = async (quoteId: string): Promise<Project | null> => {
+  if (!quoteId) return null;
   try {
     const q = query(collection(db, COLLECTION_NAME), where('quoteId', '==', quoteId));
     const snapshot = await getDocs(q);
@@ -114,44 +115,162 @@ export const generateNextProjectNumber = async (): Promise<string> => {
   }
 };
 
-export const createProject = async (projectData: Omit<Project, 'id' | 'projectNumber' | 'isActive' | 'createdAt' | 'updatedAt'>, createdBy: string, createdByDisplayName?: string): Promise<Project> => {
-  try {
-    const projectNumber = await generateNextProjectNumber();
-    const now = new Date().toISOString();
-    
-    const newProjectData: Omit<Project, 'id'> = {
-      ...projectData,
-      projectNumber,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-      createdBy,
-      createdByDisplayName,
-    };
-    
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), newProjectData);
-    
-    return {
+export const createProjectWithQuoteHandling = async ({
+  projectData,
+  selectedQuoteId,
+  selectedQuoteCommercialId,
+  createdBy,
+  createdByDisplayName,
+}: {
+  projectData: {
+    name: string;
+    status: Project['status'];
+    clientId: string;
+    clientName: string;
+    startDate: string;
+  };
+  selectedQuoteId?: string;
+  selectedQuoteCommercialId?: string;
+  createdBy: string;
+  createdByDisplayName?: string;
+}): Promise<{ newProject: Project; unlinkedProjectId?: string }> => {
+  let unlinkedProjectId: string | undefined;
+
+  if (selectedQuoteId) {
+    const existingProject = await getProjectByQuoteId(selectedQuoteId);
+    if (existingProject) {
+      unlinkedProjectId = existingProject.id;
+      const otherRef = doc(db, COLLECTION_NAME, existingProject.id);
+      await updateDoc(otherRef, {
+        quoteId: deleteField(),
+        quoteCommercialId: deleteField(),
+        origin: 'Manual',
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  const projectNumber = await generateNextProjectNumber();
+  const now = new Date().toISOString();
+
+  const newProjectData: Omit<Project, 'id'> = {
+    ...projectData,
+    projectNumber,
+    origin: selectedQuoteId ? 'Cotización' : 'Manual',
+    quoteId: selectedQuoteId || undefined,
+    quoteCommercialId: selectedQuoteId ? selectedQuoteCommercialId : undefined,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+    createdBy,
+    createdByDisplayName,
+  };
+
+  const docRef = await addDoc(collection(db, COLLECTION_NAME), newProjectData);
+
+  return {
+    newProject: {
       ...newProjectData,
       id: docRef.id,
-    } as Project;
-  } catch (error) {
-    console.error("Error creating project:", error);
-    throw error;
+    } as Project,
+    unlinkedProjectId,
+  };
+};
+
+export const updateProjectWithQuoteHandling = async ({
+  id,
+  projectData,
+  selectedQuoteId,
+  selectedQuoteCommercialId,
+}: {
+  id: string;
+  projectData: {
+    name: string;
+    status: Project['status'];
+    clientId: string;
+    clientName: string;
+    startDate: string;
+  };
+  selectedQuoteId?: string;
+  selectedQuoteCommercialId?: string;
+}): Promise<{ updatedProject: Project; unlinkedProjectId?: string }> => {
+  let unlinkedProjectId: string | undefined;
+
+  if (selectedQuoteId) {
+    const existingProject = await getProjectByQuoteId(selectedQuoteId);
+    if (existingProject && existingProject.id !== id) {
+      unlinkedProjectId = existingProject.id;
+      const otherRef = doc(db, COLLECTION_NAME, existingProject.id);
+      await updateDoc(otherRef, {
+        quoteId: deleteField(),
+        quoteCommercialId: deleteField(),
+        origin: 'Manual',
+        updatedAt: new Date().toISOString(),
+      });
+    }
   }
+
+  const docRef = doc(db, COLLECTION_NAME, id);
+  const now = new Date().toISOString();
+
+  if (selectedQuoteId) {
+    await updateDoc(docRef, {
+      name: projectData.name,
+      status: projectData.status,
+      clientId: projectData.clientId,
+      clientName: projectData.clientName,
+      startDate: projectData.startDate,
+      origin: 'Cotización',
+      quoteId: selectedQuoteId,
+      quoteCommercialId: selectedQuoteCommercialId || null,
+      updatedAt: now,
+    });
+  } else {
+    await updateDoc(docRef, {
+      name: projectData.name,
+      status: projectData.status,
+      clientId: projectData.clientId,
+      clientName: projectData.clientName,
+      startDate: projectData.startDate,
+      origin: 'Manual',
+      quoteId: deleteField(),
+      quoteCommercialId: deleteField(),
+      updatedAt: now,
+    });
+  }
+
+  const updatedSnap = await getDoc(docRef);
+  const updatedProject = { ...updatedSnap.data(), id: updatedSnap.id } as Project;
+
+  return {
+    updatedProject,
+    unlinkedProjectId,
+  };
+};
+
+export const createProject = async (projectData: Omit<Project, 'id' | 'projectNumber' | 'isActive' | 'createdAt' | 'updatedAt'>, createdBy: string, createdByDisplayName?: string): Promise<Project> => {
+  const res = await createProjectWithQuoteHandling({
+    projectData: {
+      name: projectData.name,
+      status: projectData.status,
+      clientId: projectData.clientId || '',
+      clientName: projectData.clientName || '',
+      startDate: projectData.startDate || new Date().toISOString().split('T')[0],
+    },
+    selectedQuoteId: projectData.quoteId,
+    selectedQuoteCommercialId: projectData.quoteCommercialId,
+    createdBy,
+    createdByDisplayName,
+  });
+  return res.newProject;
 };
 
 export const updateProject = async (id: string, projectData: Partial<Project>): Promise<void> => {
-  try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, {
-      ...projectData,
-      updatedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("Error updating project:", error);
-    throw error;
-  }
+  const docRef = doc(db, COLLECTION_NAME, id);
+  await updateDoc(docRef, {
+    ...projectData,
+    updatedAt: new Date().toISOString(),
+  });
 };
 
 export const deleteProject = async (id: string): Promise<void> => {

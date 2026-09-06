@@ -8,15 +8,41 @@ import { SyncToast } from './components/SyncToast';
 import { OnlineStatusIndicator } from './components/OnlineStatusIndicator';
 import { SyncStatusIndicator } from './components/SyncStatusIndicator';
 
-const FinanceModule = lazy(() => import('./modules/FinanceModule').then(module => ({ default: module.FinanceModule })));
-const QuotesModule = lazy(() => import('./modules/quotes/QuotesModule').then(module => ({ default: module.QuotesModule })));
-const ProjectManagementModule = lazy(() => import('./modules/project_management/ProjectManagementModule'));
-const JobSchedulingModule = lazy(() => import('./modules/job_scheduling/JobSchedulingModule').then(module => ({ default: module.JobSchedulingModule })));
-const OperationalLogView = lazy(() => import('./modules/job_scheduling/OperationalLogView'));
-const ExternalProductModule = lazy(() => import('./modules/external_products/ExternalProductModule').then(module => ({ default: module.ExternalProductModule })));
-const WebAnalysisModule = lazy(() => import('./modules/web_analysis/WebAnalysisModule').then(module => ({ default: module.WebAnalysisModule })));
-const HealthDashboard = lazy(() => import('./modules/admin/HealthDashboard'));
-const VehiclesModule = lazy(() => import('./modules/vehicles/VehiclesModule'));
+function safeLazy<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T } | T>
+) {
+  return lazy(async () => {
+    try {
+      const module = await factory();
+      return 'default' in module ? module : { default: module };
+    } catch (error) {
+      console.warn('⚡ [safeLazy] Módulo dinámico desactualizado. Auto-recuperando caché...', error);
+      const reloadKey = 'chunk_reload_' + window.location.pathname;
+      const count = parseInt(sessionStorage.getItem(reloadKey) || '0', 10);
+      if (count < 2) {
+        sessionStorage.setItem(reloadKey, String(count + 1));
+        if ('caches' in window) {
+          try {
+            const names = await caches.keys();
+            await Promise.all(names.map(name => caches.delete(name)));
+          } catch (e) {}
+        }
+        window.location.reload();
+      }
+      throw error;
+    }
+  });
+}
+
+const FinanceModule = safeLazy(() => import('./modules/FinanceModule').then(module => ({ default: module.FinanceModule })));
+const QuotesModule = safeLazy(() => import('./modules/quotes/QuotesModule').then(module => ({ default: module.QuotesModule })));
+const ProjectManagementModule = safeLazy(() => import('./modules/project_management/ProjectManagementModule'));
+const JobSchedulingModule = safeLazy(() => import('./modules/job_scheduling/JobSchedulingModule').then(module => ({ default: module.JobSchedulingModule })));
+const OperationalLogView = safeLazy(() => import('./modules/job_scheduling/OperationalLogView'));
+const ExternalProductModule = safeLazy(() => import('./modules/external_products/ExternalProductModule').then(module => ({ default: module.ExternalProductModule })));
+const WebAnalysisModule = safeLazy(() => import('./modules/web_analysis/WebAnalysisModule').then(module => ({ default: module.WebAnalysisModule })));
+const HealthDashboard = safeLazy(() => import('./modules/admin/HealthDashboard'));
+const VehiclesModule = safeLazy(() => import('./modules/vehicles/VehiclesModule'));
 
 import { User } from './utils/types';
 import { can, isAdmin } from './utils/permissions';
