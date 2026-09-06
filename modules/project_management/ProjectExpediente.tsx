@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FiArrowLeft, FiChevronDown, FiBriefcase, FiUsers, FiTruck, FiBox, FiDollarSign, FiFileText, FiCheckCircle } from 'react-icons/fi';
+import { FiArrowLeft, FiChevronDown, FiBriefcase, FiUsers, FiTruck, FiBox, FiDollarSign, FiFileText, FiCheckCircle, FiCalendar, FiUser, FiPackage } from 'react-icons/fi';
 import { User } from '../../utils/types';
 import { Project } from './types';
-import { getProjectJobs, getProjectMaterialRequests, getProjectInvoices, getProjectPurchases } from './services/projectRelationsService';
+import { getProjectJobs, getProjectMaterialRequests, getProjectInvoices, getProjectPurchases, subscribeToProjectJobs, subscribeToProjectMaterialRequests, subscribeToProjectInvoices, subscribeToProjectPurchases } from './services/projectRelationsService';
 import { ActionButton } from '../../design-system';
 
 interface ProjectExpedienteProps {
@@ -38,28 +38,43 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadRelations = async () => {
-      setLoading(true);
-      try {
-        const [jobsData, invoicesData, reqData, purData] = await Promise.all([
-          getProjectJobs(project.id),
-          getProjectInvoices(project.id),
-          getProjectMaterialRequests(project.id),
-          getProjectPurchases(project.id)
-        ]);
-        
-        setJobs(jobsData);
-        setInvoices(invoicesData);
-        setMaterialRequests(reqData);
-        setPurchases(purData);
-      } catch (err) {
-        console.error("Error loading project relations", err);
-      } finally {
+    setLoading(true);
+    let loadedCount = 0;
+    const TOTAL_SUBSCRIPTIONS = 4;
+
+    const checkLoaded = () => {
+      loadedCount++;
+      if (loadedCount >= TOTAL_SUBSCRIPTIONS) {
         setLoading(false);
       }
     };
-    
-    loadRelations();
+
+    const unsubJobs = subscribeToProjectJobs(project.id, (data) => {
+      setJobs(data);
+      checkLoaded();
+    });
+
+    const unsubInvoices = subscribeToProjectInvoices(project.id, (data) => {
+      setInvoices(data);
+      checkLoaded();
+    });
+
+    const unsubRequests = subscribeToProjectMaterialRequests(project.id, (data) => {
+      setMaterialRequests(data);
+      checkLoaded();
+    });
+
+    const unsubPurchases = subscribeToProjectPurchases(project.id, (data) => {
+      setPurchases(data);
+      checkLoaded();
+    });
+
+    return () => {
+      unsubJobs();
+      unsubInvoices();
+      unsubRequests();
+      unsubPurchases();
+    };
   }, [project.id]);
 
   // Extract unique elements
@@ -252,8 +267,47 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
               </div>
             )}
             
+            {activeTab === 'materiales' && (
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h3 className="text-lg font-black text-slate-800 mb-4">Solicitudes de Materiales</h3>
+                {materialRequests.length === 0 ? (
+                  <p className="text-slate-400 font-medium">No hay solicitudes de materiales asociadas a este proyecto.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {materialRequests.map(req => (
+                      <div key={req.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-3">
+                              <p className="font-bold text-blue-700">Solicitud {req.requestNumber || req.id}</p>
+                              <span className="text-[10px] font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md uppercase tracking-wider">{req.origin}</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
+                              <div className="flex items-center gap-1.5"><FiCalendar /> {req.date}</div>
+                              <div className="flex items-center gap-1.5"><FiUser /> {req.requestedByName}</div>
+                              <div className="flex items-center gap-1.5"><FiPackage /> {req.items?.length || 0} materiales</div>
+                          </div>
+                        </div>
+                        <div className="text-left sm:text-right">
+                          <span className={`text-[10px] font-bold px-3 py-1 rounded-md uppercase tracking-wider ${
+                            req.status === 'Pendiente' ? 'bg-amber-100 text-amber-700' :
+                            req.status === 'Aprobada' ? 'bg-indigo-100 text-indigo-700' :
+                            req.status === 'Parcial' ? 'bg-cyan-100 text-cyan-700' :
+                            req.status === 'Despachada' ? 'bg-green-100 text-green-700' :
+                            req.status === 'Rechazada' ? 'bg-red-100 text-red-700' :
+                            'bg-slate-200 text-slate-600'
+                          }`}>
+                            {req.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            
             {/* Secciones en desarrollo para demostrar arquitectura modular sin duplicar */}
-            {!['resumen', 'trabajos', 'facturacion'].includes(activeTab) && (
+            {!['resumen', 'trabajos', 'facturacion', 'materiales'].includes(activeTab) && (
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center min-h-[300px]">
                 <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4 text-slate-400">
                   <FiCheckCircle className="w-8 h-8" />

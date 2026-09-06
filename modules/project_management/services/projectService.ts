@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, addDoc, updateDoc, deleteDoc, deleteField } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
@@ -17,6 +17,22 @@ export const getProjects = async (): Promise<Project[]> => {
     console.error("Error fetching projects:", error);
     return [];
   }
+};
+
+export const subscribeToProjects = (callback: (projects: Project[]) => void): () => void => {
+  const q = query(
+    collection(db, COLLECTION_NAME), 
+    orderBy('createdAt', 'desc')
+  );
+  
+  return onSnapshot(q, (snapshot) => {
+    const projects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+    callback(projects);
+  }, (error) => {
+    console.error("Error listening to projects:", error);
+    // Even if it fails, maybe we can fallback to no projects so it stops loading
+    callback([]);
+  });
 };
 
 export const getProjectById = async (id: string): Promise<Project | null> => {

@@ -6,7 +6,7 @@ import { User } from '../../utils/types';
 import { can, isAdmin } from '../../utils/permissions';
 import { Project } from './types';
 import { ProjectFormModal } from './components/ProjectFormModal';
-import { getProjects, deleteProject } from './services/projectService';
+import { getProjects, deleteProject, subscribeToProjects } from './services/projectService';
 import ProjectExpediente from './ProjectExpediente';
 import { FiUser, FiBriefcase, FiCalendar } from 'react-icons/fi';
 
@@ -32,7 +32,13 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    loadProjects();
+    setLoading(true);
+    const unsubscribe = subscribeToProjects((data) => {
+      setProjects(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -41,13 +47,6 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
       if (p) setCurrentProject(p);
     }
   }, [selectedId, projects]);
-
-  const loadProjects = async () => {
-    setLoading(true);
-    const data = await getProjects();
-    setProjects(data);
-    setLoading(false);
-  };
 
   const handleDelete = async () => {
     if (!projectToDelete) return;

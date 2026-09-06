@@ -447,6 +447,12 @@ export const MaterialRequestModal = ({
           return;
       }
 
+      // Validar que se haya seleccionado un proyecto del catálogo
+      if (!projectId) {
+          setError("El Proyecto Asociado es obligatorio y debe seleccionarse del catálogo.");
+          return;
+      }
+
       // Validaciones Condicionales
       if (isIBUX) {
           if (!fdh.trim() || !torre.trim() || !locationDetails.trim()) {
@@ -456,11 +462,6 @@ export const MaterialRequestModal = ({
       } else if (isCNFL) {
           if (!planta.trim()) {
               setError("Debe ingresar el LUGAR / PLANTEL.");
-              return;
-          }
-      } else {
-          if (!projectId && !projectSearch.trim()) {
-              setError("Para este origen, el Proyecto Asociado es obligatorio.");
               return;
           }
       }
@@ -478,8 +479,8 @@ export const MaterialRequestModal = ({
 
           const payload = {
               origin: origin.replace(" MANTENIMIENTO", ""),
-              projectId: selectedProject ? selectedProject.id : (projectId || (origin === 'PRIVADO' ? 'MANUAL' : (isIBUX ? 'IBUX' : 'N/A'))),
-              projectName: selectedProject ? selectedProject.name : (projectSearch.trim() || (isIBUX ? 'IBUX-CLARO' : 'SIN PROYECTO')),
+              projectId: selectedProject ? selectedProject.id : projectId,
+              projectName: selectedProject ? selectedProject.name : projectSearch.trim(),
               projectCode: projectCodeValue,
               // Mantenemos el solicitante original si estamos editando, o el actual si es nuevo
               requestedBy: initialData ? initialData.requestedBy : currentUser.id,
