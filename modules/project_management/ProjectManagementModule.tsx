@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { ModulePage } from '../../components/ui/ModulePage';
 import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
-import { ActionButton, SearchInput, IconButton, ConfirmModal } from '../../design-system';
+import { ActionButton, SearchInput, ConfirmModal } from '../../design-system';
+import { ActionButtons } from '../../components/ui/ActionButtons';
 import { User } from '../../utils/types';
+import { can, isAdmin } from '../../utils/permissions';
 import { Project } from './types';
 import { ProjectFormModal } from './components/ProjectFormModal';
 import { getProjects, deleteProject } from './services/projectService';
 import ProjectExpediente from './ProjectExpediente';
-import { FiChevronRight, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiChevronRight, FiUser, FiBriefcase, FiCalendar } from 'react-icons/fi';
 
 interface ProjectManagementModuleProps {
   currentUser: User;
@@ -17,6 +19,9 @@ interface ProjectManagementModuleProps {
 
 const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ currentUser, selectedId, onClearSelectedId }) => {
   const [showModal, setShowModal] = useState(false);
+
+  const canAdmin = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.administrar');
+  const canCreate = canAdmin || can(currentUser, 'gestion_proyectos.crear');
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -31,7 +36,6 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
 
   useEffect(() => {
     if (selectedId && projects.length > 0) {
-      // Look for technical ID first, then projectNumber as fallback
       const p = projects.find(x => x.id === selectedId || x.projectNumber === selectedId);
       if (p) setCurrentProject(p);
     }
@@ -53,7 +57,6 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
       setProjectToDelete(null);
     } catch (error) {
       console.error("Error deleting project:", error);
-      alert("No se pudo eliminar el proyecto.");
     } finally {
       setDeleting(false);
     }
@@ -66,7 +69,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
 
   const filteredProjects = projects.filter(p => 
     p.name.toLowerCase().includes(search.toLowerCase()) || 
-    p.projectNumber.toLowerCase().includes(search.toLowerCase())
+    p.projectNumber.toLowerCase().includes(search.toLowerCase()) ||
+    (p.clientName || '').toLowerCase().includes(search.toLowerCase())
   );
 
   if (currentProject) {
@@ -90,10 +94,11 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
             <SearchInput 
               value={search} 
               onChange={(e) => setSearch(e.target.value)} 
-              placeholder="Buscar proyecto por nombre o ID..." 
+              placeholder="Buscar por nombre, número o cliente..." 
               className="w-full md:w-72" 
             />
           </div>
+          {canCreate && (
           <ActionButton 
             onClick={() => {
               setProjectToEdit(null);
@@ -101,6 +106,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
             }} 
             label="NUEVO PROYECTO" 
           />
+          )}
         </ModuleToolbar>
 
         <div className="flex-1 overflow-auto py-6">
@@ -109,62 +115,86 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
           </div>
         ) : filteredProjects.length === 0 ? (
-          <div className="text-center text-slate-500 mt-10">No se encontraron proyectos.</div>
+          <div className="text-center text-slate-500 mt-10">No se encontraron proyectos activos en el sistema.</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredProjects.map(project => (
-              <div 
-                key={project.id} 
-                onClick={() => setCurrentProject(project)}
-                className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full"
+              
+              <div
+                key={project.id}
+                onClick={() => { if (canAdmin) setCurrentProject(project); }}
+                className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow relative flex flex-col cursor-pointer"
               >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-md">
-                    {project.projectNumber}
-                  </div>
-                  <div className="flex gap-1 items-center">
-                    <IconButton 
-                      icon={<FiEdit2 />} 
-                      variant="primary" 
-                      title="Editar" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEdit(project);
-                      }} 
-                    />
-                    <IconButton 
-                      icon={<FiTrash2 />} 
-                      variant="danger" 
-                      title="Eliminar" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setProjectToDelete(project);
-                      }} 
-                    />
-                  </div>
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-indigo-50 text-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center font-bold">
+                            <FiBriefcase size={20} />
+                        </div>
+                        <div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-tight">Proyecto</div>
+                            <div className="font-black text-indigo-700">{project.projectNumber}</div>
+                        </div>
+                    </div>
+                    <div>
+                      <ActionButtons
+                        onEdit={canAdmin ? () => handleEdit(project) : undefined}
+                        onDelete={canAdmin ? () => setProjectToDelete(project) : undefined}
+                      />
+                    </div>
                 </div>
                 
+                {/* Body */}
                 <div className="flex-1">
-                  <div className="flex justify-between items-start mb-1">
-                    <h3 className="font-bold text-slate-800 line-clamp-2">{project.name}</h3>
+                  <div className="mb-4">
+                    <h3 className="font-bold text-slate-800 text-sm leading-tight line-clamp-2 mb-2">
+                      {project.name}
+                    </h3>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                        project.status === 'Cerrado' ? 'bg-slate-100 text-slate-500' :
+                        project.status === 'En Ejecución' ? 'bg-emerald-100 text-emerald-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {project.status}
+                      </div>
+                    </div>
                   </div>
-                  <div className="inline-block px-2 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-bold rounded uppercase mb-2">
-                    {project.status}
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1"><FiUser size={10} /> Creado por</div>
+                      <div className="font-semibold text-slate-700 truncate">{project.createdByDisplayName || 'Usuario'}</div>
+                    </div>
+                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1"><FiCalendar size={10} /> Fecha</div>
+                      <div className="font-semibold text-slate-700 truncate">{project.startDate || 'N/A'}</div>
+                    </div>
                   </div>
+                  
+                  <div className="mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Cliente / Empresa</div>
+                    <div className="font-bold text-slate-700 truncate">{project.clientName || 'No especificado'}</div>
+                  </div>
+                  
                   {project.quoteId && (
-                    <p className="text-[11px] text-slate-500 mb-3 font-medium">Ref. Cotización: #{project.quoteId}</p>
+                    <div className="mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Ref. Cotización</div>
+                      <div className="font-bold text-indigo-600 truncate">
+                        {project.quoteCommercialId ? `#${String(project.quoteCommercialId).padStart(3, '0')}` : (project.quoteId.length > 20 ? `#${project.quoteId.slice(-6)}` : `#${project.quoteId}`)}
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                <div className="flex justify-between items-center mt-4 pt-3 border-t border-slate-50">
-                  <span className="text-[10px] text-slate-400 font-medium">
-                    {project.startDate ? `Inicio: ${project.startDate}` : 'Sin fecha inicio'}
-                  </span>
-                  <div className="flex items-center text-xs font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                    EXPEDIENTE <FiChevronRight className="ml-1" />
-                  </div>
+                {/* Footer */}
+                <div className="mt-3 pt-3 border-t border-slate-100 flex justify-end">
+                    <div className="flex items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                        {canAdmin ? <><span className="mr-1">Ver Expediente</span> <FiChevronRight /></> : <span className="text-slate-400">Sin acceso al expediente</span>}
+                    </div>
                 </div>
               </div>
+
             ))}
           </div>
         )}
@@ -190,11 +220,22 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
 
       {projectToDelete && (
         <ConfirmModal 
-          isOpen={!!projectToDelete}
+          show={!!projectToDelete}
           onClose={() => setProjectToDelete(null)}
           onConfirm={handleDelete}
-          title="Eliminar Proyecto"
-          message={`¿Está seguro que desea eliminar el proyecto "${projectToDelete.name}"? Esta acción retirará el proyecto de la lista activa y permitirá reutilizar el número ${projectToDelete.projectNumber}.`}
+          title="¿Eliminar Proyecto?"
+          description={
+            <div className="space-y-3">
+              <p>¿Está seguro de eliminar físicamente el proyecto de la base de datos?</p>
+              <div className="bg-red-50 p-3 rounded-xl border border-red-100">
+                <p className="text-xs font-black text-red-800 uppercase mb-1">Datos del Registro:</p>
+                <p className="text-sm font-bold text-red-700">{projectToDelete.projectNumber} — {projectToDelete.name}</p>
+              </div>
+              <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                Esta acción es irreversible. El número de proyecto <strong>{projectToDelete.projectNumber}</strong> quedará liberado para ser reutilizado en futuros registros. Los datos vinculados en otros módulos (cotizaciones, trabajos, etc.) NO serán eliminados.
+              </p>
+            </div>
+          }
           confirmLabel="ELIMINAR"
           variant="danger"
           isLoading={deleting}

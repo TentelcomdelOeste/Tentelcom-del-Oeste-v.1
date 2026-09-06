@@ -15,9 +15,12 @@ export interface Project {
   origin: 'Cotización' | 'Manual';
 
   quoteId?: string;
+  quoteCommercialId?: string;
   clientId?: string;
+  clientName?: string; // Company Name for display
 
   supervisorId?: string;
+  supervisorName?: string;
 
   mainOcNumber?: string;
   extraOcNumbers?: string[];
@@ -28,5 +31,6 @@ export interface Project {
 
   createdAt: string;
   createdBy: string;
+  createdByDisplayName?: string; // User Name for display
   updatedAt: string;
 }

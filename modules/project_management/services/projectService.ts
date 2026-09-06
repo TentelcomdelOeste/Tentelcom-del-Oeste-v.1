@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, addDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
@@ -12,9 +12,7 @@ export const getProjects = async (): Promise<Project[]> => {
       orderBy('createdAt', 'desc')
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs
-      .map(doc => ({ ...doc.data(), id: doc.id } as Project))
-      .filter(p => p.isActive !== false); // Supports legacy data without isActive field
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
   } catch (error) {
     console.error("Error fetching projects:", error);
     return [];
@@ -89,16 +87,13 @@ export const generateNextProjectNumber = async (): Promise<string> => {
   const prefix = `TTC-${year}-`;
   
   try {
-    // We only care about numbers occupied by ACTIVE projects to allow reuse of deleted numbers
     const q = query(collection(db, COLLECTION_NAME));
     const snapshot = await getDocs(q);
     
     const occupiedNumbers = new Set<number>();
     snapshot.docs.forEach(doc => {
       const data = doc.data();
-      if (data.isActive === false) return; // Skip logically deleted projects
-
-      const pNumber = data.projectNumber || doc.id; // Fallback to doc.id for legacy projects
+      const pNumber = data.projectNumber;
       if (pNumber && typeof pNumber === 'string' && pNumber.startsWith(prefix)) {
         const numPart = parseInt(pNumber.replace(prefix, ''), 10);
         if (!isNaN(numPart)) {
@@ -119,7 +114,7 @@ export const generateNextProjectNumber = async (): Promise<string> => {
   }
 };
 
-export const createProject = async (projectData: Omit<Project, 'id' | 'projectNumber' | 'isActive' | 'createdAt' | 'updatedAt'>, createdBy: string): Promise<Project> => {
+export const createProject = async (projectData: Omit<Project, 'id' | 'projectNumber' | 'isActive' | 'createdAt' | 'updatedAt'>, createdBy: string, createdByDisplayName?: string): Promise<Project> => {
   try {
     const projectNumber = await generateNextProjectNumber();
     const now = new Date().toISOString();
@@ -131,6 +126,7 @@ export const createProject = async (projectData: Omit<Project, 'id' | 'projectNu
       createdAt: now,
       updatedAt: now,
       createdBy,
+      createdByDisplayName,
     };
     
     const docRef = await addDoc(collection(db, COLLECTION_NAME), newProjectData);
@@ -161,10 +157,7 @@ export const updateProject = async (id: string, projectData: Partial<Project>): 
 export const deleteProject = async (id: string): Promise<void> => {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, {
-      isActive: false,
-      updatedAt: new Date().toISOString(),
-    });
+    await deleteDoc(docRef);
   } catch (error) {
     console.error("Error deleting project:", error);
     throw error;

@@ -1,13 +1,12 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
-import { collection, query, where, limit, onSnapshot, orderBy, getDocs, doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, limit, onSnapshot, orderBy, getDocs, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { useUserContext } from '../../contexts/UserContext';
 import { isAdmin } from '../../utils/permissions';
 import { DataTable, ActionButton, useConfirm } from '../../design-system';
-import { FiServer, FiShield, FiCamera, FiCheck, FiAlertTriangle } from 'react-icons/fi';
+import { FiServer, FiShield, FiCamera, FiCheck } from 'react-icons/fi';
 import { 
-    checkVehiclePhotoPolicy, 
     getGlobalPolicyConfig, 
     saveGlobalPolicyConfig, 
     WEEK_DAYS, 

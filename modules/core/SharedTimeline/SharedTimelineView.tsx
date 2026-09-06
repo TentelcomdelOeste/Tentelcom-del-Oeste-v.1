@@ -2,15 +2,9 @@ import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMe
 import { User } from "@/utils/types";
 import { db } from "@/firebase";
 import {
-  collection,
   getDoc,
   doc,
   updateDoc,
-  query,
-  where,
-  or,
-  getDocs,
-  limit,
 } from "firebase/firestore";
 import { setVersionedDocOffline, updateVersionedDocOffline, addAuditEntryOffline } from "@/core/versionControl";
 import { networkProbe } from "@/core/offline/networkProbe";
@@ -62,7 +56,6 @@ import {
 import { VirtualizedTimeline } from "@/modules/job_scheduling/components/VirtualizedTimeline";
 import { ImportWizardModal } from "../imports/components/ImportWizardModal";
 import { ModalPortal } from "@/modules/job_scheduling/components/ModalPortal";
-import { isAdmin } from "@/utils/permissions";
 import { useAuditPermanence } from "@/hooks/useAuditPermanence";
 
 function getHostname(url: string) {

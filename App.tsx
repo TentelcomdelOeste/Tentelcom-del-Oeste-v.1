@@ -24,7 +24,7 @@ import { MODULES_CONFIG } from './utils/permissionsConfig';
 import { trackEvent } from './services/analyticsService';
 import { AuthGuard } from './auth/AuthGuard';
 import { NetworkStatusIndicator } from './components/NetworkStatusIndicator';
-import { FiArrowLeft, FiFileText, FiHome, FiBox, FiGlobe, FiMenu, FiLogOut, FiEye, FiEyeOff, FiChevronDown, FiTruck, FiUser, FiX } from "react-icons/fi";
+import { FiArrowLeft, FiFileText, FiHome, FiBox, FiGlobe, FiMenu, FiLogOut, FiEye, FiEyeOff, FiChevronDown, FiTruck, FiX } from "react-icons/fi";
 import { GlobalSearch } from './components/GlobalSearch';
 import { ActionButton, IconButton } from './design-system';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -189,7 +189,7 @@ const SidebarContent = ({
           <div className="pl-0 mt-1 space-y-1">
             {[
               { id: 'cotizaciones', label: "Panel de cotizaciones", perm: 'cotizaciones' },
-              { id: 'project_management', label: "Gestión de Proyectos", perm: 'cotizaciones' },
+              { id: 'project_management', label: "Gestión de Proyectos", perm: 'gestion_proyectos' },
               { id: 'pre_analysis', label: MODULES_CONFIG.pre_analysis.label, perm: 'pre_analysis' },
             ]
               .filter(item => can(currentUser, item.perm))
@@ -928,6 +928,7 @@ function App() {
     }
     const permissionMapping: Record<string, string> = {
       'cotizaciones': 'cotizaciones',
+      'project_management': 'gestion_proyectos',
       'pre_analysis': 'pre_analysis',
       'job_scheduling': 'trabajos',
       'web_analysis': 'web_analysis',
@@ -1170,7 +1171,7 @@ function App() {
                 )}
 
                 {activeModule.module === 'project_management' && (
-                  checkAccess('cotizaciones')
+                  checkAccess('project_management')
                     ? <ProjectManagementModule currentUser={currentUser!} selectedId={activeModule.selectedId} onClearSelectedId={clearSelectedId} />
                     : <div className="flex h-full items-center justify-center"><p className="text-slate-400 font-bold">Acceso Restringido</p></div>
                 )}
@@ -1241,7 +1242,7 @@ function App() {
                   </div>
                 )}
 
-                {!['home', 'health_dashboard', 'operational_log', 'cotizaciones', 'job_scheduling', 'external_products', 'web_analysis', 'vehicles_logs', 'vehicles_analysis', 'vehicles_analysis_detail', 'analisis_costos'].includes(activeModule.module) && (
+                {!['home', 'health_dashboard', 'operational_log', 'cotizaciones', 'project_management', 'job_scheduling', 'external_products', 'web_analysis', 'vehicles_logs', 'vehicles_analysis', 'vehicles_analysis_detail', 'analisis_costos'].includes(activeModule.module) && (
                   checkAccess(activeModule.module)
                     ? (
                       <FinanceModule

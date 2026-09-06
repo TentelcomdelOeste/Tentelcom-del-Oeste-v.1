@@ -13,7 +13,6 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { ItemStatus } from '@/dispatchTypes';
 import { mockVehicles } from './inventario/bodegas_vehiculares/mockData';
-import { vehicleWarehouseService } from './inventario/bodegas_vehiculares/services/vehicleWarehouseService';
 
 interface MaterialRequestModalProps {
   show: boolean;

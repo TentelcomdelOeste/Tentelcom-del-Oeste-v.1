@@ -1,5 +1,12 @@
 export const MODULES_CONFIG = {
   cotizaciones: { label: "Cotizaciones" },
+  gestion_proyectos: {
+    label: "Gestión de Proyectos",
+    submodules: {
+      crear: "Crear proyectos",
+      administrar: "Ver expediente / administrar proyectos"
+    }
+  },
   pre_analysis: { label: "Evaluación de Proyectos" },
   trabajos: { label: "Programación de Trabajos" },
   external_products: { label: "Catálogo Externo" },

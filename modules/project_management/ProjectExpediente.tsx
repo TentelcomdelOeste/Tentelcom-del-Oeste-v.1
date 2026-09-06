@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { FiArrowLeft, FiChevronDown, FiBriefcase, FiUsers, FiTruck, FiBox, FiDollarSign, FiFileText, FiCheckCircle } from 'react-icons/fi';
 import { User } from '../../utils/types';
 import { Project } from './types';
-import { getProjectJobs, getProjectMaterialRequests, getProjectInvoices, getProjectMovements, getProjectPurchases } from './services/projectRelationsService';
+import { getProjectJobs, getProjectMaterialRequests, getProjectInvoices, getProjectPurchases } from './services/projectRelationsService';
+import { ActionButton } from '../../design-system';
 
 interface ProjectExpedienteProps {
   project: Project;
@@ -26,14 +27,13 @@ const TABS: { id: TabKey; label: string }[] = [
   { id: 'cierre', label: 'Cierre' }
 ];
 
-const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, currentUser }) => {
+const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('resumen');
   
   // Relations State
   const [jobs, setJobs] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [materialRequests, setMaterialRequests] = useState<any[]>([]);
-  const [movements, setMovements] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,18 +41,16 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, 
     const loadRelations = async () => {
       setLoading(true);
       try {
-        const [jobsData, invoicesData, reqData, movData, purData] = await Promise.all([
+        const [jobsData, invoicesData, reqData, purData] = await Promise.all([
           getProjectJobs(project.id),
           getProjectInvoices(project.id),
           getProjectMaterialRequests(project.id),
-          getProjectMovements(project.id),
           getProjectPurchases(project.id)
         ]);
         
         setJobs(jobsData);
         setInvoices(invoicesData);
         setMaterialRequests(reqData);
-        setMovements(movData);
         setPurchases(purData);
       } catch (err) {
         console.error("Error loading project relations", err);
@@ -72,12 +70,13 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, 
     <div className="h-full flex flex-col bg-slate-50">
       {/* Header */}
       <div className="flex-none bg-white border-b border-slate-200 px-6 py-4">
-        <button 
+        <ActionButton 
+          variant="secondary"
           onClick={onBack}
-          className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 transition-colors mb-3 text-sm font-bold"
-        >
-          <FiArrowLeft /> Volver a proyectos
-        </button>
+          label="VOLVER A PROYECTOS"
+          icon={<FiArrowLeft />}
+          className="mb-4"
+        />
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -96,17 +95,13 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, 
         {/* Desktop Tabs */}
         <div className="hidden md:flex gap-1 mt-6 overflow-x-auto custom-scrollbar pb-1">
           {TABS.map(tab => (
-            <button
+            <ActionButton
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-colors whitespace-nowrap ${
-                activeTab === tab.id 
-                  ? 'bg-indigo-50 text-indigo-700 border-b-2 border-indigo-600' 
-                  : 'text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              {tab.label}
-            </button>
+              variant={activeTab === tab.id ? 'primary' : 'secondary'}
+              label={tab.label}
+              className={`rounded-b-none py-2 px-4 h-auto ${activeTab === tab.id ? 'border-b-2 border-indigo-600' : ''}`}
+            />
           ))}
         </div>
 
@@ -143,11 +138,11 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, 
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase mb-1">Cotización de origen</p>
-                    <p className="text-sm font-bold text-slate-700">{(project.origin === "Cotización" && project.quoteId) ? `#${project.quoteId}` : "N/A"}</p>
+                    <p className="text-sm font-bold text-slate-700">{(project.origin === "Cotización" && project.quoteId) ? (project.quoteCommercialId ? `#${String(project.quoteCommercialId).padStart(3, '0')}` : (project.quoteId.length > 20 ? `#${project.quoteId.slice(-6)}` : `#${project.quoteId}`)) : "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase mb-1">Cliente</p>
-                    <p className="text-sm font-bold text-slate-700">{project.clientId || 'N/A'}</p>
+                    <p className="text-sm font-bold text-slate-700">{project.clientName || 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase mb-1">OC Principal</p>
@@ -158,8 +153,8 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, 
                     <p className="text-sm font-bold text-slate-700">{project.startDate || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-1">Responsable</p>
-                    <p className="text-sm font-bold text-slate-700">{project.supervisorId || 'N/A'}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase mb-1">Creado por</p>
+                    <p className="text-sm font-bold text-slate-700">{project.createdByDisplayName || 'Usuario'}</p>
                   </div>
                 </div>
                 
