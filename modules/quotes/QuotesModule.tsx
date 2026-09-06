@@ -15,7 +15,6 @@ import { ModulePage } from '../../components/ui/ModulePage';
 import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
 import { ActionButtons } from '../../components/ui/ActionButtons';
 import { 
-  useConfirm, 
   DataTable, 
   TableColumn, 
   SearchInput, 
@@ -61,8 +60,6 @@ export const QuotesModule: React.FC<QuotesModuleProps> = ({ currentUser, selecte
       }
     };
   }, []);
-  
-  const confirm = useConfirm();
 
   const [searchTerm, setSearchTerm] = useState('');
   

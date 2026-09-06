@@ -10,6 +10,7 @@ import { SyncStatusIndicator } from './components/SyncStatusIndicator';
 
 const FinanceModule = lazy(() => import('./modules/FinanceModule').then(module => ({ default: module.FinanceModule })));
 const QuotesModule = lazy(() => import('./modules/quotes/QuotesModule').then(module => ({ default: module.QuotesModule })));
+const ProjectManagementModule = lazy(() => import('./modules/project_management/ProjectManagementModule'));
 const JobSchedulingModule = lazy(() => import('./modules/job_scheduling/JobSchedulingModule').then(module => ({ default: module.JobSchedulingModule })));
 const OperationalLogView = lazy(() => import('./modules/job_scheduling/OperationalLogView'));
 const ExternalProductModule = lazy(() => import('./modules/external_products/ExternalProductModule').then(module => ({ default: module.ExternalProductModule })));
@@ -77,6 +78,7 @@ const WelcomeDashboard = (_props: { currentUser?: unknown }) => (
 const MODULE_PATHS: Record<string, string> = {
   'home': '/',
   'cotizaciones': '/cotizaciones',
+  'project_management': '/gestion-proyectos',
   'pre_analysis': '/evaluacion-proyectos',
   'job_scheduling': '/job-scheduling',
   'employees': '/colaboradores',
@@ -109,6 +111,7 @@ const PATH_TO_MODULE: Record<string, string> = Object.entries(MODULE_PATHS).redu
 const getModuleLabel = (modId: string): string => {
   const mapping: Record<string, string> = {
     'cotizaciones': 'Cotizaciones',
+    'project_management': 'Gestión de Proyectos',
     'job_scheduling': 'Programación de Trabajos',
     'employees': 'Finanzas / RRHH',
     'absences': 'Finanzas / RRHH',
@@ -186,6 +189,7 @@ const SidebarContent = ({
           <div className="pl-0 mt-1 space-y-1">
             {[
               { id: 'cotizaciones', label: "Panel de cotizaciones", perm: 'cotizaciones' },
+              { id: 'project_management', label: "Gestión de Proyectos", perm: 'cotizaciones' },
               { id: 'pre_analysis', label: MODULES_CONFIG.pre_analysis.label, perm: 'pre_analysis' },
             ]
               .filter(item => can(currentUser, item.perm))
@@ -1162,6 +1166,12 @@ function App() {
                 {activeModule.module === 'cotizaciones' && (
                   checkAccess('cotizaciones')
                     ? <QuotesModule currentUser={currentUser!} selectedId={activeModule.selectedId} selectedKey={activeModule.selectedKey} onClearSelectedId={clearSelectedId} />
+                    : <div className="flex h-full items-center justify-center"><p className="text-slate-400 font-bold">Acceso Restringido</p></div>
+                )}
+
+                {activeModule.module === 'project_management' && (
+                  checkAccess('cotizaciones')
+                    ? <ProjectManagementModule currentUser={currentUser!} selectedId={activeModule.selectedId} onClearSelectedId={clearSelectedId} />
                     : <div className="flex h-full items-center justify-center"><p className="text-slate-400 font-bold">Acceso Restringido</p></div>
                 )}
 

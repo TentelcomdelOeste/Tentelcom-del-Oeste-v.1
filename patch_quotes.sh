@@ -1,0 +1,1 @@
+sed -i "29a import { convertQuoteToProject, getProjectByQuoteId } from '../project_management/services/projectService';\nimport { FiFolderPlus } from 'react-icons/fi';\nimport { IconButton } from '../../design-system';" modules/quotes/QuotesModule.tsx
