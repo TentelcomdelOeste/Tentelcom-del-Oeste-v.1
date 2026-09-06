@@ -181,6 +181,14 @@ service cloud.firestore {
       allow read, write: if hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin();
     }
 
+    // PROYECTOS
+    match /projects/{id} {
+      allow read: if isAuthenticated();
+      allow create: if hasNestedPermission("gestion_proyectos", "crear") || isAdmin();
+      allow update: if hasNestedPermission("gestion_proyectos", "editar") || isAdmin();
+      allow delete: if hasNestedPermission("gestion_proyectos", "eliminar") || isAdmin();
+    }
+
     // FINANZAS
     match /invoices/{id} {
       allow read, write: if hasNestedPermission("finanzas", "movimientos");

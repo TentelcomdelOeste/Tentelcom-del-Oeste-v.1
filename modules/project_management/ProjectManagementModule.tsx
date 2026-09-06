@@ -20,8 +20,10 @@ interface ProjectManagementModuleProps {
 const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ currentUser, selectedId, onClearSelectedId }) => {
   const [showModal, setShowModal] = useState(false);
 
-  const canAdmin = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.administrar');
-  const canCreate = canAdmin || can(currentUser, 'gestion_proyectos.crear');
+  const canViewExpediente = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.ver_expediente');
+  const canCreate = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.crear');
+  const canEdit = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.editar');
+  const canDelete = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.eliminar');
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -90,23 +92,27 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
         <ModuleToolbar>
-          <div className="flex flex-col md:flex-row gap-4 items-center w-full md:w-auto">
-            <SearchInput 
-              value={search} 
-              onChange={(e) => setSearch(e.target.value)} 
-              placeholder="Buscar por nombre, número o cliente..." 
-              className="w-full md:w-72" 
-            />
+          <div className="flex flex-col md:flex-row gap-4 items-center w-full justify-between">
+            <div className="w-full md:w-auto flex-1">
+              <SearchInput 
+                 value={search} 
+                 onChange={(e) => setSearch(e.target.value)} 
+                 placeholder="Buscar por nombre, número o cliente..." 
+                 className="w-full md:max-w-md" 
+               />
+            </div>
+            {canCreate && (
+            <div className="w-full md:w-auto shrink-0">
+              <ActionButton 
+                 onClick={() => {
+                  setProjectToEdit(null);
+                  setShowModal(true);
+                }} 
+                 label="NUEVO PROYECTO" 
+               />
+            </div>
+            )}
           </div>
-          {canCreate && (
-          <ActionButton 
-            onClick={() => {
-              setProjectToEdit(null);
-              setShowModal(true);
-            }} 
-            label="NUEVO PROYECTO" 
-          />
-          )}
         </ModuleToolbar>
 
         <div className="flex-1 overflow-auto py-6">
@@ -122,7 +128,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
               
               <div
                 key={project.id}
-                onClick={() => { if (canAdmin) setCurrentProject(project); }}
+                onClick={() => { if (canViewExpediente) setCurrentProject(project); }}
                 className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow relative flex flex-col cursor-pointer"
               >
                 {/* Header */}
@@ -138,8 +144,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                     </div>
                     <div>
                       <ActionButtons
-                        onEdit={canAdmin ? () => handleEdit(project) : undefined}
-                        onDelete={canAdmin ? () => setProjectToDelete(project) : undefined}
+                        onEdit={canEdit ? () => handleEdit(project) : undefined}
+                        onDelete={canDelete ? () => setProjectToDelete(project) : undefined}
                       />
                     </div>
                 </div>
@@ -177,20 +183,13 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                     <div className="font-bold text-slate-700 truncate">{project.clientName || 'No especificado'}</div>
                   </div>
                   
-                  {project.quoteId && (
-                    <div className="mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                      <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Ref. Cotización</div>
-                      <div className="font-bold text-indigo-600 truncate">
-                        {project.quoteCommercialId ? `#${String(project.quoteCommercialId).padStart(3, '0')}` : (project.quoteId.length > 20 ? `#${project.quoteId.slice(-6)}` : `#${project.quoteId}`)}
-                      </div>
-                    </div>
-                  )}
+
                 </div>
 
                 {/* Footer */}
                 <div className="mt-3 pt-3 border-t border-slate-100 flex justify-end">
                     <div className="flex items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-                        {canAdmin ? <><span className="mr-1">Ver Expediente</span> <FiChevronRight /></> : <span className="text-slate-400">Sin acceso al expediente</span>}
+                        {canViewExpediente ? <><span className="mr-1">Ver Expediente</span> <FiChevronRight /></> : <span className="text-slate-400">Sin acceso al expediente</span>}
                     </div>
                 </div>
               </div>

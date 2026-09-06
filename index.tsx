@@ -57,8 +57,16 @@ async function bootstrap() {
       }
       return;
     }
+    let message = (event.reason as any)?.message;
+    if (!message) {
+      try {
+        message = JSON.stringify(event.reason);
+      } catch (e) {
+        message = String(event.reason);
+      }
+    }
     (window as any).__LAST_ERROR__ = {
-      message: (event.reason as any)?.message || JSON.stringify(event.reason),
+      message: message,
       stack: (event.reason as any)?.stack || null
     };
   });

@@ -1,22 +1,10 @@
 const fs = require('fs');
-const file = '/app/applet/core/search/index.ts';
-let content = fs.readFileSync(file, 'utf8');
+const file = 'index.tsx';
+let data = fs.readFileSync(file, 'utf8');
 
-if (!content.includes('CashflowSearchPlugin')) {
-  content = content.replace(
-    /import { VehicleLogSearchPlugin } from '\.\/plugins\/VehicleLogSearchPlugin';/,
-    `import { VehicleLogSearchPlugin } from './plugins/VehicleLogSearchPlugin';\nimport { CashflowSearchPlugin } from './plugins/CashflowSearchPlugin';\nimport { MaterialRequestSearchPlugin } from './plugins/MaterialRequestSearchPlugin';`
-  );
-  
-  content = content.replace(
-    /export const vehicleLogSearchPlugin = new VehicleLogSearchPlugin\(\);/,
-    `export const vehicleLogSearchPlugin = new VehicleLogSearchPlugin();\nexport const cashflowSearchPlugin = new CashflowSearchPlugin();\nexport const materialRequestSearchPlugin = new MaterialRequestSearchPlugin();`
-  );
-  
-  content = content.replace(
-    /globalSearchEngine\.registerPlugin\(vehicleLogSearchPlugin\);/,
-    `globalSearchEngine.registerPlugin(vehicleLogSearchPlugin);\nglobalSearchEngine.registerPlugin(cashflowSearchPlugin);\nglobalSearchEngine.registerPlugin(materialRequestSearchPlugin);`
-  );
-  
-  fs.writeFileSync(file, content);
-}
+data = data.replace(
+  "(window as any).__LAST_ERROR__ = {\n      message: (event.reason as any)?.message || JSON.stringify(event.reason),\n      stack: (event.reason as any)?.stack || null\n    };",
+  "let message = (event.reason as any)?.message;\n    if (!message) {\n      try {\n        message = JSON.stringify(event.reason);\n      } catch (e) {\n        message = String(event.reason);\n      }\n    }\n    (window as any).__LAST_ERROR__ = {\n      message: message,\n      stack: (event.reason as any)?.stack || null\n    };"
+);
+
+fs.writeFileSync(file, data);

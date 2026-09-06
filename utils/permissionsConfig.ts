@@ -4,7 +4,9 @@ export const MODULES_CONFIG = {
     label: "Gestión de Proyectos",
     submodules: {
       crear: "Crear proyectos",
-      administrar: "Ver expediente / administrar proyectos"
+      editar: "Editar proyectos",
+      ver_expediente: "Ver expediente 360°",
+      eliminar: "Eliminar proyectos"
     }
   },
   pre_analysis: { label: "Evaluación de Proyectos" },
