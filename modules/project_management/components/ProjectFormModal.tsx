@@ -12,6 +12,7 @@ interface ProjectFormModalProps {
   onClose: () => void;
   onSave: (p: Project) => void;
   currentUser: User;
+  initialData?: Project | null;
 }
 
 type ProjectOrigin = 'quote' | 'manual';
@@ -24,9 +25,11 @@ const getTodayLocalDate = () => {
   return `${year}-${month}-${day}`;
 };
 
-export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClose, onSave, currentUser }) => {
+export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClose, onSave, currentUser, initialData }) => {
+  const isEditing = !!initialData;
   const [originSelection, setOriginSelection] = useState<ProjectOrigin>('manual');
   const [name, setName] = useState('');
+  const [status, setStatus] = useState<Project['status']>('Planificación');
   const [clientId, setClientId] = useState('');
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -59,6 +62,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
     if (!show) {
       setOriginSelection('manual');
       setName('');
+      setStatus('Planificación');
       setClientId('');
       setClientSearch('');
       setSelectedClient(null);
@@ -69,7 +73,24 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       return;
     }
 
-    setStartDate(prev => prev || getTodayLocalDate());
+    if (initialData) {
+      setName(initialData.name);
+      setStatus(initialData.status);
+      setClientId(initialData.clientId || '');
+      setStartDate(initialData.startDate || getTodayLocalDate());
+      setSelectedQuoteId(initialData.quoteId || '');
+      setOriginSelection(initialData.origin === 'Cotización' ? 'quote' : 'manual');
+      
+      if (initialData.clientId) {
+        const client = savedClients.find(c => c.id === initialData.clientId);
+        if (client) {
+          setSelectedClient(client);
+          setClientSearch(client.empresa);
+        }
+      }
+    } else {
+      setStartDate(getTodayLocalDate());
+    }
 
     const loadQuotes = async () => {
       setLoadingQuotes(true);
@@ -87,7 +108,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
     };
 
     loadQuotes();
-  }, [show]);
+  }, [show, initialData, savedClients]);
 
   const findSelectedQuote = (quoteId: string) =>
     approvedQuotes.find(
@@ -204,13 +225,26 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       return;
     }
 
-    if (originSelection === 'quote' && !selectedQuoteId) {
+    if (!isEditing && originSelection === 'quote' && !selectedQuoteId) {
       alert('Debe seleccionar una cotización aprobada.');
       return;
     }
 
     setIsSubmitting(true);
     try {
+      if (isEditing && initialData) {
+        const updateData: Partial<Project> = {
+          name: trimmedName,
+          status,
+          clientId: clientId.trim(),
+          startDate,
+        };
+        await updateProject(initialData.id, updateData);
+        onSave({ ...initialData, ...updateData });
+        onClose();
+        return;
+      }
+
       let origin: Project['origin'] = 'Manual';
       let quoteIdToSave: string | undefined;
 
@@ -228,7 +262,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
         const existingProject = existingByDocId || existingByQuoteId;
 
         if (existingProject) {
-          alert(`Esta cotización ya está asociada al proyecto ${existingProject.id}.`);
+          alert(`Esta cotización ya está asociada al proyecto ${existingProject.projectNumber}.`);
           return;
         }
 
@@ -236,7 +270,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
         quoteIdToSave = stableQuoteId;
       }
 
-      const projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'> = {
+      const projectData: Omit<Project, 'id' | 'projectNumber' | 'isActive' | 'createdAt' | 'updatedAt'> = {
         name: trimmedName,
         status: 'Planificación',
         origin,
@@ -249,7 +283,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       onSave(newProject);
       onClose();
     } catch (error: any) {
-      alert(error.message || 'Error al crear el proyecto');
+      alert(error.message || 'Error al guardar el proyecto');
     } finally {
       setIsSubmitting(false);
     }
@@ -264,39 +298,71 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
     <Modal
       isOpen={show}
       onClose={onClose}
-      title="Nuevo Proyecto"
-      subtitle="Módulo de Gestión Operativa"
+      title={isEditing ? "Editar Proyecto" : "Nuevo Proyecto"}
+      subtitle={isEditing ? `Expediente: ${initialData?.projectNumber}` : "Módulo de Gestión Operativa"}
       maxWidth="max-w-md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cotización de origen</label>
-          <div className="relative">
-            <select
-              value={selectedQuoteId}
-              onChange={e => handleQuoteSelect(e.target.value)}
-              className="w-full appearance-none px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm font-medium"
-              disabled={loadingQuotes}
-            >
-              <option value="">Ninguna (Proyecto Manual)</option>
-              {approvedQuotes.map(q => (
-                <option key={q.docId || q.id} value={q.docId || q.id?.toString()}>
-                  #{q.id} - {q.empresa || 'Sin Cliente'} ({formatCurrency(q.monto, q.moneda)})
-                </option>
-              ))}
-            </select>
-            <FiChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        {!isEditing ? (
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cotización de origen</label>
+            <div className="relative">
+              <select
+                value={selectedQuoteId}
+                onChange={e => handleQuoteSelect(e.target.value)}
+                className="w-full appearance-none px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm font-medium"
+                disabled={loadingQuotes}
+              >
+                <option value="">Ninguna (Proyecto Manual)</option>
+                {approvedQuotes.map(q => (
+                  <option key={q.docId || q.id} value={q.docId || q.id?.toString()}>
+                    #{q.id} - {q.empresa || 'Sin Cliente'} ({formatCurrency(q.monto, q.moneda)})
+                  </option>
+                ))}
+              </select>
+              <FiChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+            {loadingQuotes && (
+              <p className="text-[11px] text-slate-400 mt-1">Cargando cotizaciones aprobadas...</p>
+            )}
+            {quotesError && (
+              <p className="text-[11px] text-red-500 font-medium mt-1">{quotesError}</p>
+            )}
+            {!loadingQuotes && !quotesError && approvedQuotes.length === 0 && (
+              <p className="text-[11px] text-slate-400 mt-1">No hay cotizaciones aprobadas disponibles.</p>
+            )}
           </div>
-          {loadingQuotes && (
-            <p className="text-[11px] text-slate-400 mt-1">Cargando cotizaciones aprobadas...</p>
-          )}
-          {quotesError && (
-            <p className="text-[11px] text-red-500 font-medium mt-1">{quotesError}</p>
-          )}
-          {!loadingQuotes && !quotesError && approvedQuotes.length === 0 && (
-            <p className="text-[11px] text-slate-400 mt-1">No hay cotizaciones aprobadas disponibles.</p>
-          )}
-        </div>
+        ) : (
+          initialData?.quoteId && (
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cotización de origen (Referencia)</label>
+              <div className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm font-medium text-slate-700">
+                Cotización #{initialData.quoteId}
+              </div>
+            </div>
+          )
+        )}
+
+        {isEditing && (
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Estado del proyecto *</label>
+            <div className="relative">
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as Project['status'])}
+                className="w-full appearance-none px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm font-medium"
+              >
+                <option value="Planificación">Planificación</option>
+                <option value="En Ejecución">En Ejecución</option>
+                <option value="En Pausa">En Pausa</option>
+                <option value="Entregado">Entregado</option>
+                <option value="Facturado">Facturado</option>
+                <option value="Cerrado">Cerrado</option>
+              </select>
+              <FiChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre del proyecto *</label>

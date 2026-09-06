@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
@@ -7,9 +7,14 @@ const COLLECTION_NAME = 'projects';
 
 export const getProjects = async (): Promise<Project[]> => {
   try {
-    const q = query(collection(db, COLLECTION_NAME), orderBy('createdAt', 'desc'));
+    const q = query(
+      collection(db, COLLECTION_NAME), 
+      orderBy('createdAt', 'desc')
+    );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+    return snapshot.docs
+      .map(doc => ({ ...doc.data(), id: doc.id } as Project))
+      .filter(p => p.isActive !== false); // Supports legacy data without isActive field
   } catch (error) {
     console.error("Error fetching projects:", error);
     return [];
@@ -79,52 +84,89 @@ export const checkQuoteHasProject = async (quoteIdOrDocId: string): Promise<Proj
   return getProjectByQuoteId(quoteIdOrDocId);
 };
 
-export const generateNextProjectId = async (): Promise<string> => {
+export const generateNextProjectNumber = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const prefix = `TTC-${year}-`;
   
   try {
+    // We only care about numbers occupied by ACTIVE projects to allow reuse of deleted numbers
     const q = query(collection(db, COLLECTION_NAME));
     const snapshot = await getDocs(q);
-    let maxNumber = 0;
     
+    const occupiedNumbers = new Set<number>();
     snapshot.docs.forEach(doc => {
-      const id = doc.id;
-      if (id.startsWith(prefix)) {
-        const numPart = parseInt(id.replace(prefix, ''), 10);
-        if (!isNaN(numPart) && numPart > maxNumber) {
-          maxNumber = numPart;
+      const data = doc.data();
+      if (data.isActive === false) return; // Skip logically deleted projects
+
+      const pNumber = data.projectNumber || doc.id; // Fallback to doc.id for legacy projects
+      if (pNumber && typeof pNumber === 'string' && pNumber.startsWith(prefix)) {
+        const numPart = parseInt(pNumber.replace(prefix, ''), 10);
+        if (!isNaN(numPart)) {
+          occupiedNumbers.add(numPart);
         }
       }
     });
     
-    const nextNumber = maxNumber + 1;
-    return `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+    let nextNum = 1;
+    while (occupiedNumbers.has(nextNum)) {
+      nextNum++;
+    }
+    
+    return `${prefix}${nextNum.toString().padStart(3, '0')}`;
   } catch (error) {
-    console.error("Error generating project ID:", error);
+    console.error("Error generating project number:", error);
     return `${prefix}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
   }
 };
 
-export const createProject = async (projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>, createdBy: string): Promise<Project> => {
+export const createProject = async (projectData: Omit<Project, 'id' | 'projectNumber' | 'isActive' | 'createdAt' | 'updatedAt'>, createdBy: string): Promise<Project> => {
   try {
-    const id = await generateNextProjectId();
+    const projectNumber = await generateNextProjectNumber();
     const now = new Date().toISOString();
     
-    const newProject: Project = {
+    const newProjectData: Omit<Project, 'id'> = {
       ...projectData,
-      id,
+      projectNumber,
+      isActive: true,
       createdAt: now,
       updatedAt: now,
       createdBy,
     };
     
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await setDoc(docRef, newProject);
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), newProjectData);
     
-    return newProject;
+    return {
+      ...newProjectData,
+      id: docRef.id,
+    } as Project;
   } catch (error) {
     console.error("Error creating project:", error);
+    throw error;
+  }
+};
+
+export const updateProject = async (id: string, projectData: Partial<Project>): Promise<void> => {
+  try {
+    const docRef = doc(db, COLLECTION_NAME, id);
+    await updateDoc(docRef, {
+      ...projectData,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error updating project:", error);
+    throw error;
+  }
+};
+
+export const deleteProject = async (id: string): Promise<void> => {
+  try {
+    const docRef = doc(db, COLLECTION_NAME, id);
+    await updateDoc(docRef, {
+      isActive: false,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error deleting project:", error);
     throw error;
   }
 };

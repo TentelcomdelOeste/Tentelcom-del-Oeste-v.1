@@ -1,6 +1,8 @@
 export interface Project {
-  id: string; // The auto-generated ID like "TTC-2026-001"
+  id: string; // The technical Firestore ID
+  projectNumber: string; // The visible ID like "TTC-2026-001"
   name: string;
+  isActive: boolean;
 
   status:
     | 'Planificación'

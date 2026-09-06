@@ -83,7 +83,7 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, 
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
-                {project.id}
+                {project.projectNumber || project.id}
               </span>
               <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase">
                 {project.status}
@@ -138,8 +138,8 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, 
                 <h3 className="text-lg font-black text-slate-800 mb-4">Resumen del Proyecto</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-1">ID del Proyecto</p>
-                    <p className="text-sm font-bold text-slate-700">{project.id}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase mb-1">Número de Proyecto</p>
+                    <p className="text-sm font-bold text-slate-700">{project.projectNumber || project.id}</p>
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase mb-1">Cotización de origen</p>
@@ -265,7 +265,7 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack, 
                 </div>
                 <h3 className="text-lg font-black text-slate-800 mb-2">Gestión de {TABS.find(t => t.id === activeTab)?.label}</h3>
                 <p className="text-slate-500 text-sm text-center max-w-md">
-                  Esta sección consulta la información del módulo original de {TABS.find(t => t.id === activeTab)?.label} filtrando por el ID de este proyecto ({project.id}). 
+                  Esta sección consulta la información del módulo original de {TABS.find(t => t.id === activeTab)?.label} filtrando por el ID de este proyecto ({project.projectNumber || project.id}). 
                   <br /><br />
                   Los datos permanecen en sus respectivos módulos sin duplicarse.
                 </p>
