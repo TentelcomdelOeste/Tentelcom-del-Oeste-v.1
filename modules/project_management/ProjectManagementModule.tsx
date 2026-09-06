@@ -91,8 +91,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
-        <ModuleToolbar className="flex-row items-center gap-3">
-          <div className="flex-1 min-w-0">
+        <ModuleToolbar className="sm:flex-row sm:items-center gap-3">
+          <div className="flex-1 min-w-0 w-full sm:w-auto">
             <SearchInput 
                value={search} 
                onChange={(e) => setSearch(e.target.value)} 
@@ -106,9 +106,9 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                 setProjectToEdit(null);
                 setShowModal(true);
               }} 
-               label="NUEVO" 
+               label="NUEVO PROYECTO" 
                variant="primary"
-               className="shrink-0 whitespace-nowrap" 
+               className="w-full sm:w-auto shrink-0 whitespace-nowrap" 
             />
           )}
         </ModuleToolbar>
