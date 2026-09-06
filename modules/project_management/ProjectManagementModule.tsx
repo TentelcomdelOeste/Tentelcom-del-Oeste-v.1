@@ -91,28 +91,26 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
-        <ModuleToolbar>
-          <div className="flex flex-col md:flex-row gap-4 items-center w-full justify-between">
-            <div className="w-full flex-1">
-              <SearchInput 
-                 value={search} 
-                 onChange={(e) => setSearch(e.target.value)} 
-                 placeholder="Buscar por nombre, número o cliente..." 
-                 className="w-full" 
-               />
-            </div>
-            {canCreate && (
-            <div className="w-full md:w-auto shrink-0">
-              <ActionButton 
-                 onClick={() => {
-                  setProjectToEdit(null);
-                  setShowModal(true);
-                }} 
-                 label="NUEVO PROYECTO" 
-               />
-            </div>
-            )}
+        <ModuleToolbar className="flex-row items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <SearchInput 
+               value={search} 
+               onChange={(e) => setSearch(e.target.value)} 
+               placeholder="Buscar por nombre, número o cliente..." 
+               className="w-full" 
+             />
           </div>
+          {canCreate && (
+            <ActionButton 
+               onClick={() => {
+                setProjectToEdit(null);
+                setShowModal(true);
+              }} 
+               label="NUEVO" 
+               variant="primary"
+               className="shrink-0 whitespace-nowrap" 
+            />
+          )}
         </ModuleToolbar>
 
         <div className="flex-1 overflow-auto py-6">
