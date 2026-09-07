@@ -31,8 +31,8 @@ const MONTH_NAMES = [
 export const VehicleReportsTab: React.FC<Props> = ({
   currentUser: _currentUser,
   consumptions: externalConsumptions,
-  activeTab: _activeTab = 'reports',
-  onTabChange: _onTabChange
+  activeTab = 'reports',
+  onTabChange
 }) => {
   
   const rawConsumptions = externalConsumptions || [];
@@ -124,104 +124,62 @@ export const VehicleReportsTab: React.FC<Props> = ({
   ];
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* 1. Título, Subtítulo y Filtros Desktop */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-3">
-        <div>
-          <h3 className="text-lg font-black text-slate-800">Reportes de Consumo</h3>
-          <p className="text-sm text-slate-500">Liquidaciones finales por proyecto y vehículo.</p>
-        </div>
+    <div className="space-y-2.5 sm:space-y-4">
+      {/* Controls Container Header Box */}
+      <div className="bg-white p-2.5 sm:p-3.5 rounded-xl border border-slate-200 shadow-sm space-y-2 sm:space-y-2.5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3">
+          {/* Section Selector (Mobile) + Desktop Heading */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 min-w-0 md:hidden">
+              <select
+                value={activeTab}
+                onChange={(e) => onTabChange && onTabChange(e.target.value as any)}
+                className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 sm:pr-7 truncate"
+              >
+                <option value="inventory">📦 Inventario</option>
+                <option value="requests">📋 Solicitudes</option>
+                <option value="movements">🔄 Movimientos</option>
+                <option value="reports">📊 Reportes</option>
+              </select>
+              <div className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px] sm:text-xs">
+                ▼
+              </div>
+            </div>
 
-        {/* Desktop Filters */}
-        <div className="hidden md:flex items-center gap-3">
-          <div className="w-44">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-              Mes
-            </label>
-            <div className="relative">
+            <div className="hidden md:block">
+              <h3 className="text-base sm:text-lg font-black text-slate-800 leading-tight">Reportes de Consumo</h3>
+              <p className="text-xs text-slate-500">Liquidaciones finales por proyecto y vehículo.</p>
+            </div>
+          </div>
+
+          {/* Month & Year Filters */}
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+            <div className="relative min-w-0 sm:w-36">
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7"
+                className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
               >
-                <option value="all">Todos</option>
+                <option value="all">Todos los meses</option>
                 {MONTH_NAMES.map((m, idx) => (
-                  <option key={idx} value={String(idx)}>
-                    {m}
-                  </option>
+                  <option key={idx} value={String(idx)}>{m}</option>
                 ))}
               </select>
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
-                ▼
-              </div>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">▼</div>
             </div>
-          </div>
 
-          <div className="w-32">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-              Año
-            </label>
-            <div className="relative">
+            <div className="relative min-w-0 sm:w-32">
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7"
+                className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
               >
-                <option value="all">Todos</option>
+                <option value="all">Todos los años</option>
                 {availableYears.map((yr) => (
-                  <option key={yr} value={String(yr)}>
-                    {yr}
-                  </option>
+                  <option key={yr} value={String(yr)}>{yr}</option>
                 ))}
               </select>
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
-                ▼
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Filtros Móvil: [ Mes ] [ Año ] */}
-      <div className="grid grid-cols-2 gap-2 md:hidden">
-        {/* Filtro de Mes */}
-        <div className="min-w-0">
-          <div className="relative">
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
-            >
-              <option value="all">Todos los meses</option>
-              {MONTH_NAMES.map((m, idx) => (
-                <option key={idx} value={String(idx)}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
-              ▼
-            </div>
-          </div>
-        </div>
-
-        {/* Filtro de Año */}
-        <div className="min-w-0">
-          <div className="relative">
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
-            >
-              <option value="all">Todos los años</option>
-              {availableYears.map((yr) => (
-                <option key={yr} value={String(yr)}>
-                  {yr}
-                </option>
-              ))}
-            </select>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
-              ▼
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">▼</div>
             </div>
           </div>
         </div>

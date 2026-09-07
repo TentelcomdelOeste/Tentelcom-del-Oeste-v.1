@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { User } from '../../../../types';
-import { getVehicleCatalog } from '../services/vehicleWarehouseService';
+import { getVehicleCatalog, vehicleWarehouseService } from '../services/vehicleWarehouseService';
 import { ActionButton, DataTable, TableColumn } from '../../../../design-system';
-import { FiUploadCloud, FiSearch, FiX } from 'react-icons/fi';
+import { FiRefreshCw, FiSearch, FiX } from 'react-icons/fi';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
 
@@ -17,6 +17,11 @@ interface Props {
     inventoryItemId: string;
     quantity: number;
   }) => void;
+  onMultipleTransfer?: (data: {
+    originVehicleId: string;
+    targetVehicleId: string;
+    items: { inventoryItemId: string; quantity: number }[];
+  }) => Promise<void>;
   selectedVehicleId?: string;
   onSelectVehicleId?: (id: string) => void;
   activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
@@ -24,13 +29,14 @@ interface Props {
 }
 
 export const VehicleInventoryTab: React.FC<Props> = ({
-  currentUser: _currentUser,
+  currentUser,
   items: externalItems,
   onTransfer,
+  onMultipleTransfer,
   selectedVehicleId: externalSelectedVehicleId,
   onSelectVehicleId,
-  activeTab: _activeTab = 'inventory',
-  onTabChange: _onTabChange
+  activeTab = 'inventory',
+  onTabChange
 }) => {
   const items = externalItems || [];
   const vehicles = getVehicleCatalog();
@@ -51,34 +57,16 @@ export const VehicleInventoryTab: React.FC<Props> = ({
       const lower = searchTerm.toLowerCase();
       result = result.filter(item => 
         item.code.toLowerCase().includes(lower) || 
-        item.description.toLowerCase().includes(lower)
+        item.description.toLowerCase().includes(lower) ||
+        item.category.toLowerCase().includes(lower)
       );
     }
     
     return result;
   }, [items, selectedVehicleId, searchTerm]);
 
-  // Modals state
+  // Modal state for multiple transfer
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [transferItem, setTransferItem] = useState<VehicleWarehouseItem | null>(null);
-
-  const handleOpenTransfer = (item: VehicleWarehouseItem) => {
-    setTransferItem(item);
-    setShowTransferModal(true);
-  };
-
-  const handleConfirmTransfer = async (targetVehicleId: string, quantity: number) => {
-    if (transferItem && onTransfer && selectedVehicleId) {
-      await onTransfer({
-        originVehicleId: selectedVehicleId,
-        targetVehicleId,
-        inventoryItemId: transferItem.inventoryItemId,
-        quantity
-      });
-      setShowTransferModal(false);
-      setTransferItem(null);
-    }
-  };
 
   const columns = useMemo<TableColumn<VehicleWarehouseItem>[]>(() => [
     {
@@ -115,11 +103,11 @@ export const VehicleInventoryTab: React.FC<Props> = ({
             {item.physicalStock} <span className="text-[10px] text-slate-500 font-normal">{item.unit}</span>
           </span>
           <div className="flex items-center gap-2 text-[10px] mt-0.5">
-            <span className="text-orange-600 font-medium" title="Comprometido">
-              ({item.committedStock})
+            <span className="text-orange-600 font-medium" title="Comprometido en solicitudes abiertas">
+              Comp: {item.committedStock}
             </span>
-            <span className="text-emerald-600 font-bold" title="Disponible">
-              Disp: {item.availableStock}
+            <span className="text-emerald-600 font-bold" title="Disponible real para transferir o consumir">
+              Disp: {item.physicalStock - item.committedStock}
             </span>
           </div>
         </div>
@@ -131,74 +119,91 @@ export const VehicleInventoryTab: React.FC<Props> = ({
       hideOnMobile: true,
       render: (item) => (
         <div className="flex flex-col">
-          <span className="text-[11px] text-slate-600">{new Date(item.updatedAt).toLocaleDateString()}</span>
-          <span className="text-[9px] text-slate-400">{item.updatedBy?.split('@')[0]}</span>
+          <span className="text-[11px] text-slate-600">{item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : '-'}</span>
+          <span className="text-[9px] text-slate-400">{item.updatedBy?.split('@')[0] || '-'}</span>
         </div>
-      )
-    },
-    {
-      header: '',
-      accessor: 'id',
-      mobileGrid: 'right',
-      mobileOrder: 4,
-      render: (item) => (
-        <ActionButton
-          label="Transferir"
-          icon={<FiUploadCloud />}
-          variant="outline"
-          size="sm"
-          onClick={() => handleOpenTransfer(item)}
-          disabled={item.availableStock <= 0}
-        />
       )
     }
   ], []);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4 items-end sm:items-center justify-between">
-        <div className="w-full sm:w-64">
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-            Unidad / Vehículo
-          </label>
-          <div className="relative">
+    <div className="space-y-2.5 sm:space-y-3">
+      {/* Controls Container Header Box */}
+      <div className="bg-white p-2.5 sm:p-3.5 rounded-xl border border-slate-200 shadow-sm space-y-2 sm:space-y-2.5">
+        
+        {/* ROW 1: SELECTOR DE SECCIÓN + SELECTOR DE UNIDAD */}
+        <div className="grid grid-cols-2 md:flex md:justify-end gap-2 sm:gap-3">
+          {/* Selector de Sección (Mobile) */}
+          <div className="relative min-w-0 block md:hidden">
+            <select
+              value={activeTab}
+              onChange={(e) => onTabChange && onTabChange(e.target.value as any)}
+              className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 sm:pr-7 truncate"
+            >
+              <option value="inventory">📦 Inventario</option>
+              <option value="requests">📋 Solicitudes</option>
+              <option value="movements">🔄 Movimientos</option>
+              <option value="reports">📊 Reportes</option>
+            </select>
+            <div className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px] sm:text-xs">
+              ▼
+            </div>
+          </div>
+
+          {/* Selector de Unidad / Vehículo */}
+          <div className="relative min-w-0 md:w-72">
             <select
               value={selectedVehicleId}
               onChange={(e) => setSelectedVehicleId(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-10"
+              className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 sm:pr-7 truncate"
             >
               {vehicles.map(v => (
-                <option key={v.id} value={v.id}>{v.alias} ({v.placa})</option>
+                <option key={v.id} value={v.id}>
+                  {v.alias} ({v.placa})
+                </option>
               ))}
             </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+            <div className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px] sm:text-xs">
               ▼
             </div>
           </div>
         </div>
-        
-        <div className="w-full sm:w-72">
-          <div className="relative">
-            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+
+        {/* ROW 2: BÚSQUEDA + BOTÓN TRANSFERIR */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Buscador de Material */}
+          <div className="relative flex-1 min-w-0">
+            <FiSearch className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs sm:text-sm pointer-events-none" />
             <input
               type="text"
               placeholder="Buscar material..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
+              className="w-full pl-7 sm:pl-9 pr-7 py-2 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
             />
             {searchTerm && (
               <button 
+                type="button"
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200"
               >
-                <FiX />
+                <FiX className="text-xs" />
               </button>
             )}
           </div>
+
+          {/* Botón Transferir */}
+          <ActionButton
+            label="TRANSFERIR"
+            icon={<FiRefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            variant="primary"
+            onClick={() => setShowTransferModal(true)}
+            className="!w-auto flex-none shrink-0 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap text-xs sm:text-sm rounded-lg shadow-sm"
+          />
         </div>
       </div>
 
+      {/* Inventory Table directly below */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <DataTable
           data={filteredItems}
@@ -208,25 +213,34 @@ export const VehicleInventoryTab: React.FC<Props> = ({
         />
       </div>
 
-      {showTransferModal && transferItem && selectedVehicle && (
+      {/* Multiple Transfer Modal */}
+      {showTransferModal && (
         <TransferToVehicleModal
           show={showTransferModal}
-          onClose={() => {
-            setShowTransferModal(false);
-            setTransferItem(null);
-          }}
-          item={transferItem}
-          originItems={items.filter(i => i.vehiculoId === selectedVehicle.id)}
-          originVehicle={selectedVehicle}
+          onClose={() => setShowTransferModal(false)}
+          defaultOriginVehicleId={selectedVehicleId}
           allVehicles={vehicles}
           allItems={items}
-          onConfirm={handleConfirmTransfer}
-          onTransfer={async (data) => {
-            if (onTransfer) {
-              await onTransfer(data);
+          currentUser={currentUser}
+          onConfirmTransfer={async (data) => {
+            if (onMultipleTransfer) {
+              await onMultipleTransfer(data);
+            } else if (onTransfer) {
+              await vehicleWarehouseService.transferMultipleItems(
+                data.originVehicleId,
+                data.targetVehicleId,
+                data.items,
+                currentUser
+              );
+            } else {
+              await vehicleWarehouseService.transferMultipleItems(
+                data.originVehicleId,
+                data.targetVehicleId,
+                data.items,
+                currentUser
+              );
             }
             setShowTransferModal(false);
-            setTransferItem(null);
           }}
         />
       )}

@@ -10,9 +10,12 @@ const getProjectIds = (projectId: string, projectNumber?: string): string[] => {
   return ids;
 };
 
-export const getProjectJobs = async (projectId: string) => {
+export const getProjectJobs = async (projectId: string, projectNumber?: string) => {
   try {
-    const q = query(collection(db, 'trabajos'), where('projectId', '==', projectId));
+    const ids = getProjectIds(projectId, projectNumber);
+    const q = ids.length > 1
+      ? query(collection(db, 'trabajos'), where('projectId', 'in', ids))
+      : query(collection(db, 'trabajos'), where('projectId', '==', projectId));
     const snap = await getDocs(q);
     return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
@@ -21,8 +24,16 @@ export const getProjectJobs = async (projectId: string) => {
   }
 };
 
-export const subscribeToProjectJobs = (projectId: string, callback: (data: any[]) => void) => {
-  const q = query(collection(db, 'trabajos'), where('projectId', '==', projectId));
+export const subscribeToProjectJobs = (
+  projectId: string, 
+  callback: (data: any[]) => void,
+  projectNumber?: string
+) => {
+  const ids = getProjectIds(projectId, projectNumber);
+  const q = ids.length > 1
+    ? query(collection(db, 'trabajos'), where('projectId', 'in', ids))
+    : query(collection(db, 'trabajos'), where('projectId', '==', projectId));
+
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   }, (error) => {

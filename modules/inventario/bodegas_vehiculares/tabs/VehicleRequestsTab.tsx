@@ -33,8 +33,8 @@ export const VehicleRequestsTab: React.FC<Props> = ({
   onUpdateRequest,
   onCancelRequest,
   onCloseRequest,
-  activeTab: _activeTab = 'requests',
-  onTabChange: _onTabChange
+  activeTab = 'requests',
+  onTabChange
 }) => {
   const confirm = useConfirm();
   
@@ -124,18 +124,39 @@ export const VehicleRequestsTab: React.FC<Props> = ({
   ];
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="flex justify-between items-center gap-4">
-        <div>
-          <h3 className="text-lg font-black text-slate-800">Solicitudes de Proyectos</h3>
-          <p className="text-sm text-slate-500">Gestión de materiales asignados a proyectos.</p>
-        </div>
-        <div>
+    <div className="space-y-2.5 sm:space-y-4">
+      {/* Controls Container Header Box */}
+      <div className="bg-white p-2.5 sm:p-3.5 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
+          {/* Selector de Sección Solicitudes (Mobile) */}
+          <div className="relative flex-1 min-w-0 block md:hidden">
+            <select
+              value={activeTab}
+              onChange={(e) => onTabChange && onTabChange(e.target.value as any)}
+              className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 sm:pr-7 truncate"
+            >
+              <option value="inventory">📦 Inventario</option>
+              <option value="requests">📋 Solicitudes</option>
+              <option value="movements">🔄 Movimientos</option>
+              <option value="reports">📊 Reportes</option>
+            </select>
+            <div className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px] sm:text-xs">
+              ▼
+            </div>
+          </div>
+
+          {/* Desktop Title & Subtitle */}
+          <div className="hidden md:block">
+            <h3 className="text-base sm:text-lg font-black text-slate-800 leading-tight">Solicitudes de Proyectos</h3>
+            <p className="text-xs text-slate-500">Gestión de materiales asignados a proyectos.</p>
+          </div>
+
+          {/* Botón Nueva Solicitud */}
           <ActionButton 
-            label="Nueva Solicitud" 
+            label="NUEVA SOLICITUD" 
             variant="primary" 
             onClick={() => setShowNewModal(true)}
-            className="w-auto justify-center"
+            className="!w-auto flex-none shrink-0 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap text-xs sm:text-sm rounded-lg shadow-sm"
           />
         </div>
       </div>

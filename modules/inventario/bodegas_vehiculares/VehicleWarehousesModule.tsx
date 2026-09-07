@@ -112,6 +112,23 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
     );
   };
 
+  const handleMultipleTransfer = async ({
+    originVehicleId,
+    targetVehicleId,
+    items
+  }: {
+    originVehicleId: string;
+    targetVehicleId: string;
+    items: { inventoryItemId: string; quantity: number }[];
+  }) => {
+    await vehicleWarehouseService.transferMultipleItems(
+      originVehicleId,
+      targetVehicleId,
+      items,
+      currentUser
+    );
+  };
+
   const handleCreateRequest = async (payload: any) => {
     await vehicleWarehouseService.createRequest(
       payload.vehiculoId,
@@ -154,31 +171,14 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
         title="Bodegas Vehiculares"
         subtitle="Gestión de inventario de flota y solicitudes por vehículo."
       >
-        <div className="mb-6">
-          <div className="block md:hidden relative">
-            <select
-              value={activeTab}
-              onChange={(e) => setActiveTab(e.target.value as any)}
-              className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-10"
-            >
-              <option value="inventory">📦 Inventario</option>
-              <option value="requests">📋 Solicitudes</option>
-              <option value="movements">🔄 Movimientos</option>
-              <option value="reports">📊 Reportes</option>
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-              ▼
-            </div>
-          </div>
-          
-          <div className="hidden md:flex items-center gap-2">
-            <ActionButton
-              label="Inventario por Vehículo"
-              icon={<FiBox />}
-              variant={activeTab === 'inventory' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('inventory')}
-              className={`whitespace-nowrap ${activeTab !== 'inventory' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
-            />
+        <div className="hidden md:flex items-center gap-2 mb-3 sm:mb-4">
+          <ActionButton
+            label="Inventario por Vehículo"
+            icon={<FiBox />}
+            variant={activeTab === 'inventory' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('inventory')}
+            className={`whitespace-nowrap ${activeTab !== 'inventory' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+          />
             <ActionButton
               label="Solicitudes de Proyecto"
               icon={<FiClipboard />}
@@ -201,7 +201,6 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               className={`whitespace-nowrap ${activeTab !== 'reports' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
             />
           </div>
-        </div>
 
         <div>
           {activeTab === 'inventory' && (
@@ -209,6 +208,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               currentUser={currentUser}
               items={items}
               onTransfer={handleTransfer}
+              onMultipleTransfer={handleMultipleTransfer}
               selectedVehicleId={selectedVehicleId}
               onSelectVehicleId={setSelectedVehicleId}
               activeTab={activeTab}

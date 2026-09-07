@@ -69,6 +69,9 @@ export interface BitacoraRelacionada {
 
 export interface Trabajo {
   id: string;
+  projectId?: string;
+  projectNumber?: string;
+  projectName?: string;
   titulo?: string;
   tipo_trabajo: string;
   descripcion: string;

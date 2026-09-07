@@ -122,6 +122,11 @@ const JobItem = React.memo(({
       >
         <div className="flex justify-between items-start mb-0.5">
           <div className="flex flex-col flex-1 mr-2">
+            {(trabajo?.projectNumber || trabajo?.projectName) && (
+              <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest truncate mb-0.5">
+                📁 {trabajo.projectNumber ? `${trabajo.projectNumber} — ` : ''}{trabajo.projectName || ''}
+              </span>
+            )}
             {trabajo?.otCode && (
               <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
                 <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest truncate max-w-[150px]">

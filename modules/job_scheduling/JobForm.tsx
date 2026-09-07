@@ -11,7 +11,9 @@ import { localDocStore } from '@/core/offline/localDocStore';
 import { JobTitleAutocomplete } from './components/JobTitleAutocomplete';
 import { JobTypeSelect } from './components/JobTypeSelect';
 import { useAuditPermanence } from '@/hooks/useAuditPermanence';
-import { FiTrash2, FiCheck, FiUsers, FiTruck, FiClock, FiAlertTriangle, FiSearch, FiMapPin } from 'react-icons/fi';
+import { FiTrash2, FiCheck, FiUsers, FiTruck, FiClock, FiAlertTriangle, FiSearch, FiMapPin, FiFolder } from 'react-icons/fi';
+import { subscribeToProjects } from '../project_management/services/projectService';
+import { Project } from '../project_management/types';
 import { db } from '@/firebase';
 import { collection, getDocs, deleteDoc, doc, query, where } from 'firebase/firestore';
 
@@ -76,15 +78,31 @@ export const JobForm: React.FC<JobFormProps> = ({
   const [searchTermEmployees, setSearchTermEmployees] = useState('');
   const [searchTermLogs, setSearchTermLogs] = useState('');
   const [isLinkingSelectorOpen, setIsLinkingSelectorOpen] = useState(false);
+  const [projectsList, setProjectsList] = useState<Project[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState<boolean>(true);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToProjects((projects) => {
+      setProjectsList(projects);
+      setLoadingProjects(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [formData, setFormData] = useState<Partial<Trabajo>>(
     trabajo ? {
         ...trabajo,
+        projectId: trabajo.projectId || '',
+        projectNumber: trabajo.projectNumber || '',
+        projectName: trabajo.projectName || '',
         titulo: trabajo.titulo ? toUpperCase(trabajo.titulo) : '',
         tipo_trabajo: trabajo.tipo_trabajo ? toUpperCase(trabajo.tipo_trabajo) : '',
         ubicacion: trabajo.ubicacion ? toTitleCase(trabajo.ubicacion) : '',
         bitacorasRelacionadas: trabajo.bitacorasRelacionadas || (trabajo.registroBitacoraId ? [{ bitacoraId: trabajo.registroBitacoraId, fecha: 'legacy' }] : []),
     } : {
+      projectId: parentData?.projectId || '',
+      projectNumber: parentData?.projectNumber || '',
+      projectName: parentData?.projectName || '',
       titulo: parentData?.titulo ? toUpperCase(parentData.titulo) : '',
       tipo_trabajo: parentData?.tipo_trabajo ? toUpperCase(parentData.tipo_trabajo) : '',
       descripcion: parentData?.descripcion || '',
@@ -246,6 +264,26 @@ export const JobForm: React.FC<JobFormProps> = ({
     if (error) setError(null);
   };
 
+  const handleProjectChange = (projId: string) => {
+    clearError();
+    const selectedProj = projectsList.find(p => p.id === projId);
+    if (selectedProj) {
+      setFormData(prev => ({
+        ...prev,
+        projectId: selectedProj.id,
+        projectNumber: selectedProj.projectNumber || selectedProj.id,
+        projectName: selectedProj.name,
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        projectId: '',
+        projectNumber: '',
+        projectName: '',
+      }));
+    }
+  };
+
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
@@ -370,8 +408,9 @@ export const JobForm: React.FC<JobFormProps> = ({
 
     // Initial Manual Validations
     let validationError = null;
-    if (!formData.titulo?.trim()) validationError = 'El título del trabajo es obligatorio';
-    else if (!formData.tipo_trabajo?.trim()) validationError = 'El tipo de trabajo es obligatorio';
+    if (!formData.tipo_trabajo?.trim()) validationError = 'El tipo de trabajo es obligatorio';
+    else if (!formData.projectId) validationError = 'Debe seleccionar un proyecto obligatorio para este trabajo';
+    else if (!formData.titulo?.trim()) validationError = 'El título del trabajo es obligatorio';
     else if (!formData.descripcion?.trim()) validationError = 'La descripción es obligatoria';
     else if (!fechaInicio || !fechaFin) validationError = 'Las fechas son obligatorias';
     else if (!formData.hora_inicio || !formData.hora_fin) validationError = 'Las horas son obligatorias';
@@ -450,6 +489,9 @@ export const JobForm: React.FC<JobFormProps> = ({
         dias_detalle: formData.dias_detalle,
         progreso: formData.progreso,
         tipo_trabajo: formData.tipo_trabajo,
+        projectId: formData.projectId || '',
+        projectNumber: formData.projectNumber || '',
+        projectName: formData.projectName || '',
         fecha_inicio,
         fecha_fin,
         estado: formData.estado || 'programado',
@@ -637,6 +679,41 @@ export const JobForm: React.FC<JobFormProps> = ({
             }}
             placeholder="Seleccione o escriba tipo..."
           />
+
+          {/* SELECTOR DE PROYECTO OBLIGATORIO */}
+          <div>
+            <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1"}>
+              PROYECTO <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <select
+                value={formData.projectId || ''}
+                onChange={(e) => handleProjectChange(e.target.value)}
+                className={`w-full ${UI_TOKENS.SPACING.inputPadding} ${UI_TOKENS.SHAPE.roundedInput} border ${
+                  !formData.projectId && error ? 'border-red-300 bg-red-50/30' : UI_TOKENS.COLORS.border
+                } outline-none focus:ring-2 focus:ring-blue-100 text-sm font-medium bg-white appearance-none pr-8 cursor-pointer text-slate-800`}
+                required
+              >
+                <option value="">
+                  {loadingProjects ? 'Cargando proyectos...' : 'Seleccione un proyecto...'}
+                </option>
+                {projectsList.map((proj) => (
+                  <option key={proj.id} value={proj.id}>
+                    {proj.projectNumber ? `${proj.projectNumber} — ${proj.name}` : proj.name}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                <FiFolder className="text-sm" />
+              </div>
+            </div>
+            {formData.projectId && (
+              <p className="text-[10px] text-indigo-600 font-bold mt-1 flex items-center gap-1">
+                <FiCheck className="text-emerald-500 text-xs" />
+                Proyecto seleccionado: {formData.projectNumber ? `${formData.projectNumber} — ` : ''}{formData.projectName}
+              </p>
+            )}
+          </div>
 
           <div>
             <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1"}>

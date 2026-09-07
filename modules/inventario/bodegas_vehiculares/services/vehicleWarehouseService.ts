@@ -3,6 +3,7 @@ import { collection, doc, runTransaction } from 'firebase/firestore';
 import {
   VehicleWarehouseItem,
   VehicleMovement,
+  VehicleMovementItem,
   VehicleMaterialRequest,
   VehicleProjectConsumption
 } from '@/types/vehicleWarehouse.types';
@@ -44,8 +45,24 @@ export const vehicleWarehouseService = {
     quantity: number,
     currentUser?: { id: string; name?: string; email?: string } | null
   ): Promise<void> {
-    if (quantity <= 0) {
-      throw new Error('La cantidad debe ser mayor a 0.');
+    return this.transferMultipleItems(
+      originVehicleId,
+      targetVehicleId,
+      [{ inventoryItemId, quantity }],
+      currentUser
+    );
+  },
+
+  // 1b. Transfer multiple items between vehicles
+  async transferMultipleItems(
+    originVehicleId: string,
+    targetVehicleId: string,
+    transferItems: { inventoryItemId: string; quantity: number }[],
+    currentUser?: { id: string; name?: string; email?: string } | null,
+    reason?: string
+  ): Promise<void> {
+    if (!transferItems || transferItems.length === 0) {
+      throw new Error('Debe incluir al menos un material para transferir.');
     }
     if (originVehicleId === targetVehicleId) {
       throw new Error('El vehículo de origen y destino no pueden ser el mismo.');
@@ -57,75 +74,98 @@ export const vehicleWarehouseService = {
     
     if (!originVeh || !targetVeh) throw new Error("Vehículos no encontrados en el catálogo");
 
-    const originDocRef = doc(db, 'vehicle_warehouse_items', `${originVehicleId}_${inventoryItemId}`);
-    const targetDocRef = doc(db, 'vehicle_warehouse_items', `${targetVehicleId}_${inventoryItemId}`);
     const movementRef = doc(collection(db, 'vehicle_movements'));
+    const now = new Date().toISOString();
+    const userName = currentUser?.name || currentUser?.email || 'Usuario Sistema';
+    const userId = currentUser?.id || 'system';
 
     await runTransaction(db, async (transaction) => {
-      const originSnap = await transaction.get(originDocRef);
-      if (!originSnap.exists()) {
-        throw new Error('El material no existe en el vehículo de origen.');
-      }
+      const movementItems: VehicleMovementItem[] = [];
 
-      const originData = originSnap.data() as VehicleWarehouseItem;
-      const available = originData.physicalStock - originData.committedStock;
+      for (const item of transferItems) {
+        if (item.quantity <= 0) {
+          throw new Error('Todas las cantidades a transferir deben ser mayores a 0.');
+        }
 
-      if (quantity > available) {
-        throw new Error(`Cantidad (${quantity}) supera el stock disponible transferible (${available} ${originData.unit}).`);
-      }
+        const originDocRef = doc(db, 'vehicle_warehouse_items', `${originVehicleId}_${item.inventoryItemId}`);
+        const targetDocRef = doc(db, 'vehicle_warehouse_items', `${targetVehicleId}_${item.inventoryItemId}`);
 
-      const targetSnap = await transaction.get(targetDocRef);
-      
-      const newOriginPhysical = originData.physicalStock - quantity;
-      const newOriginAvailable = newOriginPhysical - originData.committedStock;
+        const originSnap = await transaction.get(originDocRef);
+        if (!originSnap.exists()) {
+          throw new Error(`El material no existe en la bodega de origen (${originVeh.alias}).`);
+        }
 
-      transaction.update(originDocRef, {
-        physicalStock: newOriginPhysical,
-        availableStock: newOriginAvailable,
-        updatedAt: new Date().toISOString(),
-        updatedBy: currentUser?.email || 'Usuario Sistema'
-      });
+        const originData = originSnap.data() as VehicleWarehouseItem;
+        const availableReal = originData.physicalStock - originData.committedStock;
 
-      let prevTargetPhysical = 0;
-      let prevTargetCommitted = 0;
+        if (item.quantity > availableReal) {
+          throw new Error(
+            `No hay suficiente stock disponible para transferir "${originData.description}" (${originData.code}). ` +
+            `Físico: ${originData.physicalStock}, Comprometido: ${originData.committedStock}, Disponible real: ${availableReal} ${originData.unit}. ` +
+            `Cantidad solicitada: ${item.quantity}. La disponibilidad de inventario ha cambiado.`
+          );
+        }
 
-      if (targetSnap.exists()) {
-        const targetData = targetSnap.data() as VehicleWarehouseItem;
-        prevTargetPhysical = targetData.physicalStock;
-        prevTargetCommitted = targetData.committedStock;
-        const newTargetPhysical = prevTargetPhysical + quantity;
-        const newTargetAvailable = newTargetPhysical - prevTargetCommitted;
+        const targetSnap = await transaction.get(targetDocRef);
+        
+        const newOriginPhysical = originData.physicalStock - item.quantity;
+        const newOriginAvailable = newOriginPhysical - originData.committedStock;
 
-        transaction.update(targetDocRef, {
-          physicalStock: newTargetPhysical,
-          availableStock: newTargetAvailable,
-          updatedAt: new Date().toISOString(),
+        if (newOriginPhysical < 0) {
+          throw new Error(`La transferencia generaría inventario físico negativo para ${originData.code}.`);
+        }
+
+        transaction.update(originDocRef, {
+          physicalStock: newOriginPhysical,
+          availableStock: newOriginAvailable,
+          updatedAt: now,
           updatedBy: currentUser?.email || 'Usuario Sistema'
         });
-      } else {
-        const newTargetItem: VehicleWarehouseItem = {
-          id: `${targetVehicleId}_${inventoryItemId}`,
-          vehiculoId: targetVehicleId,
-          vehiculoPlaca: targetVeh.placa,
-          vehiculoAlias: targetVeh.alias,
+
+        if (targetSnap.exists()) {
+          const targetData = targetSnap.data() as VehicleWarehouseItem;
+          const newTargetPhysical = targetData.physicalStock + item.quantity;
+          const newTargetAvailable = newTargetPhysical - targetData.committedStock;
+
+          transaction.update(targetDocRef, {
+            physicalStock: newTargetPhysical,
+            availableStock: newTargetAvailable,
+            updatedAt: now,
+            updatedBy: currentUser?.email || 'Usuario Sistema'
+          });
+        } else {
+          const newTargetItem: VehicleWarehouseItem = {
+            id: `${targetVehicleId}_${item.inventoryItemId}`,
+            vehiculoId: targetVehicleId,
+            vehiculoPlaca: targetVeh.placa,
+            vehiculoAlias: targetVeh.alias,
+            inventoryItemId: originData.inventoryItemId,
+            code: originData.code,
+            description: originData.description,
+            category: originData.category,
+            unit: originData.unit,
+            physicalStock: item.quantity,
+            committedStock: 0,
+            availableStock: item.quantity,
+            updatedAt: now,
+            updatedBy: currentUser?.email || 'Usuario Sistema'
+          };
+          transaction.set(targetDocRef, newTargetItem);
+        }
+
+        movementItems.push({
           inventoryItemId: originData.inventoryItemId,
           code: originData.code,
           description: originData.description,
-          category: originData.category,
-          unit: originData.unit,
-          physicalStock: quantity,
-          committedStock: 0,
-          availableStock: quantity,
-          updatedAt: new Date().toISOString(),
-          updatedBy: currentUser?.email || 'Usuario Sistema'
-        };
-        transaction.set(targetDocRef, newTargetItem);
+          quantity: item.quantity,
+          previousPhysicalStock: originData.physicalStock,
+          newPhysicalStock: newOriginPhysical,
+          previousCommittedStock: originData.committedStock,
+          newCommittedStock: originData.committedStock
+        });
       }
 
-      const userName = currentUser?.name || currentUser?.email || 'Usuario Sistema';
-      const userId = currentUser?.id || 'system';
       const movementNumber = `MOV-${Math.floor(100000 + Math.random() * 900000)}`;
-      const now = new Date().toISOString();
 
       const movementData: VehicleMovement = {
         id: movementRef.id,
@@ -136,23 +176,14 @@ export const vehicleWarehouseService = {
         originVehiculoId: originVehicleId,
         originVehiculoPlaca: originVeh.placa,
         originVehiculoAlias: originVeh.alias,
-        vehiculoId: originVehicleId, // Registramos en el origen
+        vehiculoId: originVehicleId,
         vehiculoPlaca: originVeh.placa,
         targetVehiculoId: targetVehicleId,
         targetVehiculoPlaca: targetVeh.placa,
         targetVehiculoAlias: targetVeh.alias,
-        items: [{
-          inventoryItemId: originData.inventoryItemId,
-          code: originData.code,
-          description: originData.description,
-          quantity,
-          previousPhysicalStock: originData.physicalStock,
-          newPhysicalStock: newOriginPhysical,
-          previousCommittedStock: originData.committedStock,
-          newCommittedStock: originData.committedStock
-        }],
+        items: movementItems,
         date: now,
-        reason: `Traslado directo de ${originVeh.alias} a ${targetVeh.alias}`,
+        reason: reason || `Traslado múltiple (${movementItems.length} materiales) de ${originVeh.alias} a ${targetVeh.alias}`,
         performedBy: userId,
         performedByName: userName,
         createdAt: now

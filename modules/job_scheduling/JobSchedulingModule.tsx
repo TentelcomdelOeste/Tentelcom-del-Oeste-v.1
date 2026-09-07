@@ -278,6 +278,8 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
 
       const searchStrings = [
         t.otCode,
+        t.projectNumber,
+        t.projectName,
         t.titulo,
         t.tipo_trabajo,
         t.descripcion,

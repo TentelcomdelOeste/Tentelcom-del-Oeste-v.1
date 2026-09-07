@@ -11,7 +11,8 @@ import {
   FiTag,
   FiClipboard,
   FiUser,
-  FiAlertCircle
+  FiAlertCircle,
+  FiFolder
 } from 'react-icons/fi';
 import { FaBoxes, FaTruck, FaWrench } from 'react-icons/fa';
 
@@ -132,6 +133,16 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
               
               {/* Col 1 */}
               <div className="space-y-4">
+                <div className="grid grid-cols-[30px_1fr] items-center">
+                  <FiFolder className="text-indigo-500 text-sm" />
+                  <div className="flex items-center">
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Proyecto:</span>
+                    <span className="text-xs text-indigo-700 font-black uppercase truncate ml-2 text-left">
+                      {trabajo.projectNumber || trabajo.projectName ? `${trabajo.projectNumber ? trabajo.projectNumber + ' — ' : ''}${trabajo.projectName || ''}` : 'Sin proyecto asociado'}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-[30px_1fr] items-center">
                   <FiTag className="text-slate-400 text-sm" />
                   <div className="flex items-center">
