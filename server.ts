@@ -2,8 +2,10 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 
 let openaiClient: OpenAI | null = null;
+let geminiClient: GoogleGenAI | null = null;
 
 export function getOpenAI(): OpenAI {
   if (!openaiClient) {
@@ -16,6 +18,17 @@ export function getOpenAI(): OpenAI {
     });
   }
   return openaiClient;
+}
+
+export function getGemini(): GoogleGenAI {
+  if (!geminiClient) {
+    const key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    if (!key) {
+      throw new Error('GEMINI_API_KEY environment variable is required');
+    }
+    geminiClient = new GoogleGenAI({ apiKey: key });
+  }
+  return geminiClient;
 }
 
 async function startServer() {
@@ -37,6 +50,20 @@ async function startServer() {
         model: "gpt-4o",
       });
       res.json(completion);
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/gemini", async (req, res) => {
+    try {
+      const gemini = getGemini();
+      const response = await gemini.models.generateContent({
+        model: req.body.model || 'gemini-2.5-flash',
+        contents: req.body.prompt || req.body.contents || 'Hello',
+      });
+      res.json({ text: response.text });
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: error.message });
