@@ -49,13 +49,14 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Lista dinámica de años disponibles según el tiempo actual y registros en estado
+  // Lista de años disponibles basados en rango histórico (2020 a año actual + 1) y proyectos cargados
   const availableYears = useMemo(() => {
     const yearsSet = new Set<number>();
     const currentYear = new Date().getFullYear();
-    yearsSet.add(currentYear);
-    yearsSet.add(currentYear - 1);
-    yearsSet.add(currentYear - 2);
+
+    for (let y = currentYear + 1; y >= 2020; y--) {
+      yearsSet.add(y);
+    }
 
     projects.forEach(p => {
       const d = parseCreatedAtDate(p.createdAt);

@@ -36,20 +36,81 @@ export const subscribeToProjects = (
   limitSize: number = 60,
   filters?: ProjectFilterOptions
 ): () => void => {
-  const constraints: QueryConstraint[] = [];
-
   const yearNum = filters?.year ? parseInt(filters.year, 10) : NaN;
   const monthNum = filters?.month ? parseInt(filters.month, 10) : NaN;
 
+  // CASO A: Mes especificado sin año (Todos los años + Mes específico)
+  if (isNaN(yearNum) && !isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+    const currentYear = new Date().getFullYear();
+    const candidateYears: number[] = [];
+    for (let y = currentYear + 1; y >= 2020; y--) {
+      candidateYears.push(y);
+    }
+
+    const yearDocsMap = new Map<number, Project[]>();
+    const unsubscribes: (() => void)[] = [];
+    const monthStr = String(monthNum).padStart(2, '0');
+
+    candidateYears.forEach(y => {
+      const nextYear = monthNum === 12 ? y + 1 : y;
+      const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
+      const nextMonthStr = String(nextMonthNum).padStart(2, '0');
+
+      const startStr = `${y}-${monthStr}-01`;
+      const endStr = `${nextYear}-${nextMonthStr}-01`;
+
+      const q = query(
+        collection(db, COLLECTION_NAME),
+        where('createdAt', '>=', startStr),
+        where('createdAt', '<', endStr),
+        orderBy('createdAt', 'desc'),
+        limit(limitSize)
+      );
+
+      const unsub = onSnapshot(q, (snapshot) => {
+        const yearProjects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+        yearDocsMap.set(y, yearProjects);
+
+        const combinedMap = new Map<string, Project>();
+        yearDocsMap.forEach(arr => {
+          arr.forEach(p => combinedMap.set(p.id, p));
+        });
+
+        const combinedProjects = Array.from(combinedMap.values()).sort((a, b) => {
+          const dA = parseCreatedAtDate(a.createdAt)?.getTime() || 0;
+          const dB = parseCreatedAtDate(b.createdAt)?.getTime() || 0;
+          return dB - dA;
+        });
+
+        const anyYearHitLimit = Array.from(yearDocsMap.values()).some(arr => arr.length >= limitSize);
+        const hasMore = limitSize > 0 ? (combinedProjects.length >= limitSize || anyYearHitLimit) : false;
+
+        const sliced = limitSize > 0 ? combinedProjects.slice(0, limitSize) : combinedProjects;
+        callback(sliced, hasMore);
+      }, (error) => {
+        console.error(`Error listening to projects for year ${y} month ${monthNum}:`, error);
+      });
+
+      unsubscribes.push(unsub);
+    });
+
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
+    };
+  }
+
+  // CASO B: Año especificado (con o sin mes) o Sin filtros (Todos los años + Todos los meses)
+  const constraints: QueryConstraint[] = [];
+
   if (!isNaN(yearNum)) {
     if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
-      const startMonthStr = String(monthNum).padStart(2, '0');
+      const monthStr = String(monthNum).padStart(2, '0');
       const nextYear = monthNum === 12 ? yearNum + 1 : yearNum;
       const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
-      const endMonthStr = String(nextMonthNum).padStart(2, '0');
+      const nextMonthStr = String(nextMonthNum).padStart(2, '0');
 
-      const startStr = `${yearNum}-${startMonthStr}-01`;
-      const endStr = `${nextYear}-${endMonthStr}-01`;
+      const startStr = `${yearNum}-${monthStr}-01`;
+      const endStr = `${nextYear}-${nextMonthStr}-01`;
 
       constraints.push(where('createdAt', '>=', startStr));
       constraints.push(where('createdAt', '<', endStr));
@@ -73,7 +134,6 @@ export const subscribeToProjects = (
   return onSnapshot(q, (snapshot) => {
     let projects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
 
-    // Si no se especificó año pero sí un mes específico, filtramos en memoria sobre el snapshot
     if (isNaN(yearNum) && !isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
       projects = projects.filter(p => {
         const d = parseCreatedAtDate(p.createdAt);
@@ -97,6 +157,7 @@ export const searchProjectsInFirestore = async (
   if (!searchTerm || !searchTerm.trim()) return [];
   const term = searchTerm.trim();
   const termUpper = term.toUpperCase();
+  const searchLower = term.toLowerCase();
 
   try {
     const resultsMap = new Map<string, Project>();
@@ -105,34 +166,81 @@ export const searchProjectsInFirestore = async (
       collection(db, COLLECTION_NAME),
       where('projectNumber', '>=', termUpper),
       where('projectNumber', '<=', termUpper + '\uf8ff'),
-      limit(20)
+      limit(50)
     );
-    const snapNum = await getDocs(qNum);
-    snapNum.docs.forEach(d => resultsMap.set(d.id, { ...d.data(), id: d.id } as Project));
-
     const qName = query(
       collection(db, COLLECTION_NAME),
       where('name', '>=', term),
       where('name', '<=', term + '\uf8ff'),
-      limit(20)
+      limit(50)
     );
-    const snapName = await getDocs(qName);
-    snapName.docs.forEach(d => resultsMap.set(d.id, { ...d.data(), id: d.id } as Project));
-
     const qClient = query(
       collection(db, COLLECTION_NAME),
       where('clientName', '>=', term),
       where('clientName', '<=', term + '\uf8ff'),
-      limit(20)
+      limit(50)
     );
-    const snapClient = await getDocs(qClient);
+
+    const [snapNum, snapName, snapClient] = await Promise.all([
+      getDocs(qNum),
+      getDocs(qName),
+      getDocs(qClient)
+    ]);
+
+    snapNum.docs.forEach(d => resultsMap.set(d.id, { ...d.data(), id: d.id } as Project));
+    snapName.docs.forEach(d => resultsMap.set(d.id, { ...d.data(), id: d.id } as Project));
     snapClient.docs.forEach(d => resultsMap.set(d.id, { ...d.data(), id: d.id } as Project));
 
-    if (resultsMap.size === 0) {
-      const qFallback = query(collection(db, COLLECTION_NAME), orderBy('createdAt', 'desc'), limit(50));
-      const snapFallback = await getDocs(qFallback);
-      const searchLower = term.toLowerCase();
-      snapFallback.docs.forEach(d => {
+    const yearNum = filters?.year ? parseInt(filters.year, 10) : NaN;
+    const monthNum = filters?.month ? parseInt(filters.month, 10) : NaN;
+
+    const fallbackPromises: Promise<any>[] = [];
+
+    if (!isNaN(yearNum)) {
+      let startStr = `${yearNum}-01-01`;
+      let endStr = `${yearNum + 1}-01-01`;
+      if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+        const monthStr = String(monthNum).padStart(2, '0');
+        const nextYear = monthNum === 12 ? yearNum + 1 : yearNum;
+        const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
+        const nextMonthStr = String(nextMonthNum).padStart(2, '0');
+        startStr = `${yearNum}-${monthStr}-01`;
+        endStr = `${nextYear}-${nextMonthStr}-01`;
+      }
+      const qFallback = query(
+        collection(db, COLLECTION_NAME),
+        where('createdAt', '>=', startStr),
+        where('createdAt', '<', endStr),
+        orderBy('createdAt', 'desc'),
+        limit(100)
+      );
+      fallbackPromises.push(getDocs(qFallback));
+    } else if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+      const currentYear = new Date().getFullYear();
+      const monthStr = String(monthNum).padStart(2, '0');
+      for (let y = currentYear + 1; y >= 2020; y--) {
+        const nextYear = monthNum === 12 ? y + 1 : y;
+        const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
+        const nextMonthStr = String(nextMonthNum).padStart(2, '0');
+        const startStr = `${y}-${monthStr}-01`;
+        const endStr = `${nextYear}-${nextMonthStr}-01`;
+        const qF = query(
+          collection(db, COLLECTION_NAME),
+          where('createdAt', '>=', startStr),
+          where('createdAt', '<', endStr),
+          orderBy('createdAt', 'desc'),
+          limit(50)
+        );
+        fallbackPromises.push(getDocs(qF));
+      }
+    } else {
+      const qFallback = query(collection(db, COLLECTION_NAME), orderBy('createdAt', 'desc'), limit(100));
+      fallbackPromises.push(getDocs(qFallback));
+    }
+
+    const fallbackSnaps = await Promise.all(fallbackPromises);
+    fallbackSnaps.forEach(snap => {
+      snap.docs.forEach((d: any) => {
         const data = d.data();
         const p = { ...data, id: d.id } as Project;
         if (
@@ -143,28 +251,17 @@ export const searchProjectsInFirestore = async (
           resultsMap.set(d.id, p);
         }
       });
-    }
+    });
 
     let results = Array.from(resultsMap.values());
 
-    const yearNum = filters?.year ? parseInt(filters.year, 10) : NaN;
-    const monthNum = filters?.month ? parseInt(filters.month, 10) : NaN;
-
-    if (!isNaN(yearNum)) {
+    if (!isNaN(yearNum) || !isNaN(monthNum)) {
       results = results.filter(p => {
         const d = parseCreatedAtDate(p.createdAt);
         if (!d || isNaN(d.getTime())) return false;
-        if (d.getFullYear() !== yearNum) return false;
-        if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
-          if (d.getMonth() + 1 !== monthNum) return false;
-        }
+        if (!isNaN(yearNum) && d.getFullYear() !== yearNum) return false;
+        if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12 && d.getMonth() + 1 !== monthNum) return false;
         return true;
-      });
-    } else if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
-      results = results.filter(p => {
-        const d = parseCreatedAtDate(p.createdAt);
-        if (!d || isNaN(d.getTime())) return false;
-        return d.getMonth() + 1 === monthNum;
       });
     }
 
