@@ -256,40 +256,31 @@ export const checkQuoteHasProject = async (quoteIdOrDocId: string): Promise<Proj
   return getProjectByQuoteId(quoteIdOrDocId);
 };
 
-const findHistoricalMaxProjectNumber = async (year: number): Promise<number> => {
+const getOccupiedProjectNumbers = async (year: number): Promise<Set<number>> => {
   const prefix = `TTC-${year}-`;
-  let maxNum = 0;
+  const q = query(
+    collection(db, COLLECTION_NAME),
+    where('projectNumber', '>=', prefix),
+    where('projectNumber', '<=', prefix + '\uf8ff')
+  );
 
-  try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where('projectNumber', '>=', prefix),
-      where('projectNumber', '<=', prefix + '\uf8ff')
-    );
-    const snapshot = await getDocs(q);
+  // Do NOT catch errors here. If Firestore read fails, propagate the error
+  // so we never mistakenly return an empty set and assign TTC-YYYY-001.
+  const snapshot = await getDocs(q);
 
-    snapshot.docs.forEach(d => {
-      const pNumber = d.data().projectNumber;
-      if (pNumber && typeof pNumber === 'string' && pNumber.startsWith(prefix)) {
-        const numPart = parseInt(pNumber.replace(prefix, ''), 10);
-        if (!isNaN(numPart) && numPart > maxNum) {
-          maxNum = numPart;
-        }
+  const occupied = new Set<number>();
+  snapshot.docs.forEach(docSnap => {
+    const pNumber = docSnap.data().projectNumber;
+    if (pNumber && typeof pNumber === 'string' && pNumber.startsWith(prefix)) {
+      const numPart = parseInt(pNumber.replace(prefix, ''), 10);
+      if (!isNaN(numPart) && numPart > 0) {
+        occupied.add(numPart);
       }
-    });
-  } catch (error) {
-    console.error(`Error querying historical max project number for ${year}:`, error);
-  }
+    }
+  });
 
-  return maxNum;
+  return occupied;
 };
-
-class CounterNotFoundException extends Error {
-  constructor() {
-    super('Counter document does not exist yet');
-    this.name = 'CounterNotFoundException';
-  }
-}
 
 export const generateNextProjectNumber = async (specifiedYear?: number): Promise<string> => {
   const year = specifiedYear || new Date().getFullYear();
@@ -297,69 +288,66 @@ export const generateNextProjectNumber = async (specifiedYear?: number): Promise
   const counterRef = doc(db, 'counters', `project_${year}`);
 
   try {
-    // 1. Intentar primero incrementar el contador directamente en una transacción atómica.
-    // Para el 99.99% de las creaciones donde el contador ya existe, esto es atómico e instantáneo.
-    try {
-      const nextNum = await runTransaction(db, async (transaction) => {
-        const docSnap = await transaction.get(counterRef);
-        if (!docSnap.exists()) {
-          throw new CounterNotFoundException();
+    const assignedNumber = await runTransaction(db, async (transaction) => {
+      // 1. Fetch live occupied project numbers from the projects collection for this year
+      const occupiedInDb = await getOccupiedProjectNumbers(year);
+
+      // 2. Transactionally read the year counter lock document
+      const counterSnap = await transaction.get(counterRef);
+
+      let reservedMap: Record<string, number> = {};
+      if (counterSnap.exists()) {
+        reservedMap = counterSnap.data().reservedMap || {};
+      }
+
+      const now = Date.now();
+      const CLEANUP_THRESHOLD_MS = 60000; // 60s threshold for in-flight reservations
+
+      const activeOccupied = new Set<number>(occupiedInDb);
+      const cleanedReservedMap: Record<string, number> = {};
+
+      Object.entries(reservedMap).forEach(([numStr, timestamp]) => {
+        const num = parseInt(numStr, 10);
+        const isRecent = (now - timestamp) < CLEANUP_THRESHOLD_MS;
+        if (activeOccupied.has(num) || isRecent) {
+          activeOccupied.add(num);
+          cleanedReservedMap[numStr] = timestamp;
         }
-
-        const currentLast = docSnap.data().lastNumber ?? 0;
-        const assignedNumber = currentLast + 1;
-
-        transaction.update(counterRef, {
-          lastNumber: assignedNumber,
-          updatedAt: new Date().toISOString(),
-        });
-
-        return assignedNumber;
       });
 
-      return `${prefix}${nextNum.toString().padStart(3, '0')}`;
-    } catch (err: any) {
-      if (err?.name !== 'CounterNotFoundException' && !(err instanceof CounterNotFoundException)) {
-        throw err;
+      // 3. Find smallest available positive integer starting from 1
+      let candidate = 1;
+      while (activeOccupied.has(candidate)) {
+        candidate++;
       }
-    }
 
-    // 2. Si el contador NO existe aún, se busca el máximo número histórico en proyectos
-    const historicalMax = await findHistoricalMaxProjectNumber(year);
+      // 4. Reserve this candidate number in the counter document
+      cleanedReservedMap[candidate.toString()] = now;
 
-    // 3. Segunda transacción atómica para inicializar el contador de forma segura frente a concurrencia
-    const nextNum = await runTransaction(db, async (transaction) => {
-      const docSnap = await transaction.get(counterRef);
-      let assignedNumber: number;
-
-      if (docSnap.exists()) {
-        // Si otra petición concurrente creó el contador mientras se calculaba el máximo histórico,
-        // se respeta el valor atómico actual del contador.
-        const currentLast = docSnap.data().lastNumber ?? 0;
-        assignedNumber = currentLast + 1;
+      if (counterSnap.exists()) {
         transaction.update(counterRef, {
-          lastNumber: assignedNumber,
+          reservedMap: cleanedReservedMap,
+          lastAssigned: candidate,
           updatedAt: new Date().toISOString(),
         });
       } else {
-        // Primera creación del año: se inicializa el contador con el máximo histórico + 1
-        assignedNumber = historicalMax + 1;
         transaction.set(counterRef, {
           type: 'project',
           year,
-          lastNumber: assignedNumber,
+          reservedMap: cleanedReservedMap,
+          lastAssigned: candidate,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
       }
 
-      return assignedNumber;
+      return candidate;
     });
 
-    return `${prefix}${nextNum.toString().padStart(3, '0')}`;
+    return `${prefix}${assignedNumber.toString().padStart(3, '0')}`;
   } catch (error) {
-    console.error("Error generating transactional project number:", error);
-    throw new Error(`Error al generar el número de proyecto transaccional para el año ${year}: ${(error as Error).message}`);
+    console.error("Error generating project number:", error);
+    throw new Error(`Error al generar el número de proyecto para el año ${year}: ${(error as Error).message}`);
   }
 };
 
@@ -524,6 +512,36 @@ export const updateProject = async (id: string, projectData: Partial<Project>): 
 export const deleteProject = async (id: string): Promise<void> => {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const pData = snap.data();
+      const pNumber = pData?.projectNumber;
+      if (pNumber && typeof pNumber === 'string') {
+        const match = pNumber.match(/^TTC-(\d{4})-(\d+)$/);
+        if (match) {
+          const year = parseInt(match[1], 10);
+          const numPart = parseInt(match[2], 10);
+          const counterRef = doc(db, 'counters', `project_${year}`);
+          try {
+            await runTransaction(db, async (transaction) => {
+              const counterSnap = await transaction.get(counterRef);
+              if (counterSnap.exists()) {
+                const reservedMap = { ...(counterSnap.data().reservedMap || {}) };
+                if (reservedMap[numPart.toString()]) {
+                  delete reservedMap[numPart.toString()];
+                  transaction.update(counterRef, {
+                    reservedMap,
+                    updatedAt: new Date().toISOString(),
+                  });
+                }
+              }
+            });
+          } catch (e) {
+            console.warn("Could not clean reservedMap on project deletion:", e);
+          }
+        }
+      }
+    }
     await deleteDoc(docRef);
   } catch (error) {
     console.error("Error deleting project:", error);
