@@ -284,36 +284,66 @@ const findHistoricalMaxProjectNumber = async (year: number): Promise<number> => 
   return maxNum;
 };
 
+class CounterNotFoundException extends Error {
+  constructor() {
+    super('Counter document does not exist yet');
+    this.name = 'CounterNotFoundException';
+  }
+}
+
 export const generateNextProjectNumber = async (specifiedYear?: number): Promise<string> => {
   const year = specifiedYear || new Date().getFullYear();
   const prefix = `TTC-${year}-`;
   const counterRef = doc(db, 'counters', `project_${year}`);
 
   try {
-    // 1. Verificar si el documento contador para el año ya existe
-    const counterDocSnap = await getDoc(counterRef);
-    let historicalMax: number | null = null;
+    // 1. Intentar primero incrementar el contador directamente en una transacción atómica.
+    // Para el 99.99% de las creaciones donde el contador ya existe, esto es atómico e instantáneo.
+    try {
+      const nextNum = await runTransaction(db, async (transaction) => {
+        const docSnap = await transaction.get(counterRef);
+        if (!docSnap.exists()) {
+          throw new CounterNotFoundException();
+        }
 
-    if (!counterDocSnap.exists()) {
-      // Buscar el número máximo de proyecto existente para este año SOLO en la primera inicialización
-      historicalMax = await findHistoricalMaxProjectNumber(year);
+        const currentLast = docSnap.data().lastNumber ?? 0;
+        const assignedNumber = currentLast + 1;
+
+        transaction.update(counterRef, {
+          lastNumber: assignedNumber,
+          updatedAt: new Date().toISOString(),
+        });
+
+        return assignedNumber;
+      });
+
+      return `${prefix}${nextNum.toString().padStart(3, '0')}`;
+    } catch (err: any) {
+      if (err?.name !== 'CounterNotFoundException' && !(err instanceof CounterNotFoundException)) {
+        throw err;
+      }
     }
 
-    // 2. Transacción atómica de asignación del contador
+    // 2. Si el contador NO existe aún, se busca el máximo número histórico en proyectos
+    const historicalMax = await findHistoricalMaxProjectNumber(year);
+
+    // 3. Segunda transacción atómica para inicializar el contador de forma segura frente a concurrencia
     const nextNum = await runTransaction(db, async (transaction) => {
-      const freshDocSnap = await transaction.get(counterRef);
+      const docSnap = await transaction.get(counterRef);
       let assignedNumber: number;
 
-      if (freshDocSnap.exists()) {
-        const currentLast = freshDocSnap.data().lastNumber ?? 0;
+      if (docSnap.exists()) {
+        // Si otra petición concurrente creó el contador mientras se calculaba el máximo histórico,
+        // se respeta el valor atómico actual del contador.
+        const currentLast = docSnap.data().lastNumber ?? 0;
         assignedNumber = currentLast + 1;
         transaction.update(counterRef, {
           lastNumber: assignedNumber,
           updatedAt: new Date().toISOString(),
         });
       } else {
-        const base = historicalMax !== null ? historicalMax : 0;
-        assignedNumber = base + 1;
+        // Primera creación del año: se inicializa el contador con el máximo histórico + 1
+        assignedNumber = historicalMax + 1;
         transaction.set(counterRef, {
           type: 'project',
           year,
