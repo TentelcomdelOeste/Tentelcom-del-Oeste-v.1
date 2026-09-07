@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ModulePage } from '../../components/ui/ModulePage';
+import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
 import { ActionButton, SearchInput, ConfirmModal, StatusBadge } from '../../design-system';
 import { ActionButtons } from '../../components/ui/ActionButtons';
 import { User } from '../../utils/types';
@@ -15,7 +16,7 @@ import {
   parseCreatedAtDate
 } from './services/projectService';
 import ProjectExpediente from './ProjectExpediente';
-import { FiUser, FiBriefcase, FiCalendar, FiFilter } from 'react-icons/fi';
+import { FiUser, FiBriefcase, FiCalendar } from 'react-icons/fi';
 
 interface ProjectManagementModuleProps {
   currentUser: User;
@@ -219,15 +220,50 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     );
   }
 
-  const isFilterActive = selectedYear !== defaultYear || selectedMonth !== defaultMonth || !!search;
-
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
-        {/* Fila 1: Barra de Búsqueda y Botón NUEVO en la misma fila */}
-        <div className="flex items-center gap-2 sm:gap-3 w-full mb-3">
-          {/* Búsqueda */}
-          <div className="flex-1 min-w-0 relative">
+      <ModuleToolbar>
+        <div className="flex flex-col md:flex-row gap-4 items-center w-full md:w-auto">
+          {selectedId ? (
+            <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 px-4 py-2 rounded-xl animate-in slide-in-from-top-2 duration-300">
+              <span className="text-xs font-bold text-yellow-800">Mostrando resultado de búsqueda</span>
+              <ActionButton 
+                onClick={onClearSelectedId} 
+                label="Ver todos" 
+                variant="secondary" 
+                className="h-7 px-3 text-[10px] bg-white border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+              />
+            </div>
+          ) : (
+            <div className="flex gap-2 w-full md:w-auto">
+              <select 
+                value={selectedYear} 
+                onChange={(e) => {
+                  setSelectedYear(e.target.value);
+                  setCurrentLimit(PAGE_SIZE);
+                }} 
+                className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold outline-none w-full md:w-auto cursor-pointer"
+              >
+                <option value="">Todos los años</option>
+                {availableYears.map(y => <option key={y} value={String(y)}>{y}</option>)}
+              </select>
+              <select 
+                value={selectedMonth} 
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setCurrentLimit(PAGE_SIZE);
+                }} 
+                className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold outline-none w-full md:w-auto cursor-pointer"
+              >
+                <option value="all">Todo el Año</option>
+                {MONTH_NAMES.map((m, i) => (
+                  <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="w-full md:w-72 relative">
             <SearchInput 
               value={search} 
               onChange={(e) => setSearch(e.target.value)} 
@@ -240,74 +276,18 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
               </div>
             )}
           </div>
-
-          {canCreate && (
-            <ActionButton 
-              onClick={() => {
-                setProjectToEdit(null);
-                setShowModal(true);
-              }} 
-              label="NUEVO" 
-              variant="primary"
-              className="!w-auto shrink-0 whitespace-nowrap px-4 sm:px-6 h-[38px]" 
-            />
-          )}
         </div>
-
-        {/* Fila 2: Filtros de Fecha (Año / Mes) */}
-        <div className="flex flex-wrap items-center gap-2 w-full mb-4">
-          {/* Filtro de Año */}
-          <div className="relative flex items-center">
-            <select
-              value={selectedYear}
-              onChange={(e) => {
-                setSelectedYear(e.target.value);
-                setCurrentLimit(PAGE_SIZE);
-              }}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
-            >
-              <option value="">Todos los años</option>
-              {availableYears.map(yr => (
-                <option key={yr} value={String(yr)}>{yr}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Filtro de Mes */}
-          <div className="relative flex items-center">
-            <select
-              value={selectedMonth}
-              onChange={(e) => {
-                setSelectedMonth(e.target.value);
-                setCurrentLimit(PAGE_SIZE);
-              }}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
-            >
-              <option value="all">Todo el Año</option>
-              {MONTH_NAMES.map((m, i) => (
-                <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Botón Restablecer Filtros (Solo visible cuando se modifica del período actual o hay búsqueda) */}
-          {isFilterActive && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedYear(defaultYear);
-                setSelectedMonth(defaultMonth);
-                setSearch('');
-                setCurrentLimit(PAGE_SIZE);
-              }}
-              className="text-xs font-bold text-slate-500 hover:text-indigo-600 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors h-[38px] flex items-center gap-1 cursor-pointer"
-              title="Restablecer al período actual"
-            >
-              <FiFilter size={12} />
-              <span>Limpiar</span>
-            </button>
-          )}
-        </div>
+        {canCreate && (
+          <ActionButton 
+            onClick={() => { 
+              setProjectToEdit(null); 
+              setShowModal(true); 
+            }} 
+            label="NUEVO" 
+            variant="primary"
+          />
+        )}
+      </ModuleToolbar>
 
         <div className="flex-1 overflow-auto py-2">
         {loading ? (

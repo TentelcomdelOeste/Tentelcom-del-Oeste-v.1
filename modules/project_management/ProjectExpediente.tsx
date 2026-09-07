@@ -353,17 +353,28 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
           </div>
         </div>
 
-        {/* Desktop Tabs */}
-        <div className="hidden md:flex gap-1 mt-4 overflow-x-auto custom-scrollbar pb-1">
-          {TABS.map(tab => (
-            <ActionButton
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              variant={activeTab === tab.id ? 'primary' : 'secondary'}
-              label={tab.label}
-              className={`rounded-b-none py-2 px-4 h-auto ${activeTab === tab.id ? 'border-b-2 border-indigo-600' : ''}`}
-            />
-          ))}
+        {/* Desktop Controls Row / Section Selector */}
+        <div className="hidden md:flex items-center justify-between gap-4 mt-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sección:</span>
+            <div className="relative min-w-[280px]">
+              <select
+                value={activeTab}
+                onChange={(e) => setActiveTab(e.target.value as TabKey)}
+                className="w-full appearance-none bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all shadow-xs"
+              >
+                {TABS.map(tab => (
+                  <option key={tab.id} value={tab.id}>{tab.label}</option>
+                ))}
+              </select>
+              <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-slate-400">
+              Mostrando: <strong className="text-indigo-600 font-bold">{TABS.find(t => t.id === activeTab)?.label}</strong>
+            </span>
+          </div>
         </div>
       </div>
 
