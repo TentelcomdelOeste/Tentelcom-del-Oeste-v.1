@@ -106,6 +106,33 @@ const getJobStatusLabel = (status?: string) => {
   return status.toUpperCase().replace(/_/g, ' ');
 };
 
+type DatasetKey = 'jobs' | 'materialRequests' | 'vehicleRequests' | 'vehicleConsumptions' | 'invoices' | 'purchases';
+
+const getRequiredDatasetsForTab = (tab: TabKey): DatasetKey[] => {
+  switch (tab) {
+    case 'resumen':
+      return ['jobs', 'materialRequests', 'invoices', 'purchases'];
+    case 'trabajos':
+    case 'personal':
+    case 'unidades':
+      return ['jobs'];
+    case 'materiales':
+      return ['materialRequests'];
+    case 'bodegas':
+      return ['vehicleRequests'];
+    case 'consumos':
+      return ['vehicleConsumptions'];
+    case 'facturacion':
+      return ['invoices'];
+    case 'compras':
+      return ['purchases'];
+    case 'documentacion':
+    case 'cierre':
+    default:
+      return [];
+  }
+};
+
 const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('resumen');
   
@@ -116,60 +143,144 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
   const [vehicleRequests, setVehicleRequests] = useState<any[]>([]);
   const [vehicleConsumptions, setVehicleConsumptions] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedJobForModal, setSelectedJobForModal] = useState<Trabajo | null>(null);
 
+  // Set of datasets that have completed their initial snapshot fetch
+  const [loadedDatasets, setLoadedDatasets] = useState<Set<DatasetKey>>(new Set());
+  
+  // Ref to hold active unsubscribe functions per dataset key
+  const activeSubsRef = React.useRef<Map<DatasetKey, () => void>>(new Map());
+  const lastProjectIdRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    setLoading(true);
-    let loadedCount = 0;
-    const TOTAL_SUBSCRIPTIONS = 6;
+    const currentProjectId = project.id;
+    const currentProjectNumber = project.projectNumber;
 
-    const checkLoaded = () => {
-      loadedCount++;
-      if (loadedCount >= TOTAL_SUBSCRIPTIONS) {
-        setLoading(false);
+    // Reset subscriptions and state if project changed
+    if (lastProjectIdRef.current && lastProjectIdRef.current !== currentProjectId) {
+      activeSubsRef.current.forEach((unsub) => unsub());
+      activeSubsRef.current.clear();
+      setLoadedDatasets(new Set());
+      setJobs([]);
+      setInvoices([]);
+      setMaterialRequests([]);
+      setVehicleRequests([]);
+      setVehicleConsumptions([]);
+      setPurchases([]);
+    }
+    lastProjectIdRef.current = currentProjectId;
+
+    const requiredKeys = getRequiredDatasetsForTab(activeTab);
+    const requiredSet = new Set(requiredKeys);
+
+    // 1. Unsubscribe subscriptions no longer required by the active tab
+    activeSubsRef.current.forEach((unsub, key) => {
+      if (!requiredSet.has(key)) {
+        unsub();
+        activeSubsRef.current.delete(key);
       }
-    };
-
-    const unsubJobs = subscribeToProjectJobs(project.id, (data) => {
-      setJobs(data);
-      checkLoaded();
-    }, project.projectNumber);
-
-    const unsubInvoices = subscribeToProjectInvoices(project.id, (data) => {
-      setInvoices(data);
-      checkLoaded();
     });
 
-    const unsubRequests = subscribeToProjectMaterialRequests(project.id, (data) => {
-      setMaterialRequests(data);
-      checkLoaded();
-    }, project.projectNumber);
+    // 2. Subscribe required datasets that are not yet active
+    requiredKeys.forEach((key) => {
+      if (activeSubsRef.current.has(key)) {
+        return; // Already actively subscribed
+      }
 
-    const unsubVehicleRequests = subscribeToProjectVehicleRequests(project.id, (data) => {
-      setVehicleRequests(data);
-      checkLoaded();
-    }, project.projectNumber);
+      const markLoaded = () => {
+        setLoadedDatasets((prev) => {
+          if (prev.has(key)) return prev;
+          const next = new Set(prev);
+          next.add(key);
+          return next;
+        });
+      };
 
-    const unsubVehicleConsumptions = subscribeToProjectVehicleConsumptions(project.id, (data) => {
-      setVehicleConsumptions(data);
-      checkLoaded();
-    }, project.projectNumber);
+      let unsub: () => void = () => {};
 
-    const unsubPurchases = subscribeToProjectPurchases(project.id, (data) => {
-      setPurchases(data);
-      checkLoaded();
+      switch (key) {
+        case 'jobs':
+          unsub = subscribeToProjectJobs(
+            currentProjectId,
+            (data) => {
+              setJobs(data);
+              markLoaded();
+            },
+            currentProjectNumber
+          );
+          break;
+
+        case 'materialRequests':
+          unsub = subscribeToProjectMaterialRequests(
+            currentProjectId,
+            (data) => {
+              setMaterialRequests(data);
+              markLoaded();
+            },
+            currentProjectNumber
+          );
+          break;
+
+        case 'vehicleRequests':
+          unsub = subscribeToProjectVehicleRequests(
+            currentProjectId,
+            (data) => {
+              setVehicleRequests(data);
+              markLoaded();
+            },
+            currentProjectNumber
+          );
+          break;
+
+        case 'vehicleConsumptions':
+          unsub = subscribeToProjectVehicleConsumptions(
+            currentProjectId,
+            (data) => {
+              setVehicleConsumptions(data);
+              markLoaded();
+            },
+            currentProjectNumber
+          );
+          break;
+
+        case 'invoices':
+          unsub = subscribeToProjectInvoices(
+            currentProjectId,
+            (data) => {
+              setInvoices(data);
+              markLoaded();
+            }
+          );
+          break;
+
+        case 'purchases':
+          unsub = subscribeToProjectPurchases(
+            currentProjectId,
+            (data) => {
+              setPurchases(data);
+              markLoaded();
+            }
+          );
+          break;
+      }
+
+      activeSubsRef.current.set(key, unsub);
     });
 
+  }, [project.id, project.projectNumber, activeTab]);
+
+  // Cleanup all listeners on component unmount
+  useEffect(() => {
+    const subsMap = activeSubsRef.current;
     return () => {
-      unsubJobs();
-      unsubInvoices();
-      unsubRequests();
-      unsubVehicleRequests();
-      unsubVehicleConsumptions();
-      unsubPurchases();
+      subsMap.forEach((unsub) => unsub());
+      subsMap.clear();
     };
-  }, [project.id, project.projectNumber]);
+  }, []);
+
+  // Determine if the current tab is waiting for initial dataset loading
+  const requiredForActiveTab = getRequiredDatasetsForTab(activeTab);
+  const loading = requiredForActiveTab.length > 0 && requiredForActiveTab.some((key) => !loadedDatasets.has(key));
 
   // Extract unique elements
   const uniquePersonnel = Array.from(new Set(jobs.flatMap(j => j.empleados || []).map((e: any) => e.empleadoId)));
