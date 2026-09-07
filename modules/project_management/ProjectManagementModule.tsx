@@ -39,8 +39,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
-  const [selectedYear, setSelectedYear] = useState<string>('');
-  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<string>('2026');
+  const [selectedMonth, setSelectedMonth] = useState<string>('09');
   const [searchExtraProjects, setSearchExtraProjects] = useState<Project[]>([]);
   const [isSearchingFirestore, setIsSearchingFirestore] = useState(false);
 
@@ -49,18 +49,20 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Lista de años disponibles basados en rango histórico (2020 a año actual + 1) y proyectos cargados
+  // Lista de años disponibles basados en rango válido a partir de 2026
   const availableYears = useMemo(() => {
     const yearsSet = new Set<number>();
+    const baseYear = 2026;
     const currentYear = new Date().getFullYear();
 
-    for (let y = currentYear + 1; y >= 2020; y--) {
-      yearsSet.add(y);
+    yearsSet.add(baseYear);
+    if (currentYear >= baseYear) {
+      yearsSet.add(currentYear);
     }
 
     projects.forEach(p => {
       const d = parseCreatedAtDate(p.createdAt);
-      if (d && !isNaN(d.getFullYear())) {
+      if (d && !isNaN(d.getFullYear()) && d.getFullYear() >= baseYear) {
         yearsSet.add(d.getFullYear());
       }
     });
@@ -213,8 +215,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
-        {/* Barra superior de Búsqueda y Filtros */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 sm:gap-3 w-full mb-4">
+        {/* Fila 1: Barra de Búsqueda y Botón NUEVO en la misma fila */}
+        <div className="flex items-center gap-2 sm:gap-3 w-full mb-3">
           {/* Búsqueda */}
           <div className="flex-1 min-w-0 relative">
             <SearchInput 
@@ -230,81 +232,81 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
             )}
           </div>
 
-          {/* Filtros de Fecha (Año / Mes) y Acciones */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {/* Filtro de Año */}
-            <div className="relative flex items-center">
-              <select
-                value={selectedYear}
-                onChange={(e) => {
-                  setSelectedYear(e.target.value);
-                  setCurrentLimit(PAGE_SIZE);
-                }}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
-              >
-                <option value="">Todos los años</option>
-                {availableYears.map(yr => (
-                  <option key={yr} value={String(yr)}>{yr}</option>
-                ))}
-              </select>
-            </div>
+          {canCreate && (
+            <ActionButton 
+              onClick={() => {
+                setProjectToEdit(null);
+                setShowModal(true);
+              }} 
+              label="NUEVO" 
+              variant="primary"
+              className="!w-auto shrink-0 whitespace-nowrap px-4 sm:px-6 h-[38px]" 
+            />
+          )}
+        </div>
 
-            {/* Filtro de Mes */}
-            <div className="relative flex items-center">
-              <select
-                value={selectedMonth}
-                onChange={(e) => {
-                  setSelectedMonth(e.target.value);
-                  setCurrentLimit(PAGE_SIZE);
-                }}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
-              >
-                <option value="">Todos los meses</option>
-                <option value="01">Enero</option>
-                <option value="02">Febrero</option>
-                <option value="03">Marzo</option>
-                <option value="04">Abril</option>
-                <option value="05">Mayo</option>
-                <option value="06">Junio</option>
-                <option value="07">Julio</option>
-                <option value="08">Agosto</option>
-                <option value="09">Septiembre</option>
-                <option value="10">Octubre</option>
-                <option value="11">Noviembre</option>
-                <option value="12">Diciembre</option>
-              </select>
-            </div>
-
-            {/* Botón Limpiar Filtros */}
-            {isFilterActive && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedYear('');
-                  setSelectedMonth('');
-                  setSearch('');
-                  setCurrentLimit(PAGE_SIZE);
-                }}
-                className="text-xs font-bold text-slate-500 hover:text-indigo-600 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors h-[38px] flex items-center gap-1"
-                title="Limpiar filtros"
-              >
-                <FiFilter size={12} />
-                <span>Limpiar</span>
-              </button>
-            )}
-
-            {canCreate && (
-              <ActionButton 
-                onClick={() => {
-                  setProjectToEdit(null);
-                  setShowModal(true);
-                }} 
-                label="NUEVO" 
-                variant="primary"
-                className="!w-auto shrink-0 whitespace-nowrap px-4 sm:px-6 h-[38px]" 
-              />
-            )}
+        {/* Fila 2: Filtros de Fecha (Año / Mes) */}
+        <div className="flex flex-wrap items-center gap-2 w-full mb-4">
+          {/* Filtro de Año */}
+          <div className="relative flex items-center">
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                setCurrentLimit(PAGE_SIZE);
+              }}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
+            >
+              <option value="">Todos los años</option>
+              {availableYears.map(yr => (
+                <option key={yr} value={String(yr)}>{yr}</option>
+              ))}
+            </select>
           </div>
+
+          {/* Filtro de Mes */}
+          <div className="relative flex items-center">
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                setCurrentLimit(PAGE_SIZE);
+              }}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
+            >
+              <option value="">Todos los meses</option>
+              <option value="01">Enero</option>
+              <option value="02">Febrero</option>
+              <option value="03">Marzo</option>
+              <option value="04">Abril</option>
+              <option value="05">Mayo</option>
+              <option value="06">Junio</option>
+              <option value="07">Julio</option>
+              <option value="08">Agosto</option>
+              <option value="09">Septiembre</option>
+              <option value="10">Octubre</option>
+              <option value="11">Noviembre</option>
+              <option value="12">Diciembre</option>
+            </select>
+          </div>
+
+          {/* Botón Limpiar Filtros */}
+          {isFilterActive && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedYear('');
+                setSelectedMonth('');
+                setSearch('');
+                setCurrentLimit(PAGE_SIZE);
+              }}
+              className="text-xs font-bold text-slate-500 hover:text-indigo-600 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors h-[38px] flex items-center gap-1"
+              title="Limpiar filtros"
+            >
+              <FiFilter size={12} />
+              <span>Limpiar</span>
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-auto py-2">
