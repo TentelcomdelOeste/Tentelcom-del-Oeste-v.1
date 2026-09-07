@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
