@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ModulePage } from '../../components/ui/ModulePage';
-import { ActionButton, SearchInput, ConfirmModal } from '../../design-system';
+import { ActionButton, SearchInput, ConfirmModal, StatusBadge } from '../../design-system';
 import { ActionButtons } from '../../components/ui/ActionButtons';
 import { User } from '../../utils/types';
 import { can, isAdmin } from '../../utils/permissions';
@@ -320,7 +320,137 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Vista Escritorio: Tabla alineada con el patrón visual de Cotizaciones */}
+            <div className="hidden md:block">
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                {/* Header */}
+                <div className="bg-slate-50 border-b border-slate-200 flex items-stretch px-4 sticky top-0 z-30 rounded-t-2xl relative shadow-xs isolate before:content-[''] before:absolute before:-top-6 before:-left-px before:-right-px before:h-6 before:bg-slate-50 before:z-30 before:pointer-events-none">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 h-12 flex items-center justify-center px-3 border-r border-slate-200/70 w-[130px] shrink-0">
+                    <span className="w-full text-center truncate">N°</span>
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 h-12 flex items-center px-3 border-r border-slate-200/70 flex-1 min-w-[220px]">
+                    <span className="w-full text-left truncate">Proyecto</span>
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 h-12 flex items-center px-3 border-r border-slate-200/70 w-[200px] shrink-0">
+                    <span className="w-full text-left truncate">Cliente / Empresa</span>
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 h-12 flex items-center px-3 border-r border-slate-200/70 w-[150px] shrink-0">
+                    <span className="w-full text-left truncate">Creado por</span>
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 h-12 flex items-center justify-center px-3 border-r border-slate-200/70 w-[110px] shrink-0">
+                    <span className="w-full text-center truncate">Fecha</span>
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 h-12 flex items-center justify-center px-3 border-r border-slate-200/70 w-[130px] shrink-0">
+                    <span className="w-full text-center truncate">Estado</span>
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 h-12 flex items-center justify-center px-3 w-[110px] shrink-0">
+                    <span className="w-full text-center truncate">Acciones</span>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 relative z-0 rounded-b-2xl overflow-hidden">
+                  {filteredProjects.map((project, index) => {
+                    const isHighlighted = selectedId && (project.id === selectedId || project.projectNumber === selectedId);
+                    const isEven = index % 2 === 0;
+                    const projectDate = project.startDate || (project.createdAt ? (() => {
+                      const d = parseCreatedAtDate(project.createdAt);
+                      return d && !isNaN(d.getTime()) ? d.toLocaleDateString('es-CR') : 'N/A';
+                    })() : 'N/A');
+
+                    return (
+                      <div
+                        key={project.id}
+                        onClick={() => { if (canViewExpediente) setCurrentProject(project); }}
+                        className={`flex items-stretch px-4 hover:bg-blue-50/20 transition-colors border-b border-slate-200 group cursor-pointer ${
+                          isHighlighted
+                            ? 'bg-yellow-50 border-yellow-400 ring-2 ring-yellow-200/50 z-10 relative animate-in fade-in duration-500'
+                            : isEven ? 'bg-white' : 'bg-slate-50/40'
+                        }`}
+                        style={{ minHeight: '60px' }}
+                      >
+                        {/* N° */}
+                        <div className="text-xs font-bold text-center justify-center flex items-center text-blue-950 px-3 py-3 border-r border-slate-200/40 w-[130px] shrink-0">
+                          <span className="font-black text-blue-950 text-[11px] whitespace-nowrap">
+                            {project.projectNumber}
+                          </span>
+                        </div>
+
+                        {/* Proyecto */}
+                        <div className="text-xs font-bold text-left justify-start flex items-center text-blue-950 px-3 py-3 border-r border-slate-200/40 flex-1 min-w-[220px]">
+                          <div className="flex flex-col truncate w-full">
+                            <span className="font-black text-blue-900 text-xs truncate" title={project.name}>
+                              {project.name}
+                            </span>
+                            {project.origin === 'Cotización' && project.quoteCommercialId && (
+                              <span className="text-[10px] text-indigo-600 font-bold truncate opacity-80" title={`Origen: Cotización #${project.quoteCommercialId}`}>
+                                Origen: Cotización #{project.quoteCommercialId}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Cliente / Empresa */}
+                        <div className="text-xs font-bold text-left justify-start flex items-center text-blue-950 px-3 py-3 border-r border-slate-200/40 w-[200px] shrink-0">
+                          <div className="flex flex-col truncate w-full">
+                            <span className="font-bold text-slate-700 text-xs truncate" title={project.clientName || 'Sin cliente asignado'}>
+                              {project.clientName || 'Sin cliente asignado'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Creado por */}
+                        <div className="text-xs font-bold text-left justify-start flex items-center text-blue-950 px-3 py-3 border-r border-slate-200/40 w-[150px] shrink-0">
+                          <div className="flex items-center gap-1.5 truncate text-slate-600 w-full">
+                            <FiUser className="text-slate-400 text-xs shrink-0" />
+                            <span className="font-bold text-[11px] text-slate-600 truncate" title={project.createdByDisplayName || 'Usuario'}>
+                              {project.createdByDisplayName || 'Usuario'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Fecha */}
+                        <div className="text-xs font-bold text-center justify-center font-mono text-slate-500 text-[11px] flex items-center px-3 py-3 border-r border-slate-200/40 w-[110px] shrink-0">
+                          <span className="font-mono font-bold text-slate-500 text-[11px] whitespace-nowrap">
+                            {projectDate}
+                          </span>
+                        </div>
+
+                        {/* Estado */}
+                        <div className="text-xs font-bold text-center justify-center flex items-center px-3 py-3 border-r border-slate-200/40 w-[130px] shrink-0">
+                          <div className="flex items-center justify-center w-full">
+                            <StatusBadge 
+                              label={project.status} 
+                              variant={
+                                project.status === 'Cerrado' ? 'neutral' :
+                                project.status === 'En Ejecución' ? 'success' :
+                                'info'
+                              } 
+                            />
+                          </div>
+                        </div>
+
+                        {/* Acciones */}
+                        <div 
+                          className="text-xs font-bold text-center justify-center flex items-center px-3 py-3 w-[110px] shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex justify-center items-center gap-2 w-full">
+                            <ActionButtons 
+                              onEdit={canEdit ? () => handleEdit(project) : undefined}
+                              onDelete={canDelete ? () => setProjectToDelete(project) : undefined}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Vista Móvil: Tarjetas Móviles Intactas */}
+            <div className="md:hidden grid grid-cols-1 gap-4">
               {filteredProjects.map(project => (
                 <div
                   key={project.id}
@@ -338,7 +468,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                               <div className="font-black text-indigo-700">{project.projectNumber}</div>
                           </div>
                       </div>
-                      <div>
+                      <div onClick={(e) => e.stopPropagation()}>
                         <ActionButtons
                           onEdit={canEdit ? () => handleEdit(project) : undefined}
                           onDelete={canDelete ? () => setProjectToDelete(project) : undefined}

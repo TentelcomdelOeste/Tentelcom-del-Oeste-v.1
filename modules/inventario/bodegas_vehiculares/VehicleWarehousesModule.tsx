@@ -149,6 +149,10 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
   };
 
   const handleCancelRequest = async (payload: { requestId: string; observations?: string }) => {
+    if (!payload?.requestId) {
+      console.error("handleCancelRequest error: requestId is required", payload);
+      throw new Error("ID de solicitud no proporcionado");
+    }
     await vehicleWarehouseService.cancelRequest(
       payload.requestId,
       currentUser,

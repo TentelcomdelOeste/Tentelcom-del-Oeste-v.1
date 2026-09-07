@@ -16,10 +16,10 @@ interface Props {
   selectedVehicleId?: string;
   requests?: VehicleMaterialRequest[];
   items?: VehicleWarehouseItem[];
-  onCreateRequest?: (payload: any) => void;
-  onUpdateRequest?: (payload: any) => void;
-  onCancelRequest?: (requestId: string) => void;
-  onCloseRequest?: (payload: any) => void;
+  onCreateRequest?: (payload: any) => Promise<void> | void;
+  onUpdateRequest?: (payload: any) => Promise<void> | void;
+  onCancelRequest?: (payload: { requestId: string; observations?: string }) => Promise<void> | void;
+  onCloseRequest?: (payload: any) => Promise<void> | void;
   activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
   onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
 }
@@ -62,9 +62,15 @@ export const VehicleRequestsTab: React.FC<Props> = ({
     if (confirmed) {
       if (onCancelRequest) {
         try {
-          await onCancelRequest(req.id);
+          await onCancelRequest({ requestId: req.id });
         } catch (err: any) {
-          alert(err.message || 'Error al cancelar solicitud');
+          console.error('Error al cancelar solicitud:', err);
+          await confirm({
+            title: 'Error al cancelar solicitud',
+            description: err?.message || 'Ocurrió un error al procesar la cancelación de la solicitud.',
+            confirmLabel: 'Aceptar',
+            variant: 'danger'
+          });
         }
       }
     }
@@ -243,12 +249,20 @@ export const VehicleRequestsTab: React.FC<Props> = ({
                   })),
                   observations: (newReq as any).observations
                 });
+                setShowNewModal(false);
               } catch (err: any) {
-                alert(err.message || 'Error al crear solicitud');
+                console.error('Error al crear solicitud:', err);
+                await confirm({
+                  title: 'Error al crear solicitud',
+                  description: err?.message || 'Ocurrió un error al procesar la creación de la solicitud.',
+                  confirmLabel: 'Aceptar',
+                  variant: 'danger'
+                });
                 return;
               }
+            } else {
+              setShowNewModal(false);
             }
-            setShowNewModal(false);
           }}
         />
       )}
@@ -275,12 +289,20 @@ export const VehicleRequestsTab: React.FC<Props> = ({
                   })),
                   observations: (updatedReq as any).observations
                 });
+                setRequestToEdit(null);
               } catch (err: any) {
-                alert(err.message || 'Error al actualizar solicitud');
+                console.error('Error al actualizar solicitud:', err);
+                await confirm({
+                  title: 'Error al actualizar solicitud',
+                  description: err?.message || 'Ocurrió un error al procesar la actualización de la solicitud.',
+                  confirmLabel: 'Aceptar',
+                  variant: 'danger'
+                });
                 return;
               }
+            } else {
+              setRequestToEdit(null);
             }
-            setRequestToEdit(null);
           }}
         />
       )}
@@ -311,12 +333,20 @@ export const VehicleRequestsTab: React.FC<Props> = ({
             if (onCloseRequest) {
               try {
                 await onCloseRequest(payload);
+                setRequestToClose(null);
               } catch (err: any) {
-                alert(err.message || 'Error al cerrar solicitud');
+                console.error('Error al cerrar solicitud:', err);
+                await confirm({
+                  title: 'Error al cerrar solicitud',
+                  description: err?.message || 'Ocurrió un error al procesar el cierre de la solicitud.',
+                  confirmLabel: 'Aceptar',
+                  variant: 'danger'
+                });
                 return;
               }
+            } else {
+              setRequestToClose(null);
             }
-            setRequestToClose(null);
           }}
         />
       )}
