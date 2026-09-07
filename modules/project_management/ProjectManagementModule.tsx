@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ModulePage } from '../../components/ui/ModulePage';
 import { ActionButton, SearchInput, ConfirmModal } from '../../design-system';
 import { ActionButtons } from '../../components/ui/ActionButtons';
@@ -6,9 +6,16 @@ import { User } from '../../utils/types';
 import { can, isAdmin } from '../../utils/permissions';
 import { Project } from './types';
 import { ProjectFormModal } from './components/ProjectFormModal';
-import { deleteProject, subscribeToProjects, searchProjectsInFirestore, getProjectById, getProjectByQuoteId } from './services/projectService';
+import { 
+  deleteProject, 
+  subscribeToProjects, 
+  searchProjectsInFirestore, 
+  getProjectById, 
+  getProjectByQuoteId,
+  parseCreatedAtDate
+} from './services/projectService';
 import ProjectExpediente from './ProjectExpediente';
-import { FiUser, FiBriefcase, FiCalendar } from 'react-icons/fi';
+import { FiUser, FiBriefcase, FiCalendar, FiFilter } from 'react-icons/fi';
 
 interface ProjectManagementModuleProps {
   currentUser: User;
@@ -16,7 +23,7 @@ interface ProjectManagementModuleProps {
   onClearSelectedId?: () => void;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 60;
 
 const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ currentUser, selectedId, onClearSelectedId }) => {
   const [showModal, setShowModal] = useState(false);
@@ -32,6 +39,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
+  const [selectedYear, setSelectedYear] = useState<string>('');
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [searchExtraProjects, setSearchExtraProjects] = useState<Project[]>([]);
   const [isSearchingFirestore, setIsSearchingFirestore] = useState(false);
 
@@ -40,7 +49,25 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // 1. Suscripción en tiempo real limitada a los primeros N proyectos (Paginación acumulativa)
+  // Lista dinámica de años disponibles según el tiempo actual y registros en estado
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<number>();
+    const currentYear = new Date().getFullYear();
+    yearsSet.add(currentYear);
+    yearsSet.add(currentYear - 1);
+    yearsSet.add(currentYear - 2);
+
+    projects.forEach(p => {
+      const d = parseCreatedAtDate(p.createdAt);
+      if (d && !isNaN(d.getFullYear())) {
+        yearsSet.add(d.getFullYear());
+      }
+    });
+
+    return Array.from(yearsSet).sort((a, b) => b - a);
+  }, [projects]);
+
+  // 1. Suscripción en tiempo real paginada y filtrada por Año/Mes en Firestore
   useEffect(() => {
     if (currentLimit === PAGE_SIZE) {
       setLoading(true);
@@ -48,17 +75,21 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
       setLoadingMore(true);
     }
 
-    const unsubscribe = subscribeToProjects((data, more) => {
-      setProjects(data);
-      setHasMore(more);
-      setLoading(false);
-      setLoadingMore(false);
-    }, currentLimit);
+    const unsubscribe = subscribeToProjects(
+      (data, more) => {
+        setProjects(data);
+        setHasMore(more);
+        setLoading(false);
+        setLoadingMore(false);
+      },
+      currentLimit,
+      { year: selectedYear, month: selectedMonth }
+    );
 
     return () => unsubscribe();
-  }, [currentLimit]);
+  }, [currentLimit, selectedYear, selectedMonth]);
 
-  // 2. Búsqueda asistida en Firestore para proyectos fuera de la ventana de paginación
+  // 2. Búsqueda asistida en Firestore con debounce que respeta filtros de fecha
   useEffect(() => {
     const term = search.trim();
     if (!term) {
@@ -70,7 +101,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     setIsSearchingFirestore(true);
     const timer = setTimeout(async () => {
       try {
-        const results = await searchProjectsInFirestore(term);
+        const results = await searchProjectsInFirestore(term, { year: selectedYear, month: selectedMonth });
         setSearchExtraProjects(results);
       } catch (err) {
         console.error("Error searching projects in Firestore:", err);
@@ -80,7 +111,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, selectedYear, selectedMonth]);
 
   // 3. Selección directa por ID o número de proyecto (ej. desde notificaciones/enlaces)
   useEffect(() => {
@@ -128,7 +159,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     setShowModal(true);
   };
 
-  // Combinar proyectos paginados en tiempo real y extra-resultados de búsqueda evitando duplicados
+  // Combinar proyectos paginados en tiempo real y resultados extra de búsqueda deduplicando por ID
   const combinedMap = new Map<string, Project>();
   projects.forEach(p => combinedMap.set(p.id, p));
   searchExtraProjects.forEach(p => {
@@ -139,14 +170,29 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
 
   const allAvailable = Array.from(combinedMap.values());
   const searchTrim = search.trim().toLowerCase();
+  const yearNum = selectedYear ? parseInt(selectedYear, 10) : NaN;
+  const monthNum = selectedMonth ? parseInt(selectedMonth, 10) : NaN;
 
-  const filteredProjects = searchTrim
-    ? allAvailable.filter(p => 
-        p.name.toLowerCase().includes(searchTrim) || 
+  const filteredProjects = allAvailable.filter(p => {
+    // Coincidencia con término de búsqueda
+    if (searchTrim) {
+      const matchesSearch =
+        p.name.toLowerCase().includes(searchTrim) ||
         p.projectNumber.toLowerCase().includes(searchTrim) ||
-        (p.clientName || '').toLowerCase().includes(searchTrim)
-      )
-    : projects;
+        (p.clientName || '').toLowerCase().includes(searchTrim);
+      if (!matchesSearch) return false;
+    }
+
+    // Coincidencia con filtros de Año y Mes
+    if (!isNaN(yearNum) || !isNaN(monthNum)) {
+      const d = parseCreatedAtDate(p.createdAt);
+      if (!d || isNaN(d.getTime())) return false;
+      if (!isNaN(yearNum) && d.getFullYear() !== yearNum) return false;
+      if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12 && d.getMonth() + 1 !== monthNum) return false;
+    }
+
+    return true;
+  });
 
   if (currentProject) {
     return (
@@ -161,43 +207,114 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     );
   }
 
+  const isFilterActive = !!(selectedYear || selectedMonth || search);
+
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
-        <div className="flex flex-row items-center gap-2 sm:gap-3 w-full mb-4">
+        {/* Barra superior de Búsqueda y Filtros */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 sm:gap-3 w-full mb-4">
+          {/* Búsqueda */}
           <div className="flex-1 min-w-0 relative">
             <SearchInput 
-               value={search} 
-               onChange={(e) => setSearch(e.target.value)} 
-               placeholder="Buscar por nombre, número o cliente..." 
-               className="w-full" 
-             />
-             {isSearchingFirestore && (
-               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
-               </div>
-             )}
-          </div>
-          {canCreate && (
-            <ActionButton 
-              onClick={() => {
-                setProjectToEdit(null);
-                setShowModal(true);
-              }} 
-              label="NUEVO" 
-              variant="primary"
-              className="!w-auto shrink-0 whitespace-nowrap px-4 sm:px-6" 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)} 
+              placeholder="Buscar por nombre, número o cliente..." 
+              className="w-full" 
             />
-          )}
+            {isSearchingFirestore && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+              </div>
+            )}
+          </div>
+
+          {/* Filtros de Fecha (Año / Mes) y Acciones */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Filtro de Año */}
+            <div className="relative flex items-center">
+              <select
+                value={selectedYear}
+                onChange={(e) => {
+                  setSelectedYear(e.target.value);
+                  setCurrentLimit(PAGE_SIZE);
+                }}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
+              >
+                <option value="">Todos los años</option>
+                {availableYears.map(yr => (
+                  <option key={yr} value={String(yr)}>{yr}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro de Mes */}
+            <div className="relative flex items-center">
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setCurrentLimit(PAGE_SIZE);
+                }}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
+              >
+                <option value="">Todos los meses</option>
+                <option value="01">Enero</option>
+                <option value="02">Febrero</option>
+                <option value="03">Marzo</option>
+                <option value="04">Abril</option>
+                <option value="05">Mayo</option>
+                <option value="06">Junio</option>
+                <option value="07">Julio</option>
+                <option value="08">Agosto</option>
+                <option value="09">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+              </select>
+            </div>
+
+            {/* Botón Limpiar Filtros */}
+            {isFilterActive && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedYear('');
+                  setSelectedMonth('');
+                  setSearch('');
+                  setCurrentLimit(PAGE_SIZE);
+                }}
+                className="text-xs font-bold text-slate-500 hover:text-indigo-600 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors h-[38px] flex items-center gap-1"
+                title="Limpiar filtros"
+              >
+                <FiFilter size={12} />
+                <span>Limpiar</span>
+              </button>
+            )}
+
+            {canCreate && (
+              <ActionButton 
+                onClick={() => {
+                  setProjectToEdit(null);
+                  setShowModal(true);
+                }} 
+                label="NUEVO" 
+                variant="primary"
+                className="!w-auto shrink-0 whitespace-nowrap px-4 sm:px-6 h-[38px]" 
+              />
+            )}
+          </div>
         </div>
 
-        <div className="flex-1 overflow-auto py-6">
+        <div className="flex-1 overflow-auto py-2">
         {loading ? (
           <div className="flex justify-center items-center h-40">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
           </div>
         ) : filteredProjects.length === 0 ? (
-          <div className="text-center text-slate-500 mt-10">No se encontraron proyectos activos en el sistema.</div>
+          <div className="text-center text-slate-500 mt-10 py-8 bg-white rounded-2xl border border-slate-100 shadow-sm">
+            No se encontraron proyectos con los criterios de búsqueda o filtros seleccionados.
+          </div>
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

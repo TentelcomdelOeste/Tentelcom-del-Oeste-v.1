@@ -1,16 +1,28 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, QueryConstraint, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
 
 const COLLECTION_NAME = 'projects';
 
-export const getProjects = async (): Promise<Project[]> => {
+export interface ProjectFilterOptions {
+  year?: string;
+  month?: string;
+}
+
+export const parseCreatedAtDate = (createdAt: any): Date | null => {
+  if (!createdAt) return null;
+  if (typeof createdAt === 'string') return new Date(createdAt);
+  if (typeof createdAt.toDate === 'function') return createdAt.toDate();
+  if (createdAt.seconds) return new Date(createdAt.seconds * 1000);
+  return null;
+};
+
+export const getProjects = async (limitSize: number = 60): Promise<Project[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME), 
-      orderBy('createdAt', 'desc')
-    );
+    const q = limitSize > 0
+      ? query(collection(db, COLLECTION_NAME), orderBy('createdAt', 'desc'), limit(limitSize))
+      : query(collection(db, COLLECTION_NAME), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
   } catch (error) {
@@ -21,21 +33,55 @@ export const getProjects = async (): Promise<Project[]> => {
 
 export const subscribeToProjects = (
   callback: (projects: Project[], hasMore: boolean) => void,
-  limitSize: number = 20
+  limitSize: number = 60,
+  filters?: ProjectFilterOptions
 ): () => void => {
-  const q = limitSize > 0
-    ? query(
-        collection(db, COLLECTION_NAME), 
-        orderBy('createdAt', 'desc'),
-        limit(limitSize)
-      )
-    : query(
-        collection(db, COLLECTION_NAME), 
-        orderBy('createdAt', 'desc')
-      );
-  
+  const constraints: QueryConstraint[] = [];
+
+  const yearNum = filters?.year ? parseInt(filters.year, 10) : NaN;
+  const monthNum = filters?.month ? parseInt(filters.month, 10) : NaN;
+
+  if (!isNaN(yearNum)) {
+    if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+      const startMonthStr = String(monthNum).padStart(2, '0');
+      const nextYear = monthNum === 12 ? yearNum + 1 : yearNum;
+      const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
+      const endMonthStr = String(nextMonthNum).padStart(2, '0');
+
+      const startStr = `${yearNum}-${startMonthStr}-01`;
+      const endStr = `${nextYear}-${endMonthStr}-01`;
+
+      constraints.push(where('createdAt', '>=', startStr));
+      constraints.push(where('createdAt', '<', endStr));
+    } else {
+      const startStr = `${yearNum}-01-01`;
+      const endStr = `${yearNum + 1}-01-01`;
+
+      constraints.push(where('createdAt', '>=', startStr));
+      constraints.push(where('createdAt', '<', endStr));
+    }
+  }
+
+  constraints.push(orderBy('createdAt', 'desc'));
+
+  if (limitSize > 0) {
+    constraints.push(limit(limitSize));
+  }
+
+  const q = query(collection(db, COLLECTION_NAME), ...constraints);
+
   return onSnapshot(q, (snapshot) => {
-    const projects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+    let projects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+
+    // Si no se especificó año pero sí un mes específico, filtramos en memoria sobre el snapshot
+    if (isNaN(yearNum) && !isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+      projects = projects.filter(p => {
+        const d = parseCreatedAtDate(p.createdAt);
+        if (!d || isNaN(d.getTime())) return false;
+        return d.getMonth() + 1 === monthNum;
+      });
+    }
+
     const hasMore = limitSize > 0 ? snapshot.docs.length >= limitSize : false;
     callback(projects, hasMore);
   }, (error) => {
@@ -44,7 +90,10 @@ export const subscribeToProjects = (
   });
 };
 
-export const searchProjectsInFirestore = async (searchTerm: string): Promise<Project[]> => {
+export const searchProjectsInFirestore = async (
+  searchTerm: string,
+  filters?: ProjectFilterOptions
+): Promise<Project[]> => {
   if (!searchTerm || !searchTerm.trim()) return [];
   const term = searchTerm.trim();
   const termUpper = term.toUpperCase();
@@ -96,7 +145,30 @@ export const searchProjectsInFirestore = async (searchTerm: string): Promise<Pro
       });
     }
 
-    return Array.from(resultsMap.values());
+    let results = Array.from(resultsMap.values());
+
+    const yearNum = filters?.year ? parseInt(filters.year, 10) : NaN;
+    const monthNum = filters?.month ? parseInt(filters.month, 10) : NaN;
+
+    if (!isNaN(yearNum)) {
+      results = results.filter(p => {
+        const d = parseCreatedAtDate(p.createdAt);
+        if (!d || isNaN(d.getTime())) return false;
+        if (d.getFullYear() !== yearNum) return false;
+        if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+          if (d.getMonth() + 1 !== monthNum) return false;
+        }
+        return true;
+      });
+    } else if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+      results = results.filter(p => {
+        const d = parseCreatedAtDate(p.createdAt);
+        if (!d || isNaN(d.getTime())) return false;
+        return d.getMonth() + 1 === monthNum;
+      });
+    }
+
+    return results;
   } catch (error) {
     console.error("Error searching projects in Firestore:", error);
     return [];

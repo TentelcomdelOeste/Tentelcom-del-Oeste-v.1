@@ -88,7 +88,7 @@ export const MaterialRequestModal = ({
 
   useEffect(() => {
     if (show) {
-      getProjects().then(setProjects).catch(console.error);
+      getProjects(100).then(setProjects).catch(console.error);
     }
   }, [show]);
 

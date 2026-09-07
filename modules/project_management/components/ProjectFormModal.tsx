@@ -89,7 +89,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       try {
         const [quotes, projects] = await Promise.all([
           getApprovedQuotes(),
-          getProjects()
+          getProjects(100)
         ]);
         setApprovedQuotes(quotes);
         setAllProjects(projects);
