@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, QueryConstraint, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, QueryConstraint, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
@@ -256,35 +256,80 @@ export const checkQuoteHasProject = async (quoteIdOrDocId: string): Promise<Proj
   return getProjectByQuoteId(quoteIdOrDocId);
 };
 
-export const generateNextProjectNumber = async (): Promise<string> => {
-  const year = new Date().getFullYear();
+const findHistoricalMaxProjectNumber = async (year: number): Promise<number> => {
   const prefix = `TTC-${year}-`;
-  
+  let maxNum = 0;
+
   try {
-    const q = query(collection(db, COLLECTION_NAME));
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where('projectNumber', '>=', prefix),
+      where('projectNumber', '<=', prefix + '\uf8ff')
+    );
     const snapshot = await getDocs(q);
-    
-    const occupiedNumbers = new Set<number>();
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      const pNumber = data.projectNumber;
+
+    snapshot.docs.forEach(d => {
+      const pNumber = d.data().projectNumber;
       if (pNumber && typeof pNumber === 'string' && pNumber.startsWith(prefix)) {
         const numPart = parseInt(pNumber.replace(prefix, ''), 10);
-        if (!isNaN(numPart)) {
-          occupiedNumbers.add(numPart);
+        if (!isNaN(numPart) && numPart > maxNum) {
+          maxNum = numPart;
         }
       }
     });
-    
-    let nextNum = 1;
-    while (occupiedNumbers.has(nextNum)) {
-      nextNum++;
+  } catch (error) {
+    console.error(`Error querying historical max project number for ${year}:`, error);
+  }
+
+  return maxNum;
+};
+
+export const generateNextProjectNumber = async (specifiedYear?: number): Promise<string> => {
+  const year = specifiedYear || new Date().getFullYear();
+  const prefix = `TTC-${year}-`;
+  const counterRef = doc(db, 'counters', `project_${year}`);
+
+  try {
+    // 1. Verificar si el documento contador para el año ya existe
+    const counterDocSnap = await getDoc(counterRef);
+    let historicalMax: number | null = null;
+
+    if (!counterDocSnap.exists()) {
+      // Buscar el número máximo de proyecto existente para este año SOLO en la primera inicialización
+      historicalMax = await findHistoricalMaxProjectNumber(year);
     }
-    
+
+    // 2. Transacción atómica de asignación del contador
+    const nextNum = await runTransaction(db, async (transaction) => {
+      const freshDocSnap = await transaction.get(counterRef);
+      let assignedNumber: number;
+
+      if (freshDocSnap.exists()) {
+        const currentLast = freshDocSnap.data().lastNumber ?? 0;
+        assignedNumber = currentLast + 1;
+        transaction.update(counterRef, {
+          lastNumber: assignedNumber,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        const base = historicalMax !== null ? historicalMax : 0;
+        assignedNumber = base + 1;
+        transaction.set(counterRef, {
+          type: 'project',
+          year,
+          lastNumber: assignedNumber,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      return assignedNumber;
+    });
+
     return `${prefix}${nextNum.toString().padStart(3, '0')}`;
   } catch (error) {
-    console.error("Error generating project number:", error);
-    return `${prefix}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+    console.error("Error generating transactional project number:", error);
+    throw new Error(`Error al generar el número de proyecto transaccional para el año ${year}: ${(error as Error).message}`);
   }
 };
 
