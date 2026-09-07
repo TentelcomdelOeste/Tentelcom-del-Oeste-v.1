@@ -25,6 +25,15 @@ interface ProjectManagementModuleProps {
 
 const PAGE_SIZE = 60;
 
+const MONTH_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+];
+
+const now = new Date();
+const defaultYear = now.getFullYear().toString();
+const defaultMonth = (now.getMonth() + 1).toString().padStart(2, '0');
+
 const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ currentUser, selectedId, onClearSelectedId }) => {
   const [showModal, setShowModal] = useState(false);
 
@@ -39,8 +48,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
-  const [selectedYear, setSelectedYear] = useState<string>('2026');
-  const [selectedMonth, setSelectedMonth] = useState<string>('09');
+  const [selectedYear, setSelectedYear] = useState<string>(defaultYear);
+  const [selectedMonth, setSelectedMonth] = useState<string>(defaultMonth);
   const [searchExtraProjects, setSearchExtraProjects] = useState<Project[]>([]);
   const [isSearchingFirestore, setIsSearchingFirestore] = useState(false);
 
@@ -210,7 +219,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     );
   }
 
-  const isFilterActive = !!(selectedYear || selectedMonth || search);
+  const isFilterActive = selectedYear !== defaultYear || selectedMonth !== defaultMonth || !!search;
 
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
@@ -274,34 +283,25 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
               }}
               className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer shadow-sm h-[38px] transition-all"
             >
-              <option value="">Todos los meses</option>
-              <option value="01">Enero</option>
-              <option value="02">Febrero</option>
-              <option value="03">Marzo</option>
-              <option value="04">Abril</option>
-              <option value="05">Mayo</option>
-              <option value="06">Junio</option>
-              <option value="07">Julio</option>
-              <option value="08">Agosto</option>
-              <option value="09">Septiembre</option>
-              <option value="10">Octubre</option>
-              <option value="11">Noviembre</option>
-              <option value="12">Diciembre</option>
+              <option value="all">Todo el Año</option>
+              {MONTH_NAMES.map((m, i) => (
+                <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>
+              ))}
             </select>
           </div>
 
-          {/* Botón Limpiar Filtros */}
+          {/* Botón Restablecer Filtros (Solo visible cuando se modifica del período actual o hay búsqueda) */}
           {isFilterActive && (
             <button
               type="button"
               onClick={() => {
-                setSelectedYear('');
-                setSelectedMonth('');
+                setSelectedYear(defaultYear);
+                setSelectedMonth(defaultMonth);
                 setSearch('');
                 setCurrentLimit(PAGE_SIZE);
               }}
-              className="text-xs font-bold text-slate-500 hover:text-indigo-600 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors h-[38px] flex items-center gap-1"
-              title="Limpiar filtros"
+              className="text-xs font-bold text-slate-500 hover:text-indigo-600 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors h-[38px] flex items-center gap-1 cursor-pointer"
+              title="Restablecer al período actual"
             >
               <FiFilter size={12} />
               <span>Limpiar</span>
