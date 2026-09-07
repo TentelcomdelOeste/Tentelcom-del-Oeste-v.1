@@ -6,7 +6,7 @@ import { User } from '../../utils/types';
 import { can, isAdmin } from '../../utils/permissions';
 import { Project } from './types';
 import { ProjectFormModal } from './components/ProjectFormModal';
-import { deleteProject, subscribeToProjects } from './services/projectService';
+import { deleteProject, subscribeToProjects, searchProjectsInFirestore, getProjectById, getProjectByQuoteId } from './services/projectService';
 import ProjectExpediente from './ProjectExpediente';
 import { FiUser, FiBriefcase, FiCalendar } from 'react-icons/fi';
 
@@ -16,6 +16,8 @@ interface ProjectManagementModuleProps {
   onClearSelectedId?: () => void;
 }
 
+const PAGE_SIZE = 20;
+
 const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ currentUser, selectedId, onClearSelectedId }) => {
   const [showModal, setShowModal] = useState(false);
 
@@ -23,30 +25,88 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const canCreate = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.crear');
   const canEdit = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.editar');
   const canDelete = isAdmin(currentUser?.role) || can(currentUser, 'gestion_proyectos.eliminar');
+
   const [projects, setProjects] = useState<Project[]>([]);
+  const [currentLimit, setCurrentLimit] = useState(PAGE_SIZE);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
+  const [searchExtraProjects, setSearchExtraProjects] = useState<Project[]>([]);
+  const [isSearchingFirestore, setIsSearchingFirestore] = useState(false);
+
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // 1. Suscripción en tiempo real limitada a los primeros N proyectos (Paginación acumulativa)
   useEffect(() => {
-    setLoading(true);
-    const unsubscribe = subscribeToProjects((data) => {
+    if (currentLimit === PAGE_SIZE) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+
+    const unsubscribe = subscribeToProjects((data, more) => {
       setProjects(data);
+      setHasMore(more);
       setLoading(false);
-    });
+      setLoadingMore(false);
+    }, currentLimit);
 
     return () => unsubscribe();
-  }, []);
+  }, [currentLimit]);
 
+  // 2. Búsqueda asistida en Firestore para proyectos fuera de la ventana de paginación
   useEffect(() => {
-    if (selectedId && projects.length > 0) {
-      const p = projects.find(x => x.id === selectedId || x.projectNumber === selectedId);
-      if (p) setCurrentProject(p);
+    const term = search.trim();
+    if (!term) {
+      setSearchExtraProjects([]);
+      setIsSearchingFirestore(false);
+      return;
     }
-  }, [selectedId, projects]);
+
+    setIsSearchingFirestore(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchProjectsInFirestore(term);
+        setSearchExtraProjects(results);
+      } catch (err) {
+        console.error("Error searching projects in Firestore:", err);
+      } finally {
+        setIsSearchingFirestore(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // 3. Selección directa por ID o número de proyecto (ej. desde notificaciones/enlaces)
+  useEffect(() => {
+    if (!selectedId) return;
+
+    const allCurrent = [...projects, ...searchExtraProjects];
+    const found = allCurrent.find(x => x.id === selectedId || x.projectNumber === selectedId);
+    if (found) {
+      setCurrentProject(found);
+    } else {
+      getProjectById(selectedId).then(p => {
+        if (p) {
+          setCurrentProject(p);
+        } else {
+          getProjectByQuoteId(selectedId).then(pQuote => {
+            if (pQuote) setCurrentProject(pQuote);
+          });
+        }
+      }).catch(console.error);
+    }
+  }, [selectedId, projects, searchExtraProjects]);
+
+  const handleLoadMore = () => {
+    if (loadingMore) return;
+    setCurrentLimit(prev => prev + PAGE_SIZE);
+  };
 
   const handleDelete = async () => {
     if (!projectToDelete) return;
@@ -54,6 +114,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     try {
       await deleteProject(projectToDelete.id);
       setProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
+      setSearchExtraProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
       setProjectToDelete(null);
     } catch (error) {
       console.error("Error deleting project:", error);
@@ -67,11 +128,25 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     setShowModal(true);
   };
 
-  const filteredProjects = projects.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) || 
-    p.projectNumber.toLowerCase().includes(search.toLowerCase()) ||
-    (p.clientName || '').toLowerCase().includes(search.toLowerCase())
-  );
+  // Combinar proyectos paginados en tiempo real y extra-resultados de búsqueda evitando duplicados
+  const combinedMap = new Map<string, Project>();
+  projects.forEach(p => combinedMap.set(p.id, p));
+  searchExtraProjects.forEach(p => {
+    if (!combinedMap.has(p.id)) {
+      combinedMap.set(p.id, p);
+    }
+  });
+
+  const allAvailable = Array.from(combinedMap.values());
+  const searchTrim = search.trim().toLowerCase();
+
+  const filteredProjects = searchTrim
+    ? allAvailable.filter(p => 
+        p.name.toLowerCase().includes(searchTrim) || 
+        p.projectNumber.toLowerCase().includes(searchTrim) ||
+        (p.clientName || '').toLowerCase().includes(searchTrim)
+      )
+    : projects;
 
   if (currentProject) {
     return (
@@ -90,13 +165,18 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
         <div className="flex flex-row items-center gap-2 sm:gap-3 w-full mb-4">
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 relative">
             <SearchInput 
                value={search} 
                onChange={(e) => setSearch(e.target.value)} 
                placeholder="Buscar por nombre, número o cliente..." 
                className="w-full" 
              />
+             {isSearchingFirestore && (
+               <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+               </div>
+             )}
           </div>
           {canCreate && (
             <ActionButton 
@@ -119,72 +199,82 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
         ) : filteredProjects.length === 0 ? (
           <div className="text-center text-slate-500 mt-10">No se encontraron proyectos activos en el sistema.</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredProjects.map(project => (
-              
-              <div
-                key={project.id}
-                onClick={() => { if (canViewExpediente) setCurrentProject(project); }}
-                className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow relative flex flex-col cursor-pointer"
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-indigo-50 text-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center font-bold">
-                            <FiBriefcase size={20} />
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredProjects.map(project => (
+                <div
+                  key={project.id}
+                  onClick={() => { if (canViewExpediente) setCurrentProject(project); }}
+                  className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow relative flex flex-col cursor-pointer"
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                      <div className="flex items-center gap-3">
+                          <div className="bg-indigo-50 text-indigo-700 w-10 h-10 rounded-lg flex items-center justify-center font-bold">
+                              <FiBriefcase size={20} />
+                          </div>
+                          <div>
+                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-tight">Proyecto</div>
+                              <div className="font-black text-indigo-700">{project.projectNumber}</div>
+                          </div>
+                      </div>
+                      <div>
+                        <ActionButtons
+                          onEdit={canEdit ? () => handleEdit(project) : undefined}
+                          onDelete={canDelete ? () => setProjectToDelete(project) : undefined}
+                        />
+                      </div>
+                  </div>
+                  
+                  {/* Body */}
+                  <div className="flex-1">
+                    <div className="mb-4">
+                      <h3 className="font-bold text-slate-800 text-sm leading-tight line-clamp-2 mb-2">
+                        {project.name}
+                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                          project.status === 'Cerrado' ? 'bg-slate-100 text-slate-500' :
+                          project.status === 'En Ejecución' ? 'bg-emerald-100 text-emerald-700' :
+                          'bg-blue-100 text-blue-700'
+                        }`}>
+                          {project.status}
                         </div>
-                        <div>
-                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-tight">Proyecto</div>
-                            <div className="font-black text-indigo-700">{project.projectNumber}</div>
-                        </div>
-                    </div>
-                    <div>
-                      <ActionButtons
-                        onEdit={canEdit ? () => handleEdit(project) : undefined}
-                        onDelete={canDelete ? () => setProjectToDelete(project) : undefined}
-                      />
-                    </div>
-                </div>
-                
-                {/* Body */}
-                <div className="flex-1">
-                  <div className="mb-4">
-                    <h3 className="font-bold text-slate-800 text-sm leading-tight line-clamp-2 mb-2">
-                      {project.name}
-                    </h3>
-                    <div className="flex items-center gap-1.5">
-                      <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                        project.status === 'Cerrado' ? 'bg-slate-100 text-slate-500' :
-                        project.status === 'En Ejecución' ? 'bg-emerald-100 text-emerald-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>
-                        {project.status}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                      <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1"><FiUser size={10} /> Creado por</div>
-                      <div className="font-semibold text-slate-700 truncate">{project.createdByDisplayName || 'Usuario'}</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1"><FiUser size={10} /> Creado por</div>
+                        <div className="font-semibold text-slate-700 truncate">{project.createdByDisplayName || 'Usuario'}</div>
+                      </div>
+                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1"><FiCalendar size={10} /> Fecha</div>
+                        <div className="font-semibold text-slate-700 truncate">{project.startDate || 'N/A'}</div>
+                      </div>
                     </div>
-                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                      <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1"><FiCalendar size={10} /> Fecha</div>
-                      <div className="font-semibold text-slate-700 truncate">{project.startDate || 'N/A'}</div>
+                    
+                    <div className="mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Cliente / Empresa</div>
+                      <div className="font-bold text-slate-700 truncate">{project.clientName || 'No especificado'}</div>
                     </div>
                   </div>
-                  
-                  <div className="mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Cliente / Empresa</div>
-                    <div className="font-bold text-slate-700 truncate">{project.clientName || 'No especificado'}</div>
-                  </div>
-                  
-
                 </div>
-              </div>
+              ))}
+            </div>
 
-            ))}
-          </div>
+            {!search.trim() && hasMore && (
+              <div className="flex justify-center mt-6">
+                <ActionButton
+                  onClick={handleLoadMore}
+                  label={loadingMore ? "CARGANDO..." : "CARGAR MÁS PROYECTOS"}
+                  variant="secondary"
+                  disabled={loadingMore}
+                  className="!w-auto px-6"
+                />
+              </div>
+            )}
+          </>
         )}
         </div>
       </ModulePage>

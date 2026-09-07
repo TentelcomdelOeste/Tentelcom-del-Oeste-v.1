@@ -19,20 +19,88 @@ export const getProjects = async (): Promise<Project[]> => {
   }
 };
 
-export const subscribeToProjects = (callback: (projects: Project[]) => void): () => void => {
-  const q = query(
-    collection(db, COLLECTION_NAME), 
-    orderBy('createdAt', 'desc')
-  );
+export const subscribeToProjects = (
+  callback: (projects: Project[], hasMore: boolean) => void,
+  limitSize: number = 20
+): () => void => {
+  const q = limitSize > 0
+    ? query(
+        collection(db, COLLECTION_NAME), 
+        orderBy('createdAt', 'desc'),
+        limit(limitSize)
+      )
+    : query(
+        collection(db, COLLECTION_NAME), 
+        orderBy('createdAt', 'desc')
+      );
   
   return onSnapshot(q, (snapshot) => {
     const projects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
-    callback(projects);
+    const hasMore = limitSize > 0 ? snapshot.docs.length >= limitSize : false;
+    callback(projects, hasMore);
   }, (error) => {
     console.error("Error listening to projects:", error);
-    // Even if it fails, maybe we can fallback to no projects so it stops loading
-    callback([]);
+    callback([], false);
   });
+};
+
+export const searchProjectsInFirestore = async (searchTerm: string): Promise<Project[]> => {
+  if (!searchTerm || !searchTerm.trim()) return [];
+  const term = searchTerm.trim();
+  const termUpper = term.toUpperCase();
+
+  try {
+    const resultsMap = new Map<string, Project>();
+
+    const qNum = query(
+      collection(db, COLLECTION_NAME),
+      where('projectNumber', '>=', termUpper),
+      where('projectNumber', '<=', termUpper + '\uf8ff'),
+      limit(20)
+    );
+    const snapNum = await getDocs(qNum);
+    snapNum.docs.forEach(d => resultsMap.set(d.id, { ...d.data(), id: d.id } as Project));
+
+    const qName = query(
+      collection(db, COLLECTION_NAME),
+      where('name', '>=', term),
+      where('name', '<=', term + '\uf8ff'),
+      limit(20)
+    );
+    const snapName = await getDocs(qName);
+    snapName.docs.forEach(d => resultsMap.set(d.id, { ...d.data(), id: d.id } as Project));
+
+    const qClient = query(
+      collection(db, COLLECTION_NAME),
+      where('clientName', '>=', term),
+      where('clientName', '<=', term + '\uf8ff'),
+      limit(20)
+    );
+    const snapClient = await getDocs(qClient);
+    snapClient.docs.forEach(d => resultsMap.set(d.id, { ...d.data(), id: d.id } as Project));
+
+    if (resultsMap.size === 0) {
+      const qFallback = query(collection(db, COLLECTION_NAME), orderBy('createdAt', 'desc'), limit(50));
+      const snapFallback = await getDocs(qFallback);
+      const searchLower = term.toLowerCase();
+      snapFallback.docs.forEach(d => {
+        const data = d.data();
+        const p = { ...data, id: d.id } as Project;
+        if (
+          p.name.toLowerCase().includes(searchLower) ||
+          p.projectNumber.toLowerCase().includes(searchLower) ||
+          (p.clientName || '').toLowerCase().includes(searchLower)
+        ) {
+          resultsMap.set(d.id, p);
+        }
+      });
+    }
+
+    return Array.from(resultsMap.values());
+  } catch (error) {
+    console.error("Error searching projects in Firestore:", error);
+    return [];
+  }
 };
 
 export const getProjectById = async (id: string): Promise<Project | null> => {
