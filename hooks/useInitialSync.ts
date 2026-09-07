@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import {
   collection,
   query,
   where,
   getDocs,
-  limit
+  limit,
+  QueryDocumentSnapshot,
+  DocumentData
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User } from '../utils/types';
@@ -19,113 +21,184 @@ interface InitialSyncOptions {
 
 export function useInitialSync({ userId, userName, currentUser }: InitialSyncOptions): void {
   const { authReady } = useAuth();
-  const hasSynced = useRef(false);
 
-  useEffect(() => {
-    // Solo ejecutar una vez por sesión
-    // Solo si hay usuario autenticado y perfil disponible
-    if (!authReady || !userId || !currentUser || hasSynced.current) return;
+  // Ref que indica si la sincronización inicial ya se completó exitosamente para el usuario actual
+  const syncCompletedRef = useRef(false);
+  // Ref para prevenir ejecuciones concurrentes / dobles
+  const isSyncingRef = useRef(false);
+  // Ref para rastrear el ID del usuario actual y resetear la sincronización si cambia de sesión
+  const lastUserIdRef = useRef<string | null>(null);
 
-    hasSynced.current = true;
+  // Guardar temporizadores para limpieza en desmontaje
+  const timerHandlesRef = useRef<number[]>([]);
 
-    const performSync = async () => {
-      if (!navigator.onLine) {
-        console.info('[InitialSync] Offline detected - skipping network sync');
-        return;
-      }
+  const scheduleIdleTask = useCallback((task: () => Promise<void> | void, timeout = 3000): number => {
+    let handle: number;
+    if ('requestIdleCallback' in window) {
+      handle = (window as any).requestIdleCallback(() => {
+        task();
+      }, { timeout });
+    } else {
+      handle = window.setTimeout(() => {
+        task();
+      }, 500);
+    }
+    timerHandlesRef.current.push(handle);
+    return handle;
+  }, []);
 
-      // ── 1. Perfil del usuario ──────────────────────
-      // El perfil del usuario ya está siendo sincronizado por UserContext mediante onSnapshot.
-      // Se eliminó la lectura redundante getDocs.
+  const performProgressiveSync = useCallback(async () => {
+    if (!navigator.onLine) {
+      console.info('[InitialSync] Dispositivo offline — sincronización diferida hasta recuperar conexión');
+      return;
+    }
 
-      // ── 2. Trabajos activos asignados al usuario ──
-      // Solo sincronizar si el usuario tiene permisos de trabajos
+    if (isSyncingRef.current || syncCompletedRef.current) {
+      return;
+    }
+
+    if (!userId || !currentUser) {
+      return;
+    }
+
+    isSyncingRef.current = true;
+    console.info('[InitialSync] Iniciando sincronización progresiva inicial...');
+
+    try {
+      let activeJobDocs: QueryDocumentSnapshot<DocumentData>[] = [];
+
+      // ── PRIORIDAD 2 — DATOS CRÍTICOS: Trabajos activos asignados al usuario ──
       if (hasPermission(currentUser, 'trabajos')) {
         try {
-          // La asignación se maneja mediante el array 'cuadrilla' que contiene nombres de usuario o IDs
           const qTrabajos = userName
             ? query(
                 collection(db, 'trabajos'),
                 where('cuadrilla', 'array-contains', userName),
                 where('estado', 'in', ['programado', 'en_proceso', 'reprogramado']),
-                limit(50)
+                limit(25)
               )
             : query(
                 collection(db, 'trabajos'),
                 where('estado', 'in', ['programado', 'en_proceso', 'reprogramado']),
-                limit(50)
+                limit(25)
               );
 
           const trabajosSnap = await getDocs(qTrabajos);
-
-          try {
-            // ── 1b. Bitácoras ──
-            // Obtener los trabajos activos recientes para precargar sus bitácoras
-            // Evitamos rehacer el query, simplemente usamos los del paso anterior limitados a 10
-            const trabajosRecientes = trabajosSnap.docs.slice(0, 10);
-            await Promise.allSettled(
-              trabajosRecientes.map(trabajoDoc =>
-                getDocs(
-                  query(
-                    collection(db, 'trabajos', trabajoDoc.id, 'timeline'),
-                    limit(20)
-                  )
-                ).catch(err =>
-                  console.warn('[InitialSync] Bitácora sync failed:', trabajoDoc.id, err)
-                )
-              )
-            );
-          } catch (err) {
-            console.warn('[InitialSync] Bitácora batch failed:', err);
-          }
+          activeJobDocs = trabajosSnap.docs;
+          console.info(`[InitialSync] Prioridad 2: ${activeJobDocs.length} trabajos activos sincronizados`);
         } catch (err) {
-          // Silencioso — sync es best-effort
-          console.warn('[InitialSync] Trabajos sync failed:', err);
+          console.warn('[InitialSync] Error en Prioridad 2 (Trabajos):', err);
         }
       } else {
-        console.info('[InitialSync] Skipping active jobs sync (no view permissions)');
+        console.info('[InitialSync] Prioridad 2 omitida (sin permisos de trabajos)');
       }
 
-      // ── 3. Materiales/inventario crítico (deferred) ──────────
+      // Recomprobar conectividad antes de continuar con etapas diferidas
+      if (!navigator.onLine) {
+        console.info('[InitialSync] Conexión perdida durante sincronización de datos críticos');
+        return;
+      }
+
+      // ── PRIORIDAD 3 — DATOS DIFERIBLES: Inventario general crítico ──
       if (hasPermission(currentUser, 'inventario', 'general')) {
-        const syncMateriales = async () => {
-          if (!navigator.onLine) return;
-          try {
-            await getDocs(
-              query(
-                collection(db, 'inventory_items'),
-                limit(200)
-              )
-            );
-          } catch (err) {
-            console.warn('[InitialSync] Materiales sync failed:', err);
-          }
-        };
-
-        if ('requestIdleCallback' in window) {
-          (window as any).requestIdleCallback(syncMateriales, { timeout: 2000 });
-        } else {
-          syncMateriales();
+        try {
+          const qInventory = query(
+            collection(db, 'inventory_items'),
+            limit(60)
+          );
+          const inventorySnap = await getDocs(qInventory);
+          console.info(`[InitialSync] Prioridad 3: ${inventorySnap.size} items de inventario sincronizados`);
+        } catch (err) {
+          console.warn('[InitialSync] Error en Prioridad 3 (Inventario):', err);
         }
       } else {
-        console.info('[InitialSync] Skipping Materiales sync (no view permissions)');
+        console.info('[InitialSync] Prioridad 3 omitida (sin permisos de inventario)');
       }
-    };
 
-    let handle: number;
-    // Esperar a que el navegador esté en estado idle
-    if ('requestIdleCallback' in window) {
-      handle = (window as any).requestIdleCallback(() => performSync(), { timeout: 3000 });
-    } else {
-      handle = window.setTimeout(() => performSync(), 100);
+      // Recomprobar conectividad antes de la etapa final
+      if (!navigator.onLine) {
+        console.info('[InitialSync] Conexión perdida antes de sincronizar bitácoras');
+        return;
+      }
+
+      // ── PRIORIDAD 4 — TIMELINES: Bitácoras progresivas de trabajos prioritarios ──
+      if (hasPermission(currentUser, 'trabajos') && activeJobDocs.length > 0) {
+        try {
+          // Filtrar primero los trabajos 'en_proceso', o tomar los primeros 4 trabajos
+          const inProgressJobs = activeJobDocs.filter(d => d.data()?.estado === 'en_proceso');
+          const targetJobsForTimeline = (inProgressJobs.length > 0 ? inProgressJobs : activeJobDocs).slice(0, 4);
+
+          // Cargar bitácoras con límite reducido por trabajo (10 eventos max)
+          await Promise.allSettled(
+            targetJobsForTimeline.map(jobDoc =>
+              getDocs(
+                query(
+                  collection(db, 'trabajos', jobDoc.id, 'timeline'),
+                  limit(10)
+                )
+              ).catch(err =>
+                console.warn(`[InitialSync] Bitácora del trabajo ${jobDoc.id} falló:`, err)
+              )
+            )
+          );
+          console.info(`[InitialSync] Prioridad 4: Bitácoras precargadas para ${targetJobsForTimeline.length} trabajos prioritarios`);
+        } catch (err) {
+          console.warn('[InitialSync] Error en Prioridad 4 (Bitácoras):', err);
+        }
+      }
+
+      // Si llegamos aquí con conexión, marcar la sincronización como completada con éxito
+      syncCompletedRef.current = true;
+      console.info('[InitialSync] Sincronización progresiva inicial completada exitosamente');
+    } catch (err) {
+      console.warn('[InitialSync] Error general durante sincronización inicial:', err);
+    } finally {
+      isSyncingRef.current = false;
+    }
+  }, [userId, userName, currentUser]);
+
+  useEffect(() => {
+    // Resetear sincronización si cambió el usuario
+    if (lastUserIdRef.current && lastUserIdRef.current !== userId) {
+      syncCompletedRef.current = false;
+      isSyncingRef.current = false;
+    }
+    lastUserIdRef.current = userId;
+
+    if (!authReady || !userId || !currentUser) {
+      return;
     }
 
-    return () => {
-      if ('cancelIdleCallback' in window && handle) {
-        (window as any).cancelIdleCallback(handle);
-      } else if (handle) {
-        clearTimeout(handle);
+    // 1. Programar la sincronización en segundo plano de forma no bloqueante
+    if (!syncCompletedRef.current && !isSyncingRef.current) {
+      scheduleIdleTask(() => {
+        performProgressiveSync();
+      }, 3000);
+    }
+
+    // 2. Manejar reconexión a Internet
+    const handleOnline = () => {
+      console.info('[InitialSync] Reconexión detectada. Evaluando sincronización pendiente...');
+      if (!syncCompletedRef.current && !isSyncingRef.current) {
+        scheduleIdleTask(() => {
+          performProgressiveSync();
+        }, 1000);
       }
     };
-  }, [authReady, userId, userName, currentUser?.uid]);
+
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      // Limpiar callbacks diferidos
+      timerHandlesRef.current.forEach(handle => {
+        if ('cancelIdleCallback' in window) {
+          try { (window as any).cancelIdleCallback(handle); } catch { /* ignore */ }
+        }
+        clearTimeout(handle);
+      });
+      timerHandlesRef.current = [];
+    };
+  }, [authReady, userId, currentUser, performProgressiveSync, scheduleIdleTask]);
 }
+
