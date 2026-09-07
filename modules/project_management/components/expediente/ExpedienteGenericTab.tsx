@@ -16,7 +16,7 @@ export const ExpedienteGenericTab: React.FC<ExpedienteGenericTabProps> = ({
   const isCierre = tabKey === 'cierre';
 
   return (
-    <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm">
+    <div className="bg-white p-6 md:p-0 rounded-2xl md:rounded-none border md:border-0 border-slate-200 shadow-sm md:shadow-none">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-5 mb-6 border-b border-slate-100">
         <div>
           <h3 className="text-sm md:text-base font-black text-slate-800 uppercase tracking-tight">

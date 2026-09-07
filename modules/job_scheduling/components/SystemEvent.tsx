@@ -1,6 +1,4 @@
 import React from "react";
-import { FiExternalLink } from "react-icons/fi";
-import { ActionButton } from "@/design-system";
 
 interface SystemEventProps {
   c: any;
@@ -15,7 +13,7 @@ const toSafeDate = (val: any): Date | null => {
   return !isNaN(d.getTime()) ? d : null;
 };
 
-export const SystemEvent: React.FC<SystemEventProps> = ({ c, onSetActiveModule }) => {
+export const SystemEvent: React.FC<SystemEventProps> = ({ c }) => {
   const metadata = c.metadata || {};
   const date = toSafeDate(c.timestamp);
   
@@ -63,19 +61,6 @@ export const SystemEvent: React.FC<SystemEventProps> = ({ c, onSetActiveModule }
       icon = "ℹ️";
   }
 
-  const handleNavigateToBitacora = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const targetBitacoraId = metadata.bitacoraId || metadata.logId || metadata.registroId;
-    
-    if (onSetActiveModule && targetBitacoraId) {
-      console.log(`[SystemEvent] Navigating to bitacora: ${targetBitacoraId}`);
-      onSetActiveModule({ 
-        module: 'vehicles_logs', 
-        selectedId: targetBitacoraId 
-      });
-    }
-  };
-
   return (
     <div className="flex flex-col items-center my-1.5 px-3">
       <div className="bg-slate-100/80 rounded-full px-2 py-0.5 text-[9px] font-black text-slate-600 uppercase tracking-wider flex items-center gap-1">
@@ -99,24 +84,8 @@ export const SystemEvent: React.FC<SystemEventProps> = ({ c, onSetActiveModule }
                 {metadata.gasolinera ? <div><span className="font-bold">Gasolinera:</span> {metadata.gasolinera}</div> : null}
                 {(metadata.observaciones && metadata.observaciones.trim() && metadata.observaciones !== "Sin observaciones específicas." && metadata.observaciones !== "N/A") ? <div className="italic text-slate-500 mt-0.5">“{metadata.observaciones}”</div> : null}
             </div>
-         )}
+          )}
       </div>
-
-      {(metadata.bitacoraId || metadata.logId || metadata.registroId) && onSetActiveModule && (
-        <div className="mt-1.5">
-          <ActionButton
-            onClick={handleNavigateToBitacora}
-            variant="primary"
-            className="!px-3 !py-1 !rounded-full !text-[9px] !font-black !uppercase !tracking-wider shadow-md group"
-            label={
-              <span className="flex items-center gap-1">
-                <FiExternalLink className="text-[10px] group-hover:scale-110 transition-transform" />
-                Ver Bitácora
-              </span>
-            }
-          />
-        </div>
-      )}
 
       {displayTimestamp && (
         <div className="text-[8px] text-slate-400 mt-0.5 font-mono uppercase">

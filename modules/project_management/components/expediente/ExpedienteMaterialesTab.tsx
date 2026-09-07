@@ -17,7 +17,7 @@ export const ExpedienteMaterialesTab: React.FC<ExpedienteMaterialesTabProps> = (
   };
 
   return (
-    <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
+    <div className="bg-white p-5 md:p-0 rounded-2xl md:rounded-none border md:border-0 border-slate-200 shadow-sm md:shadow-none">
       {/* Header del Tab */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-6">
         <div>

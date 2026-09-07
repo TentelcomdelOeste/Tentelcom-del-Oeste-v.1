@@ -306,18 +306,11 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
   };
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
-      {/* Header */}
-      <div className="flex-none bg-white border-b border-slate-200 px-3.5 sm:px-6 py-3 sm:py-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4">
+    <div className="h-full flex flex-col bg-slate-50 overflow-hidden md:h-auto md:overflow-visible md:bg-transparent">
+      {/* 1. Header Móvil (oculto en desktop) */}
+      <div className="md:hidden flex-none bg-white border-b border-slate-200 px-3.5 sm:px-6 py-3 sm:py-4">
+        <div className="flex flex-col gap-2.5">
           <div className="flex items-center gap-3">
-            <ActionButton 
-              variant="secondary"
-              onClick={onBack}
-              label="VOLVER"
-              icon={<FiArrowLeft />}
-              className="hidden md:inline-flex shrink-0"
-            />
             <div>
               <div className="flex items-center gap-2 mb-0.5 sm:mb-1">
                 <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
@@ -333,7 +326,7 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
         </div>
 
         {/* Mobile Controls Row: [ ← VOLVER ] + [ Section Selector ▼ ] */}
-        <div className="flex md:hidden items-center gap-2 mt-2.5">
+        <div className="flex items-center gap-2 mt-2.5">
           <ActionButton 
             variant="secondary"
             onClick={onBack}
@@ -354,34 +347,65 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
             <FiChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs" />
           </div>
         </div>
-
-        {/* Desktop Controls Row / Section Selector */}
-        <div className="hidden md:flex items-center justify-between gap-4 mt-3 pt-3 border-t border-slate-100">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sección:</span>
-            <div className="relative min-w-[280px]">
-              <select
-                value={activeTab}
-                onChange={(e) => setActiveTab(e.target.value as TabKey)}
-                className="w-full appearance-none bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all shadow-xs"
-              >
-                {TABS.map(tab => (
-                  <option key={tab.id} value={tab.id}>{tab.label}</option>
-                ))}
-              </select>
-              <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm" />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-slate-400">
-              Mostrando: <strong className="text-indigo-600 font-bold">{TABS.find(t => t.id === activeTab)?.label}</strong>
-            </span>
-          </div>
-        </div>
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-auto p-4 md:p-6">
+      {/* 2. Área con scroll vertical para todo el contenido */}
+      <div className="flex-1 overflow-auto p-4 md:p-0 md:overflow-visible md:flex-none">
+        {/* Contenedor Unificado: En móvil transparente/sin marco; en escritorio caja unificada blanca con sombra suave y ancho completo */}
+        <div className="md:bg-white md:border md:border-slate-200 md:rounded-xl md:shadow-sm md:overflow-hidden w-full">
+          
+          {/* Header Escritorio (integrado en la parte superior del contenedor) */}
+          <div className="hidden md:block p-6 pb-5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <ActionButton 
+                  variant="secondary"
+                  onClick={onBack}
+                  label="VOLVER"
+                  icon={<FiArrowLeft />}
+                  className="shrink-0"
+                />
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2.5 py-0.5 rounded-md uppercase tracking-wider">
+                      {project.projectNumber || project.id}
+                    </span>
+                    <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-0.5 rounded-md uppercase">
+                      {project.status}
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-black text-slate-800 leading-tight">{project.name}</h2>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Selector de Sección Escritorio (integrado bajo el header dentro del mismo contenedor) */}
+          <div className="hidden md:flex border-t border-slate-200/80 bg-slate-50/50 px-6 py-3.5 items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Sección:</span>
+              <div className="relative min-w-[280px]">
+                <select
+                  value={activeTab}
+                  onChange={(e) => setActiveTab(e.target.value as TabKey)}
+                  className="w-full appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all shadow-xs"
+                >
+                  {TABS.map(tab => (
+                    <option key={tab.id} value={tab.id}>{tab.label}</option>
+                  ))}
+                </select>
+                <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-400">
+                Mostrando: <strong className="text-indigo-600 font-bold">{TABS.find(t => t.id === activeTab)?.label}</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Contenedor de contenido activo: en escritorio con divisor y padding integrado */}
+          <div className="md:border-t md:border-slate-200/80 md:p-6">
         {loading ? (
           <div className="flex justify-center items-center h-40">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -401,7 +425,7 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
             )}
             
             {activeTab === 'trabajos' && (
-              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm md:bg-transparent md:p-0 md:border-0 md:shadow-none md:rounded-none">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-6">
                   <div>
                     <h3 className="text-lg font-black text-slate-800">Trabajos Relacionados</h3>
@@ -751,6 +775,8 @@ const ProjectExpediente: React.FC<ProjectExpedienteProps> = ({ project, onBack }
             )}
           </>
         )}
+          </div>
+        </div>
       </div>
     </div>
   );

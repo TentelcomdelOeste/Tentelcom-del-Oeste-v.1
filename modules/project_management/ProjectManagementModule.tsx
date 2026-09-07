@@ -209,14 +209,16 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
 
   if (currentProject) {
     return (
-      <ProjectExpediente 
-        project={currentProject} 
-        onBack={() => {
-          setCurrentProject(null);
-          if (onClearSelectedId) onClearSelectedId();
-        }}
-        currentUser={currentUser}
-      />
+      <div className="-mx-2 md:-mx-4 -mt-4">
+        <ProjectExpediente 
+          project={currentProject} 
+          onBack={() => {
+            setCurrentProject(null);
+            if (onClearSelectedId) onClearSelectedId();
+          }}
+          currentUser={currentUser}
+        />
+      </div>
     );
   }
 
