@@ -9,6 +9,10 @@ import { enqueueUpload, updateUploadStatus, syncPendingUploads, getPendingUpload
 export const localBlobCache = new Map<string, string[]>();
 
 export async function compressImageIfNeeded(file: File): Promise<File> {
+  if ((file as any).bypassCompression || file.name.startsWith("camera_highres_")) {
+    return file;
+  }
+
   if (!file.type.startsWith("image/") || file.type.includes("gif")) {
     return file;
   }

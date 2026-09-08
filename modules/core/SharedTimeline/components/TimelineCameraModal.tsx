@@ -96,73 +96,32 @@ export async function stampOverlayOnImage(
     });
   }
 
-  // 4. Medir dimensiones del badge
+  // 4. Medir dimensiones del texto para el posicionamiento
   const fontSizeHeader = Math.round(13 * scale);
   const fontSizeBody = Math.round(9.5 * scale);
   const lineHeight = Math.round(15 * scale);
-  const padX = Math.round(13 * scale);
-  const padY = Math.round(9 * scale);
 
-  ctx.font = `bold ${fontSizeHeader}px sans-serif`;
-  let maxTextWidth = 0;
-  lines.forEach((l, idx) => {
-    ctx.font = l.isBold ? `bold ${idx === 0 ? fontSizeHeader : fontSizeBody}px sans-serif` : `${fontSizeBody}px sans-serif`;
-    const w = ctx.measureText(l.text).width;
-    if (w > maxTextWidth) maxTextWidth = w;
-  });
+  // Posicionar en la esquina superior izquierda
+  const margin = Math.round(16 * scale);
+  const textStartX = margin;
+  let currentY = margin;
 
-  const cardWidth = maxTextWidth + padX * 2 + Math.round(10 * scale); // espacio adicional para la barra de acento
-  const cardHeight = lines.length * lineHeight + padY * 2;
-
-  // Posicionar tarjeta en la esquina superior izquierda o inferior izquierda
-  const margin = Math.round(10 * scale);
-  const cardX = margin;
-  const cardY = margin;
-  const cornerRadius = Math.round(6 * scale);
-
-  // 5. Dibujar fondo semi-transparente oscuro de alto contraste
   ctx.save();
-  ctx.fillStyle = 'rgba(10, 15, 30, 0.82)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-  ctx.lineWidth = Math.max(1.0, Math.round(1.5 * scale));
-
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(cardX, cardY, cardWidth, cardHeight, cornerRadius);
-  } else {
-    // Fallback para navegadores antiguos
-    ctx.rect(cardX, cardY, cardWidth, cardHeight);
-  }
-  ctx.fill();
-  ctx.stroke();
-
-  // 6. Barra lateral de acento (Cyan)
-  ctx.fillStyle = '#38bdf8';
-  const barWidth = Math.round(2.5 * scale);
-  const barHeight = cardHeight - padY * 2;
-  const barX = cardX + Math.round(8 * scale);
-  const barY = cardY + padY;
-
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(barX, barY, barWidth, barHeight, Math.round(2 * scale));
-  } else {
-    ctx.rect(barX, barY, barWidth, barHeight);
-  }
-  ctx.fill();
-
-  // 7. Renderizar líneas de texto con sombra para máxima legibilidad
-  const textStartX = barX + barWidth + Math.round(8 * scale);
-  let currentY = cardY + padY + Math.round(10 * scale);
+  ctx.textBaseline = 'top';
 
   lines.forEach((l, idx) => {
     ctx.font = l.isBold ? `bold ${idx === 0 ? fontSizeHeader : fontSizeBody}px sans-serif` : `${fontSizeBody}px sans-serif`;
+    
+    // Dibujar contorno de texto robusto para máxima legibilidad sobre cualquier fondo
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
+    ctx.lineWidth = Math.max(2.5, Math.round(3.5 * scale));
+    ctx.lineJoin = 'round';
+    ctx.strokeText(l.text, textStartX, currentY);
+
+    // Dibujar texto de relleno principal
     ctx.fillStyle = l.color;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    ctx.shadowBlur = 3 * scale;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
     ctx.fillText(l.text, textStartX, currentY);
+    
     currentY += lineHeight;
   });
 
@@ -170,7 +129,7 @@ export async function stampOverlayOnImage(
 
   // 8. Exportar canvas a Blob JPEG de alta calidad
   const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92);
+    canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95);
   });
 
   if (!blob) {
@@ -434,8 +393,45 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
     setIsCapturing(true);
 
     try {
+      let targetWidth = 1080; // Defaults de seguridad en retrato
+      let targetHeight = 1920;
+
+      try {
+        const sizesResult = await CameraPreview.getSupportedPictureSizes();
+        if (sizesResult && sizesResult.supportedPictureSizes) {
+          const currentFacing = cameraPosition === 'front' ? 'front' : 'rear';
+          const sizeGroup = sizesResult.supportedPictureSizes.find(
+            (s: any) => s.facing?.toLowerCase() === currentFacing
+          );
+
+          if (sizeGroup && sizeGroup.supportedPictureSizes && sizeGroup.supportedPictureSizes.length > 0) {
+            // Ordenar de mayor a menor por total de píxeles
+            const sortedSizes = [...sizeGroup.supportedPictureSizes].sort((a: any, b: any) => {
+              const pixelsA = (a.width || 0) * (a.height || 0);
+              const pixelsB = (b.width || 0) * (b.height || 0);
+              return pixelsB - pixelsA;
+            });
+
+            const bestSize = sortedSizes[0];
+            if (bestSize && bestSize.width && bestSize.height) {
+              const w = bestSize.width;
+              const h = bestSize.height;
+              // Asegurar proporción vertical (ancho < alto) para formato de pantalla vertical (retrato)
+              // Esto evita que el plugin rellene con fondo negro el lienzo horizontal al capturar
+              targetWidth = Math.min(w, h);
+              targetHeight = Math.max(w, h);
+              console.log(`[TimelineCamera] Usando la máxima resolución soportada en retrato: ${targetWidth}x${targetHeight}`);
+            }
+          }
+        }
+      } catch (sizeErr) {
+        console.warn('[TimelineCamera] No se pudieron obtener los tamaños soportados, usando defaults de alta resolución:', sizeErr);
+      }
+
       const result = await CameraPreview.capture({
-        quality: 90,
+        width: targetWidth,
+        height: targetHeight,
+        quality: 95,
         format: 'jpeg',
       });
 
@@ -463,8 +459,11 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
             locationName: jobLocation,
             coords: gpsCoords,
           },
-          `timeline_photo_${Date.now()}.jpg`
+          `camera_highres_${Date.now()}.jpg`
         );
+
+        // Etiquetar archivo para que useTimelineUploader no aplique compresión secundaria reductiva
+        (stampedFile as any).bypassCompression = true;
 
         // 2. Detener cámara y entregar fotografía al Timeline
         await stopCamera();
