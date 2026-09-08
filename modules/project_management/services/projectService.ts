@@ -329,10 +329,11 @@ export const generateNextProjectNumber = async (specifiedYear?: number): Promise
   const counterRef = doc(db, 'counters', `project_${year}`);
 
   try {
-    const assignedNumber = await runTransaction(db, async (transaction) => {
-      // 1. Fetch live occupied project numbers from the projects collection for this year
-      const occupiedInDb = await getOccupiedProjectNumbers(year);
+    // 1. Fetch live occupied project numbers from the projects collection BEFORE running transaction
+    // to keep the transaction extremely fast, predictable, and fully standard-compliant (no standard reads inside transaction).
+    const occupiedInDb = await getOccupiedProjectNumbers(year);
 
+    const assignedNumber = await runTransaction(db, async (transaction) => {
       // 2. Transactionally read the year counter lock document
       const counterSnap = await transaction.get(counterRef);
 
@@ -398,6 +399,7 @@ export const createProjectWithQuoteHandling = async ({
   selectedQuoteCommercialId,
   createdBy,
   createdByDisplayName,
+  idempotencyKey,
 }: {
   projectData: {
     name: string;
@@ -410,8 +412,32 @@ export const createProjectWithQuoteHandling = async ({
   selectedQuoteCommercialId?: string;
   createdBy: string;
   createdByDisplayName?: string;
+  idempotencyKey?: string;
 }): Promise<{ newProject: Project; unlinkedProjectId?: string }> => {
   let unlinkedProjectId: string | undefined;
+
+  // Idempotency check: If an idempotencyKey is passed, query Firestore first.
+  // This perfectly prevents duplicate creation if a save request is retried (e.g. after a client timeout).
+  if (idempotencyKey) {
+    try {
+      const qIdemp = query(collection(db, COLLECTION_NAME), where('idempotencyKey', '==', idempotencyKey));
+      const snapIdemp = await getDocs(qIdemp);
+      if (!snapIdemp.empty) {
+        console.warn(`[projectService] Idempotent creation triggered: project with key ${idempotencyKey} already exists. Returning it.`);
+        const existingDoc = snapIdemp.docs[0];
+        return {
+          newProject: {
+            ...existingDoc.data(),
+            id: existingDoc.id,
+          } as Project,
+          unlinkedProjectId,
+        };
+      }
+    } catch (err) {
+      console.error("[projectService] Error in idempotency lookup:", err);
+      // Fail open: continue creation to be robust
+    }
+  }
 
   if (selectedQuoteId) {
     const existingProject = await getProjectByQuoteId(selectedQuoteId);
@@ -441,6 +467,7 @@ export const createProjectWithQuoteHandling = async ({
     updatedAt: now,
     createdBy,
     createdByDisplayName,
+    idempotencyKey,
   };
 
   const docRef = await addDoc(collection(db, COLLECTION_NAME), newProjectData);

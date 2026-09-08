@@ -25,6 +25,18 @@ const getTodayLocalDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
+  let timeoutId: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+};
+
 export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClose, onSave, currentUser, initialData }) => {
   const isEditing = !!initialData;
   const [originSelection, setOriginSelection] = useState<ProjectOrigin>('manual');
@@ -37,6 +49,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
   const [selectedQuoteId, setSelectedQuoteId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState('');
 
   const [approvedQuotes, setApprovedQuotes] = useState<Quote[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -63,6 +76,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       setSelectedQuoteId('');
       setQuotesError(null);
       setErrorMsg(null);
+      setIdempotencyKey('');
       return;
     }
 
@@ -74,6 +88,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       setStartDate(initialData.startDate || getTodayLocalDate());
       setSelectedQuoteId(initialData.quoteId || '');
       setOriginSelection(initialData.origin === 'Cotización' && initialData.quoteId ? 'quote' : 'manual');
+      setIdempotencyKey('');
     } else {
       setName('');
       setStatus('Planificación');
@@ -82,6 +97,10 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       setStartDate(getTodayLocalDate());
       setSelectedQuoteId('');
       setOriginSelection('manual');
+      
+      // Generate a new idempotency key on mount/open of a new project form.
+      const key = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+      setIdempotencyKey(key);
     }
 
     const loadFormOptions = async () => {
@@ -228,36 +247,50 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       }
 
       if (isEditing && initialData) {
-        const { updatedProject, unlinkedProjectId } = await updateProjectWithQuoteHandling({
-          id: initialData.id,
-          projectData: {
-            name: trimmedName,
-            status,
-            clientId: finalClientId,
-            clientName: finalClientName,
-            startDate,
-          },
-          selectedQuoteId: selectedQuoteId || undefined,
-          selectedQuoteCommercialId: quoteCommercialId,
-        });
+        const { updatedProject, unlinkedProjectId } = await withTimeout(
+          updateProjectWithQuoteHandling({
+            id: initialData.id,
+            projectData: {
+              name: trimmedName,
+              status,
+              clientId: finalClientId,
+              clientName: finalClientName,
+              startDate,
+            },
+            selectedQuoteId: selectedQuoteId || undefined,
+            selectedQuoteCommercialId: quoteCommercialId,
+          }),
+          15000,
+          'El tiempo de espera para actualizar el proyecto ha expirado. Verifique su conexión a internet e inténtelo nuevamente.'
+        );
 
         onSave(updatedProject, unlinkedProjectId);
         onClose();
         return;
       } else {
-        const { newProject, unlinkedProjectId } = await createProjectWithQuoteHandling({
-          projectData: {
-            name: trimmedName,
-            status: 'Planificación',
-            clientId: finalClientId,
-            clientName: finalClientName,
-            startDate,
-          },
-          selectedQuoteId: selectedQuoteId || undefined,
-          selectedQuoteCommercialId: quoteCommercialId,
-          createdBy: currentUser?.uid || currentUser?.id || 'unknown',
-          createdByDisplayName: currentUser?.name || currentUser?.displayName || currentUser?.email || 'Usuario',
-        });
+        // Enforce network connection status check at client level before transaction call
+        if (typeof window !== 'undefined' && 'navigator' in window && !window.navigator.onLine) {
+          throw new Error('Sin conexión a internet. Se requiere una conexión activa para generar el número de proyecto de forma segura.');
+        }
+
+        const { newProject, unlinkedProjectId } = await withTimeout(
+          createProjectWithQuoteHandling({
+            projectData: {
+              name: trimmedName,
+              status: 'Planificación',
+              clientId: finalClientId,
+              clientName: finalClientName,
+              startDate,
+            },
+            selectedQuoteId: selectedQuoteId || undefined,
+            selectedQuoteCommercialId: quoteCommercialId,
+            createdBy: currentUser?.uid || currentUser?.id || 'unknown',
+            createdByDisplayName: currentUser?.name || currentUser?.displayName || currentUser?.email || 'Usuario',
+            idempotencyKey: idempotencyKey || undefined,
+          }),
+          15000,
+          'El tiempo de espera para registrar el proyecto ha expirado. Verifique su conexión a internet e inténtelo de nuevo (los datos introducidos han sido conservados).'
+        );
 
         onSave(newProject, unlinkedProjectId);
         onClose();
