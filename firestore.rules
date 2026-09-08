@@ -13,7 +13,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
           (request.auth.token.email == "jenamorado@tentelcom.com") ||
-          (getUserData() != null && (
+          (getUserData() != null && 'role' in getUserData().data && (
               getUserData().data.role == "admin" || 
               getUserData().data.role == "administrador" ||
               getUserData().data.role == "administración" ||
@@ -24,39 +24,43 @@ service cloud.firestore {
     }
 
     function hasPermission(path) {
-      let userDoc = getUserData();
-      return isAuthenticated() && userDoc != null && (
-        isAdmin() ||
-        (userDoc.data.permissions != null && (
-          (path in userDoc.data.permissions && userDoc.data.permissions[path] == true) ||
-          (path in userDoc.data.permissions && userDoc.data.permissions[path] is map)
-        ))
-      );
+      return isAuthenticated() && 
+        'permissions' in getUserData().data && 
+        getUserData().data.permissions is map && 
+        (
+          isAdmin() ||
+          (path in getUserData().data.permissions && getUserData().data.permissions[path] == true) ||
+          (path in getUserData().data.permissions && getUserData().data.permissions[path] is map)
+        );
     }
 
     function hasNestedPermission(module, submodule) {
-      let userDoc = getUserData();
       let dotKey = module + "." + submodule;
-      return isAuthenticated() && userDoc != null && (
-        isAdmin() ||
-        (userDoc.data.permissions != null && (
-          (dotKey in userDoc.data.permissions && userDoc.data.permissions[dotKey] == true) ||
-          (module in userDoc.data.permissions && userDoc.data.permissions[module] == true) ||
-          (module in userDoc.data.permissions && 
-           userDoc.data.permissions[module] is map && 
-           submodule in userDoc.data.permissions[module] && 
-           userDoc.data.permissions[module][submodule] == true)
-        ))
-      );
+      return isAuthenticated() && 
+        'permissions' in getUserData().data && 
+        getUserData().data.permissions is map && 
+        (
+          isAdmin() ||
+          (dotKey in getUserData().data.permissions && getUserData().data.permissions[dotKey] == true) ||
+          (module in getUserData().data.permissions && getUserData().data.permissions[module] == true) ||
+          (
+            module in getUserData().data.permissions && 
+            getUserData().data.permissions[module] is map && 
+            submodule in getUserData().data.permissions[module] && 
+            getUserData().data.permissions[module][submodule] == true
+          )
+        );
     }
 
     function isSupervisor() {
-      let userDoc = getUserData();
-      return isAuthenticated() && userDoc != null && userDoc.data.role != null && (
-        userDoc.data.role == "supervisor" ||
-        userDoc.data.role == "Supervisor" ||
-        userDoc.data.role == "SUPERVISOR"
-      );
+      return isAuthenticated() && 
+        'role' in getUserData().data && 
+        getUserData().data.role != null && 
+        (
+          getUserData().data.role == "supervisor" ||
+          getUserData().data.role == "Supervisor" ||
+          getUserData().data.role == "SUPERVISOR"
+        );
     }
 
     function isAdjustmentField(data) {
