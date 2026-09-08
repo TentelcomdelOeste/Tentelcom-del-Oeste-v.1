@@ -90,12 +90,13 @@ service cloud.firestore {
     // CLIENTS
     match /clients/{id} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission("cotizaciones");
+      allow write: if hasPermission("cotizaciones") || hasPermission("gestion_proyectos") || hasNestedPermission("gestion_proyectos", "crear") || hasNestedPermission("gestion_proyectos", "editar");
     }
 
     // COTIZACIONES
     match /quotes/{id} {
-      allow read, write: if hasPermission("cotizaciones") || hasPermission("pre_analysis");
+      allow read: if hasPermission("cotizaciones") || hasPermission("pre_analysis") || hasPermission("gestion_proyectos") || hasNestedPermission("gestion_proyectos", "crear") || hasNestedPermission("gestion_proyectos", "editar");
+      allow write: if hasPermission("cotizaciones") || hasPermission("pre_analysis");
     }
 
     // CATÁLOGO EXTERNO

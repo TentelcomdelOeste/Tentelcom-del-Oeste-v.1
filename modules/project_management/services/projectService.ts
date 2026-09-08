@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, QueryConstraint, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot, runTransaction } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
@@ -12,9 +12,14 @@ export interface ProjectFilterOptions {
 
 export const parseCreatedAtDate = (createdAt: any): Date | null => {
   if (!createdAt) return null;
-  if (typeof createdAt === 'string') return new Date(createdAt);
+  if (typeof createdAt === 'string') {
+    const parsed = new Date(createdAt);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
   if (typeof createdAt.toDate === 'function') return createdAt.toDate();
   if (createdAt.seconds) return new Date(createdAt.seconds * 1000);
+  if (typeof createdAt === 'number') return new Date(createdAt);
+  if (createdAt instanceof Date) return createdAt;
   return null;
 };
 
@@ -27,7 +32,13 @@ export const getProjects = async (limitSize: number = 60): Promise<Project[]> =>
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
   } catch (error) {
     console.error("Error fetching projects:", error);
-    return [];
+    try {
+      const fallbackSnap = await getDocs(collection(db, COLLECTION_NAME));
+      return fallbackSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
+    } catch (fallbackError) {
+      console.error("Error in fallback fetching projects:", fallbackError);
+      return [];
+    }
   }
 };
 
@@ -36,56 +47,57 @@ export const subscribeToProjects = (
   limitSize: number = 60,
   filters?: ProjectFilterOptions
 ): () => void => {
-  const constraints: QueryConstraint[] = [];
-  const yearNum = filters?.year ? parseInt(filters.year, 10) : NaN;
-  const monthNum = filters?.month ? parseInt(filters.month, 10) : NaN;
+  const collectionRef = collection(db, COLLECTION_NAME);
+  
+  const handleDocs = (docs: any[]) => {
+    const yearNum = filters?.year ? parseInt(filters.year, 10) : NaN;
+    const monthNum = filters?.month && filters.month !== 'all' ? parseInt(filters.month, 10) : NaN;
 
-  if (!isNaN(yearNum)) {
-    if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
-      const monthStr = String(monthNum).padStart(2, '0');
-      const nextYear = monthNum === 12 ? yearNum + 1 : yearNum;
-      const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
-      const nextMonthStr = String(nextMonthNum).padStart(2, '0');
+    let projects = docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
 
-      const startStr = `${yearNum}-${monthStr}-01`;
-      const endStr = `${nextYear}-${nextMonthStr}-01`;
+    // Sort descending by date in-memory
+    projects.sort((a, b) => {
+      const dateA = parseCreatedAtDate(a.createdAt)?.getTime() || 0;
+      const dateB = parseCreatedAtDate(b.createdAt)?.getTime() || 0;
+      return dateB - dateA;
+    });
 
-      constraints.push(where('createdAt', '>=', startStr));
-      constraints.push(where('createdAt', '<', endStr));
-    } else {
-      const startStr = `${yearNum}-01-01`;
-      const endStr = `${yearNum + 1}-01-01`;
-
-      constraints.push(where('createdAt', '>=', startStr));
-      constraints.push(where('createdAt', '<', endStr));
-    }
-  }
-
-  constraints.push(orderBy('createdAt', 'desc'));
-
-  if (limitSize > 0) {
-    constraints.push(limit(limitSize));
-  }
-
-  const q = query(collection(db, COLLECTION_NAME), ...constraints);
-
-  return onSnapshot(q, (snapshot) => {
-    let projects = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Project));
-
-    if (isNaN(yearNum) && !isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+    if (!isNaN(yearNum) || !isNaN(monthNum)) {
       projects = projects.filter(p => {
         const d = parseCreatedAtDate(p.createdAt);
-        if (!d || isNaN(d.getTime())) return false;
-        return d.getMonth() + 1 === monthNum;
+        if (!d || isNaN(d.getTime())) return true;
+        if (!isNaN(yearNum) && d.getFullYear() !== yearNum) return false;
+        if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12 && d.getMonth() + 1 !== monthNum) return false;
+        return true;
       });
     }
 
-    const hasMore = limitSize > 0 ? snapshot.docs.length >= limitSize : false;
+    const hasMore = limitSize > 0 ? docs.length >= limitSize : false;
     callback(projects, hasMore);
+  };
+
+  const q = limitSize > 0
+    ? query(collectionRef, orderBy('createdAt', 'desc'), limit(limitSize))
+    : query(collectionRef, orderBy('createdAt', 'desc'));
+
+  let unsubFallback: (() => void) | null = null;
+
+  const unsubPrimary = onSnapshot(q, (snapshot) => {
+    handleDocs(snapshot.docs);
   }, (error) => {
-    console.error("Error listening to projects:", error);
-    callback([], false);
+    console.warn("Error listening to projects with orderBy, using collection fallback:", error);
+    unsubFallback = onSnapshot(collectionRef, (snapshot) => {
+      handleDocs(snapshot.docs);
+    }, (err) => {
+      console.error("Error in fallback projects subscription:", err);
+      callback([], false);
+    });
   });
+
+  return () => {
+    unsubPrimary();
+    if (unsubFallback) unsubFallback();
+  };
 };
 
 export const searchProjectsInFirestore = async (
@@ -225,14 +237,16 @@ export const getApprovedQuotes = async (): Promise<Quote[]> => {
   try {
     const q = query(collection(db, "quotes"), where("estado", "==", "Aprobada"));
     const snapshot = await getDocs(q);
-    const quotes = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        ...data,
-        docId: doc.id,
-        id: data.id !== undefined ? data.id : doc.id,
-      } as Quote;
-    });
+    const quotes = snapshot.docs
+      .map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          docId: doc.id,
+          id: data.id !== undefined ? data.id : doc.id,
+        } as Quote;
+      })
+      .filter(q => !q.isDeleted && (q.estado === 'Aprobada' || (q as any).status === 'Aprobada'));
 
     // In-memory sort by id descending
     quotes.sort((a, b) => {
@@ -247,7 +261,34 @@ export const getApprovedQuotes = async (): Promise<Quote[]> => {
     return quotes;
   } catch (error) {
     console.error("Error fetching approved quotes:", error);
-    throw error;
+    try {
+      // Fallback in case of index/filter query issue
+      const allSnap = await getDocs(collection(db, "quotes"));
+      const fallbackQuotes = allSnap.docs
+        .map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
+            docId: doc.id,
+            id: data.id !== undefined ? data.id : doc.id,
+          } as Quote;
+        })
+        .filter(q => !q.isDeleted && (q.estado === 'Aprobada' || (q as any).status === 'Aprobada'));
+
+      fallbackQuotes.sort((a, b) => {
+        const numA = Number(a.id);
+        const numB = Number(b.id);
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return numB - numA;
+        }
+        return String(b.id || '').localeCompare(String(a.id || ''));
+      });
+
+      return fallbackQuotes;
+    } catch (fallbackErr) {
+      console.error("Fallback error fetching quotes:", fallbackErr);
+      return [];
+    }
   }
 };
 

@@ -34,7 +34,7 @@ const MONTH_NAMES = [
 
 const now = new Date();
 const defaultYear = now.getFullYear().toString();
-const defaultMonth = (now.getMonth() + 1).toString().padStart(2, '0');
+const defaultMonth = 'all';
 
 const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ currentUser, selectedId, onClearSelectedId }) => {
   const [showModal, setShowModal] = useState(false);
@@ -60,20 +60,16 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Lista de años disponibles basados en rango válido a partir de 2026
+  // Lista de años disponibles basados en proyectos y año actual
   const availableYears = useMemo(() => {
     const yearsSet = new Set<number>();
-    const baseYear = 2026;
     const currentYear = new Date().getFullYear();
 
-    yearsSet.add(baseYear);
-    if (currentYear >= baseYear) {
-      yearsSet.add(currentYear);
-    }
+    yearsSet.add(currentYear);
 
     projects.forEach(p => {
       const d = parseCreatedAtDate(p.createdAt);
-      if (d && !isNaN(d.getFullYear()) && d.getFullYear() >= baseYear) {
+      if (d && !isNaN(d.getFullYear())) {
         yearsSet.add(d.getFullYear());
       }
     });
@@ -129,7 +125,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
 
   // 3. Selección directa por ID o número de proyecto (ej. desde notificaciones/enlaces)
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !canViewExpediente) return;
 
     const allCurrent = [...projects, ...searchExtraProjects];
     const found = allCurrent.find(x => x.id === selectedId || x.projectNumber === selectedId);
@@ -146,7 +142,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
         }
       }).catch(console.error);
     }
-  }, [selectedId, projects, searchExtraProjects]);
+  }, [selectedId, canViewExpediente, projects, searchExtraProjects]);
 
   const handleLoadMore = () => {
     if (loadingMore) return;
@@ -214,7 +210,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const allAvailable = Array.from(combinedMap.values());
   const searchTrim = search.trim().toLowerCase();
   const yearNum = selectedYear ? parseInt(selectedYear, 10) : NaN;
-  const monthNum = selectedMonth ? parseInt(selectedMonth, 10) : NaN;
+  const monthNum = selectedMonth && selectedMonth !== 'all' ? parseInt(selectedMonth, 10) : NaN;
 
   const filteredProjects = allAvailable.filter(p => {
     // Coincidencia con término de búsqueda
@@ -229,9 +225,10 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     // Coincidencia con filtros de Año y Mes
     if (!isNaN(yearNum) || !isNaN(monthNum)) {
       const d = parseCreatedAtDate(p.createdAt);
-      if (!d || isNaN(d.getTime())) return false;
-      if (!isNaN(yearNum) && d.getFullYear() !== yearNum) return false;
-      if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12 && d.getMonth() + 1 !== monthNum) return false;
+      if (d && !isNaN(d.getTime())) {
+        if (!isNaN(yearNum) && d.getFullYear() !== yearNum) return false;
+        if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12 && d.getMonth() + 1 !== monthNum) return false;
+      }
     }
 
     return true;
@@ -396,7 +393,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                       <div
                         key={project.id}
                         onClick={() => { if (canViewExpediente) setCurrentProject(project); }}
-                        className={`flex items-stretch px-4 hover:bg-blue-50/20 transition-colors border-b border-slate-200 group cursor-pointer ${
+                        className={`flex items-stretch px-4 hover:bg-blue-50/20 transition-colors border-b border-slate-200 group ${canViewExpediente ? 'cursor-pointer' : 'cursor-default'} ${
                           isHighlighted
                             ? 'bg-yellow-50 border-yellow-400 ring-2 ring-yellow-200/50 z-10 relative animate-in fade-in duration-500'
                             : isEven ? 'bg-white' : 'bg-slate-50/40'
@@ -490,7 +487,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                 <div
                   key={project.id}
                   onClick={() => { if (canViewExpediente) setCurrentProject(project); }}
-                  className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow relative flex flex-col cursor-pointer"
+                  className={`bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow relative flex flex-col ${canViewExpediente ? 'cursor-pointer' : 'cursor-default'}`}
                 >
                   {/* Header */}
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">

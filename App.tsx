@@ -197,7 +197,7 @@ const SidebarContent = ({
   <div className="px-6 space-y-3 py-6 custom-scrollbar text-left w-full h-full">
 
     {/* Cotizaciones Group */}
-    {(can(currentUser, 'cotizaciones') || can(currentUser, 'pre_analysis') || can(currentUser, 'trabajos')) && (
+    {(can(currentUser, 'cotizaciones') || can(currentUser, 'gestion_proyectos') || can(currentUser, 'pre_analysis') || can(currentUser, 'trabajos')) && (
       <div>
         <ActionButton
           onClick={() => toggleMenu('cotizaciones')}
