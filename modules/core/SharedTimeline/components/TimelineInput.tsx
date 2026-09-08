@@ -33,6 +33,7 @@ interface OperationalLogInputProps {
   isGettingLocation?: boolean;
   gpsError?: string | null;
   setGpsError?: (err: string | null) => void;
+  onOpenCamera?: () => void;
 }
 
 export const OperationalLogInput: React.FC<OperationalLogInputProps> = ({
@@ -56,9 +57,18 @@ export const OperationalLogInput: React.FC<OperationalLogInputProps> = ({
   attachMenuRef,
   isGettingLocation = false,
   gpsError = null,
-  setGpsError
+  setGpsError,
+  onOpenCamera
 }) => {
   const [isLongText, setIsLongText] = React.useState(false);
+
+  const handleCameraClick = () => {
+    if (onOpenCamera) {
+      onOpenCamera();
+    } else {
+      cameraRef.current?.click();
+    }
+  };
 
   return (
     <div className="bg-white p-2 md:p-3 border-t border-slate-200 shrink-0 sticky bottom-0 z-20 w-full overflow-visible">
@@ -256,7 +266,7 @@ export const OperationalLogInput: React.FC<OperationalLogInputProps> = ({
         {!isLongText && (
           <IconButton
             icon={<FiCamera className="w-4 h-4 text-slate-500 hover:text-blue-600 transition-colors" />}
-            onClick={() => cameraRef.current?.click()}
+            onClick={handleCameraClick}
             disabled={isUploading || isGettingLocation}
             title="Tomar foto / Cámara"
             className="hover:bg-slate-50 active:bg-slate-100 rounded-lg !p-2 shrink-0"
@@ -298,7 +308,7 @@ export const OperationalLogInput: React.FC<OperationalLogInputProps> = ({
                   onClick={() => {
                     setShowAttachMenu(false);
                     setTimeout(() => {
-                      cameraRef.current?.click();
+                      handleCameraClick();
                     }, 150);
                   }}
                   className="flex items-center gap-3.5 w-full px-4 py-3 hover:bg-slate-50 active:bg-slate-100/80 rounded-xl text-left text-[11px] font-black uppercase tracking-wider text-slate-700 transition-colors group"

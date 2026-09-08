@@ -34,6 +34,7 @@ import {
 } from "react-icons/fi";
 import { IconButton, StatusBadge, ActionButton } from "@/design-system";
 import { OperationalLogInput } from "./components/TimelineInput";
+import { TimelineCameraModal } from "./components/TimelineCameraModal";
 import { Pin, PinOff, Trash, Edit3, CornerUpLeft } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEmployees } from "@/hooks/useEmployees";
@@ -422,6 +423,14 @@ export default function SharedTimeline({
     currentCollection,
     resolvedTimelineId
   );
+
+  const [isIntegratedCameraOpen, setIsIntegratedCameraOpen] = useState(false);
+
+  const handleIntegratedCameraCapture = async (file: File) => {
+    if (file && currentUser) {
+      await uploadMediaAndSend([file], "image", "");
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1610,8 +1619,18 @@ const getDynamicTitleSize = (title: string) => {
           isGettingLocation={isGettingLocation}
           gpsError={gpsError}
           setGpsError={setGpsError}
+          onOpenCamera={() => setIsIntegratedCameraOpen(true)}
         />
       </div>
+
+      <TimelineCameraModal
+        isOpen={isIntegratedCameraOpen}
+        onClose={() => setIsIntegratedCameraOpen(false)}
+        onCapture={handleIntegratedCameraCapture}
+        currentUser={currentUser}
+        contextInfo={vehicleName ? `Unidad: ${vehicleName}` : jobTitle || ''}
+        jobLocation={jobLocation || ''}
+      />
 
       {/* PORTALS & MODALS SECTION */}
       <ModalPortal>
