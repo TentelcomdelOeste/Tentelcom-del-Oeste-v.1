@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CameraPreview } from '@capgo/camera-preview';
 import { Capacitor } from '@capacitor/core';
-import { FiX, FiZap, FiZapOff, FiPlus, FiMinus, FiMapPin, FiClock, FiUser, FiNavigation } from 'react-icons/fi';
+import { FiX, FiZap, FiZapOff, FiPlus, FiMinus, FiMapPin, FiClock, FiUser, FiNavigation, FiRefreshCw } from 'react-icons/fi';
 import { IconButton } from '@/design-system';
 
 interface TimelineCameraModalProps {
@@ -30,6 +30,7 @@ interface OverlayData {
 
 /**
  * Graba el watermark/overlay de información directamente sobre la imagen capturada usando Canvas.
+ * Mantenemos este procesamiento tal como está para que la fotografía final conserve el recuadro de alta visibilidad.
  */
 export async function stampOverlayOnImage(
   base64Data: string,
@@ -96,11 +97,11 @@ export async function stampOverlayOnImage(
   }
 
   // 4. Medir dimensiones del badge
-  const fontSizeHeader = Math.round(20 * scale);
-  const fontSizeBody = Math.round(15 * scale);
-  const lineHeight = Math.round(24 * scale);
-  const padX = Math.round(22 * scale);
-  const padY = Math.round(18 * scale);
+  const fontSizeHeader = Math.round(13 * scale);
+  const fontSizeBody = Math.round(9.5 * scale);
+  const lineHeight = Math.round(15 * scale);
+  const padX = Math.round(13 * scale);
+  const padY = Math.round(9 * scale);
 
   ctx.font = `bold ${fontSizeHeader}px sans-serif`;
   let maxTextWidth = 0;
@@ -110,21 +111,20 @@ export async function stampOverlayOnImage(
     if (w > maxTextWidth) maxTextWidth = w;
   });
 
-  const cardWidth = maxTextWidth + padX * 2 + Math.round(14 * scale); // espacio adicional para la barra de acento
+  const cardWidth = maxTextWidth + padX * 2 + Math.round(10 * scale); // espacio adicional para la barra de acento
   const cardHeight = lines.length * lineHeight + padY * 2;
 
   // Posicionar tarjeta en la esquina superior izquierda o inferior izquierda
-  // Colocamos en la parte superior izquierda con margen seguro
-  const margin = Math.round(24 * scale);
+  const margin = Math.round(10 * scale);
   const cardX = margin;
   const cardY = margin;
-  const cornerRadius = Math.round(12 * scale);
+  const cornerRadius = Math.round(6 * scale);
 
   // 5. Dibujar fondo semi-transparente oscuro de alto contraste
   ctx.save();
   ctx.fillStyle = 'rgba(10, 15, 30, 0.82)';
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-  ctx.lineWidth = Math.max(1.5, Math.round(2 * scale));
+  ctx.lineWidth = Math.max(1.0, Math.round(1.5 * scale));
 
   ctx.beginPath();
   if (ctx.roundRect) {
@@ -138,9 +138,9 @@ export async function stampOverlayOnImage(
 
   // 6. Barra lateral de acento (Cyan)
   ctx.fillStyle = '#38bdf8';
-  const barWidth = Math.round(4 * scale);
+  const barWidth = Math.round(2.5 * scale);
   const barHeight = cardHeight - padY * 2;
-  const barX = cardX + Math.round(12 * scale);
+  const barX = cardX + Math.round(8 * scale);
   const barY = cardY + padY;
 
   ctx.beginPath();
@@ -152,14 +152,14 @@ export async function stampOverlayOnImage(
   ctx.fill();
 
   // 7. Renderizar líneas de texto con sombra para máxima legibilidad
-  const textStartX = barX + barWidth + Math.round(12 * scale);
-  let currentY = cardY + padY + Math.round(16 * scale);
+  const textStartX = barX + barWidth + Math.round(8 * scale);
+  let currentY = cardY + padY + Math.round(10 * scale);
 
   lines.forEach((l, idx) => {
     ctx.font = l.isBold ? `bold ${idx === 0 ? fontSizeHeader : fontSizeBody}px sans-serif` : `${fontSizeBody}px sans-serif`;
     ctx.fillStyle = l.color;
     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    ctx.shadowBlur = 4 * scale;
+    ctx.shadowBlur = 3 * scale;
     ctx.shadowOffsetX = 1;
     ctx.shadowOffsetY = 1;
     ctx.fillText(l.text, textStartX, currentY);
@@ -188,11 +188,18 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
   contextInfo = '',
   jobLocation = '',
 }) => {
+  const [cameraPosition, setCameraPosition] = useState<'rear' | 'front'>('rear');
   const [isReady, setIsReady] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [flashMode, setFlashMode] = useState<'off' | 'on' | 'auto' | 'torch'>('off');
+  const [flashMode, setFlashMode] = useState<'off' | 'on'>('off');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [initError, setInitError] = useState<string | null>(null);
+
+  // Zoom Ref para persistir el zoom durante la reinstanciación sin re-ejecutar el efecto de la cámara
+  const zoomLevelRef = useRef(zoomLevel);
+  useEffect(() => {
+    zoomLevelRef.current = zoomLevel;
+  }, [zoomLevel]);
 
   // Live Clock State
   const [currentDateTime, setCurrentDateTime] = useState<Date>(new Date());
@@ -235,7 +242,6 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
       },
       (err) => {
         console.warn('[TimelineCamera] Geolocation watch error:', err);
-        // Si ya teníamos coordenadas, las mantenemos
         setGpsStatus((prev) => (prev === 'active' ? 'active' : 'unavailable'));
       },
       {
@@ -294,18 +300,15 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
         }
 
         // Configuración adaptativa según entorno
-        // En Web / Chrome: toBack: false y parent: 'timeline-camera-preview-container' asegura que el <video>
-        // se monte directamente dentro del contenedor del modal y sea visible al 100%.
-        // En Android Nativo: toBack: true coloca la vista de cámara tras el WebView transparente.
         const options: any = {
-          position: 'rear',
+          position: cameraPosition,
           toBack: isNative,
           aspectRatio: 'fill',
           aspectMode: 'cover',
           storeToFile: false,
           disableAudio: true,
           rotateWhenOrientationChanged: true,
-          initialZoomLevel: 1,
+          initialZoomLevel: zoomLevelRef.current,
         };
 
         if (!isNative) {
@@ -319,13 +322,18 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
           return;
         }
 
-        // Ajustes iniciales
+        // Restaurar zoom apropiadamente sin romper la cámara
         try {
-          await CameraPreview.setZoom({ level: 1 });
+          await CameraPreview.setZoom({ level: zoomLevelRef.current });
         } catch {
-          // No-op si no es soportado
+          try {
+            await CameraPreview.setZoom({ level: 1 });
+          } catch {
+            // No-op
+          }
         }
 
+        // Inicializar Flash en Off
         try {
           await CameraPreview.setFlashMode({ flashMode: 'off' });
         } catch {
@@ -351,22 +359,35 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
       activeRef.current = false;
       stopCamera();
     };
-  }, [isOpen, stopCamera]);
+  }, [isOpen, cameraPosition, stopCamera]);
 
-  // Flash toggle handler
+  // Flash toggle handler - Controla de verdad el flash de la cámara (torch enciende físicamente el LED)
   const handleToggleFlash = async () => {
-    const nextMode: Record<string, 'off' | 'on' | 'auto' | 'torch'> = {
-      off: 'on',
-      on: 'auto',
-      auto: 'torch',
-      torch: 'off',
-    };
-    const next = nextMode[flashMode] || 'off';
+    if (cameraPosition === 'front') return; // Sin flash físico en cámara frontal
+
+    const next = flashMode === 'off' ? 'on' : 'off';
     setFlashMode(next);
     try {
-      await CameraPreview.setFlashMode({ flashMode: next });
+      // 'torch' enciende físicamente el LED de la cámara trasera inmediatamente en Android/iOS
+      await CameraPreview.setFlashMode({ flashMode: next === 'on' ? 'torch' : 'off' });
     } catch (err) {
-      console.warn('[TimelineCamera] Error setting flash mode:', err);
+      console.warn('[TimelineCamera] Error setting flash mode to torch, trying fallback:', err);
+      try {
+        await CameraPreview.setFlashMode({ flashMode: next });
+      } catch (errFallback) {
+        console.warn('[TimelineCamera] Flash fallback failed:', errFallback);
+      }
+    }
+  };
+
+  // Flip camera handler
+  const handleFlipCamera = async () => {
+    if (!isReady || isCapturing) return;
+    const nextPosition = cameraPosition === 'rear' ? 'front' : 'rear';
+    setCameraPosition(nextPosition);
+    // Si pasamos a frontal, apagamos el flash en el estado inmediatamente
+    if (nextPosition === 'front') {
+      setFlashMode('off');
     }
   };
 
@@ -414,7 +435,6 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
 
     try {
       const result = await CameraPreview.capture({
-        width: 1920,
         quality: 90,
         format: 'jpeg',
       });
@@ -432,7 +452,7 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
 
         const technicianName = currentUser?.name || currentUser?.displayName || currentUser?.email || 'Técnico';
 
-        // 1. Estampar la información del overlay directamente en la fotografía
+        // 1. Estampar la información del overlay directamente en la fotografía usando Canvas
         const stampedFile = await stampOverlayOnImage(
           result.value,
           {
@@ -500,118 +520,94 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
         }`}
       />
 
-      {/* 1. Barra Superior: Controles de Flash y Cerrar */}
-      <div className="flex items-center justify-between p-4 pt-6 bg-gradient-to-b from-black/80 via-black/40 to-transparent z-30 pointer-events-auto">
-        <IconButton
-          icon={<FiX className="w-6 h-6 text-white" />}
-          onClick={handleClose}
-          variant="neutral"
-          className="!p-2.5 bg-black/50 hover:bg-black/70 active:bg-black/90 text-white rounded-full border border-white/20 backdrop-blur-md shadow-lg"
-          title="Cerrar cámara"
-        />
-
-        {/* Flash Mode Toggle */}
+      {/* 1. Barra Superior: Controles de Flash, Flip y Cerrar - Agrupados a la derecha */}
+      <div className="flex items-center justify-end gap-2 p-3 pt-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent z-30 pointer-events-auto">
+        {/* Botón de Flash */}
         <button
           type="button"
           onClick={handleToggleFlash}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-black/50 hover:bg-black/70 text-white rounded-full border border-white/20 backdrop-blur-md text-xs font-bold uppercase tracking-wider shadow-lg transition-all"
+          disabled={cameraPosition === 'front'}
+          className="flex items-center gap-1 px-2.5 py-1.5 bg-black/50 hover:bg-black/70 active:bg-black/95 text-white rounded-full border border-white/20 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider shadow-md transition-all disabled:opacity-40"
+          title={cameraPosition === 'front' ? 'Flash no disponible en cámara frontal' : 'Controlar Flash'}
         >
-          {flashMode === 'off' && (
+          {cameraPosition === 'front' ? (
             <>
-              <FiZapOff className="w-4 h-4 text-slate-300" />
-              <span>Flash Off</span>
+              <FiZapOff className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-slate-400">NO DISP.</span>
             </>
-          )}
-          {flashMode === 'on' && (
+          ) : flashMode === 'off' ? (
             <>
-              <FiZap className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-              <span>Flash On</span>
+              <FiZapOff className="w-3.5 h-3.5 text-slate-300" />
+              <span>FLASH OFF</span>
             </>
-          )}
-          {flashMode === 'auto' && (
+          ) : (
             <>
-              <FiZap className="w-4 h-4 text-blue-400" />
-              <span>Auto</span>
-            </>
-          )}
-          {flashMode === 'torch' && (
-            <>
-              <FiZap className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
-              <span>Linterna</span>
+              <FiZap className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+              <span>FLASH ON</span>
             </>
           )}
         </button>
+
+        {/* Botón para Voltear la Cámara */}
+        <button
+          type="button"
+          onClick={handleFlipCamera}
+          className="flex items-center gap-1 px-2.5 py-1.5 bg-black/50 hover:bg-black/70 active:bg-black/90 text-white rounded-full border border-white/20 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider shadow-md transition-all"
+          title="Cambiar Cámara (Frontal/Trasera)"
+        >
+          <FiRefreshCw className="w-3.5 h-3.5 text-sky-400" />
+          <span>{cameraPosition === 'rear' ? 'TRASERA' : 'FRONTAL'}</span>
+        </button>
+
+        {/* Botón de Cerrar */}
+        <IconButton
+          icon={<FiX className="w-4 h-4 text-white" />}
+          onClick={handleClose}
+          variant="neutral"
+          className="!p-1.5 bg-black/50 hover:bg-black/70 active:bg-black/90 text-white rounded-full border border-white/20 backdrop-blur-md shadow-md"
+          title="Cerrar cámara"
+        />
       </div>
 
-      {/* 2. OVERLAY EN TIEMPO REAL (Información visible sobre el preview) */}
-      <div className="px-4 z-20 pointer-events-none flex flex-col items-start gap-2">
-        <div className="bg-slate-950/80 border border-white/20 backdrop-blur-md rounded-2xl p-3 shadow-2xl text-white max-w-sm flex flex-col gap-1.5">
-          {/* Header Badge */}
-          <div className="flex items-center justify-between gap-3 border-b border-white/15 pb-1.5">
-            <span className="text-xs font-black tracking-wider text-sky-400 uppercase">
-              TENTELCOM
-            </span>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                EN VIVO
-              </span>
-            </div>
-          </div>
-
-          {/* Fecha y Hora en tiempo real */}
-          <div className="flex items-center gap-2 text-xs font-bold text-white">
-            <FiClock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span>{formattedDate}</span>
-            <span className="text-sky-300 font-black">{formattedTime}</span>
-          </div>
-
-          {/* Técnico */}
-          <div className="flex items-center gap-2 text-xs text-slate-200">
-            <FiUser className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate">Técnico: <strong className="text-white">{technicianName}</strong></span>
-          </div>
-
-          {/* Contexto si existe */}
-          {contextInfo && (
-            <div className="text-[11px] text-slate-300 font-medium pl-5 truncate">
-              {contextInfo}
-            </div>
-          )}
-
-          {/* Ubicación y Coordenadas GPS */}
-          <div className="flex flex-col gap-0.5 pt-1 border-t border-white/10 text-[11px]">
-            {jobLocation && (
-              <div className="flex items-center gap-1.5 text-sky-300 font-semibold truncate">
-                <FiMapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <span className="truncate">{jobLocation}</span>
-              </div>
-            )}
-
-            {gpsCoords ? (
-              <div className="flex items-center gap-1.5 text-emerald-300 font-mono text-[10px]">
-                <FiNavigation className="w-3 h-3 text-emerald-400 shrink-0" />
-                <span>
-                  {gpsCoords.latitude.toFixed(6)}, {gpsCoords.longitude.toFixed(6)}
-                </span>
-                {gpsCoords.accuracy && (
-                  <span className="text-slate-400">
-                    (±{gpsCoords.accuracy.toFixed(1)}m)
-                  </span>
-                )}
-              </div>
-            ) : gpsStatus === 'searching' ? (
-              <div className="flex items-center gap-1.5 text-amber-300 text-[10px] italic">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                <span>Buscando satélites GPS...</span>
-              </div>
-            ) : (
-              <div className="text-slate-400 text-[10px] italic pl-4">
-                GPS no disponible
-              </div>
-            )}
-          </div>
+      {/* 2. OVERLAY EN TIEMPO REAL - Solamente texto sobre el video en la parte superior izquierda */}
+      <div
+        className="absolute top-3 left-3 z-40 pointer-events-none flex flex-col gap-0.5 text-white font-medium select-none text-[11px] leading-tight tracking-wide text-left max-w-[55vw]"
+        style={{
+          textShadow: '1px 1px 1.5px rgba(0,0,0,0.95), -1px -1px 1.5px rgba(0,0,0,0.95), 1px -1px 1.5px rgba(0,0,0,0.95), -1px 1px 1.5px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.8)'
+        }}
+      >
+        <div className="text-sky-400 font-extrabold uppercase tracking-widest text-[12px]">
+          TENTELCOM • <span className="text-emerald-400 animate-pulse">EN VIVO</span>
         </div>
+        <div>
+          {formattedDate} {formattedTime}
+        </div>
+        <div>
+          👤 Técnico: {technicianName}
+        </div>
+        {contextInfo && (
+          <div>
+            🚚 {contextInfo}
+          </div>
+        )}
+        {jobLocation && (
+          <div className="truncate max-w-[50vw]">
+            📍 {jobLocation}
+          </div>
+        )}
+        {gpsCoords ? (
+          <div className="text-emerald-300 font-mono text-[10px]">
+            GPS: {gpsCoords.latitude.toFixed(6)}, {gpsCoords.longitude.toFixed(6)} {gpsCoords.accuracy ? `(±${gpsCoords.accuracy.toFixed(1)}m)` : ''}
+          </div>
+        ) : gpsStatus === 'searching' ? (
+          <div className="text-amber-400 text-[10px] italic">
+            GPS: Buscando satélites...
+          </div>
+        ) : (
+          <div className="text-slate-400 text-[10px] italic">
+            GPS: No disponible
+          </div>
+        )}
       </div>
 
       {/* Error State if any */}

@@ -1794,7 +1794,7 @@ const getDynamicTitleSize = (title: string) => {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.25 }}
-              className="fixed inset-0 bg-slate-950/98 flex flex-col items-center justify-center z-[550] select-none touch-none p-4" 
+              className="fixed inset-0 bg-slate-950/98 flex flex-col items-center justify-center z-[550] select-none touch-none p-0" 
               onClick={() => setFullscreenImage(null)} 
               onTouchStart={(e) => { touchStartZoomX.current = e.touches[0].clientX; }} 
               onTouchEnd={(e) => {
@@ -1819,14 +1819,14 @@ const getDynamicTitleSize = (title: string) => {
               
               {/* Zoomable Image Implementation */}
               <div 
-                className="relative w-full h-full flex items-center justify-center p-2 overflow-hidden" 
+                className="relative w-full h-full flex items-center justify-center p-0 overflow-hidden" 
                 onClick={(e) => e.stopPropagation()}
               >
                 <img 
                   key={displayZoomUrl}
                   src={displayZoomUrl} 
                   alt="Zoom" 
-                  className="max-w-full max-h-[88vh] object-contain rounded-xl shadow-[0_48px_96px_-12px_rgba(0,0,0,0.6)] border border-white/5 transition-transform duration-75 ease-out" 
+                  className="max-w-full max-h-full object-contain transition-transform duration-75 ease-out" 
                   style={{
                     transform: `scale(${zoomState.scale}) translate3d(${zoomState.x}px, ${zoomState.y}px, 0)`,
                     touchAction: zoomState.scale > 1 ? 'none' : 'auto',
