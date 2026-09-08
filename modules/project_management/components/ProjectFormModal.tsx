@@ -50,6 +50,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState('');
+  const [hasDraftLoaded, setHasDraftLoaded] = useState(false);
 
   const [approvedQuotes, setApprovedQuotes] = useState<Quote[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -77,6 +78,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       setQuotesError(null);
       setErrorMsg(null);
       setIdempotencyKey('');
+      setHasDraftLoaded(false);
       return;
     }
 
@@ -89,14 +91,32 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       setSelectedQuoteId(initialData.quoteId || '');
       setOriginSelection(initialData.origin === 'Cotización' && initialData.quoteId ? 'quote' : 'manual');
       setIdempotencyKey('');
+      setHasDraftLoaded(false);
     } else {
-      setName('');
-      setStatus('Planificación');
-      setClientId('');
-      setClientName('');
-      setStartDate(getTodayLocalDate());
-      setSelectedQuoteId('');
-      setOriginSelection('manual');
+      // Restore local draft if it exists to protect the user against accidental reload or token expiry
+      const savedDraft = localStorage.getItem('ttc_new_project_draft');
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          setName(parsed.name || '');
+          setStartDate(parsed.startDate || getTodayLocalDate());
+          setClientId(parsed.clientId || '');
+          setClientName(parsed.clientName || '');
+          setSelectedQuoteId(parsed.selectedQuoteId || '');
+          setOriginSelection(parsed.originSelection || 'manual');
+          setHasDraftLoaded(true);
+        } catch (e) {
+          console.error("Error parsing saved project draft:", e);
+        }
+      } else {
+        setName('');
+        setStatus('Planificación');
+        setClientId('');
+        setClientName('');
+        setStartDate(getTodayLocalDate());
+        setSelectedQuoteId('');
+        setOriginSelection('manual');
+      }
       
       // Generate a new idempotency key on mount/open of a new project form.
       const key = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
@@ -124,6 +144,31 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
 
     loadFormOptions();
   }, [show, initialData]);
+
+  // Auto-save form draft to localStorage whenever active fields change
+  useEffect(() => {
+    if (!show || isEditing) return;
+    const draft = {
+      name,
+      startDate,
+      clientId,
+      clientName,
+      selectedQuoteId,
+      originSelection,
+    };
+    localStorage.setItem('ttc_new_project_draft', JSON.stringify(draft));
+  }, [name, startDate, clientId, clientName, selectedQuoteId, originSelection, show, isEditing]);
+
+  const handleClearDraft = () => {
+    localStorage.removeItem('ttc_new_project_draft');
+    setName('');
+    setStartDate(getTodayLocalDate());
+    setClientId('');
+    setClientName('');
+    setSelectedQuoteId('');
+    setOriginSelection('manual');
+    setHasDraftLoaded(false);
+  };
 
   const findSelectedQuote = (quoteId: string) =>
     approvedQuotes.find(
@@ -264,6 +309,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
           'El tiempo de espera para actualizar el proyecto ha expirado. Verifique su conexión a internet e inténtelo nuevamente.'
         );
 
+        localStorage.removeItem('ttc_new_project_draft');
         onSave(updatedProject, unlinkedProjectId);
         onClose();
         return;
@@ -292,6 +338,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
           'El tiempo de espera para registrar el proyecto ha expirado. Verifique su conexión a internet e inténtelo de nuevo (los datos introducidos han sido conservados).'
         );
 
+        localStorage.removeItem('ttc_new_project_draft');
         onSave(newProject, unlinkedProjectId);
         onClose();
       }
@@ -317,6 +364,18 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
         maxWidth="max-w-md"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {hasDraftLoaded && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between text-xs text-amber-800 animate-in fade-in slide-in-from-top-1 duration-200">
+              <span className="font-semibold">⚠️ Se recuperó un borrador previo.</span>
+              <button 
+                type="button" 
+                onClick={handleClearDraft} 
+                className="underline hover:text-amber-950 font-bold transition-colors cursor-pointer"
+              >
+                Descartar
+              </button>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cotización de origen</label>
             <div className="relative">

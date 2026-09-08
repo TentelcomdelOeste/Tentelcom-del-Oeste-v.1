@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot, runTransaction } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, updateDoc, deleteDoc, deleteField, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
@@ -416,29 +416,7 @@ export const createProjectWithQuoteHandling = async ({
 }): Promise<{ newProject: Project; unlinkedProjectId?: string }> => {
   let unlinkedProjectId: string | undefined;
 
-  // Idempotency check: If an idempotencyKey is passed, query Firestore first.
-  // This perfectly prevents duplicate creation if a save request is retried (e.g. after a client timeout).
-  if (idempotencyKey) {
-    try {
-      const qIdemp = query(collection(db, COLLECTION_NAME), where('idempotencyKey', '==', idempotencyKey));
-      const snapIdemp = await getDocs(qIdemp);
-      if (!snapIdemp.empty) {
-        console.warn(`[projectService] Idempotent creation triggered: project with key ${idempotencyKey} already exists. Returning it.`);
-        const existingDoc = snapIdemp.docs[0];
-        return {
-          newProject: {
-            ...existingDoc.data(),
-            id: existingDoc.id,
-          } as Project,
-          unlinkedProjectId,
-        };
-      }
-    } catch (err) {
-      console.error("[projectService] Error in idempotency lookup:", err);
-      // Fail open: continue creation to be robust
-    }
-  }
-
+  // 1. Unlink legacy projects from this quote if needed
   if (selectedQuoteId) {
     const existingProject = await getProjectByQuoteId(selectedQuoteId);
     if (existingProject) {
@@ -453,30 +431,114 @@ export const createProjectWithQuoteHandling = async ({
     }
   }
 
-  const projectNumber = await generateNextProjectNumber();
-  const now = new Date().toISOString();
+  // 2. Enforce deterministic document ID using the idempotencyKey
+  const finalIdempotencyKey = idempotencyKey || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
+  const projectDocRef = doc(db, COLLECTION_NAME, finalIdempotencyKey);
 
-  const newProjectData: Omit<Project, 'id'> = {
-    ...projectData,
-    projectNumber,
-    origin: selectedQuoteId ? 'Cotización' : 'Manual',
-    quoteId: selectedQuoteId || undefined,
-    quoteCommercialId: selectedQuoteId ? selectedQuoteCommercialId : undefined,
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-    createdBy,
-    createdByDisplayName,
-    idempotencyKey,
-  };
+  const year = projectData.startDate ? parseInt(projectData.startDate.substring(0, 4), 10) : new Date().getFullYear();
+  const counterRef = doc(db, 'counters', `project_${year}`);
+  const prefix = `TTC-${year}-`;
 
-  const docRef = await addDoc(collection(db, COLLECTION_NAME), newProjectData);
+  // 3. Fetch live occupied project numbers from the projects collection BEFORE running the transaction
+  // to keep the transaction extremely fast, predictable, and fully standard-compliant (no standard reads inside transaction).
+  const occupiedInDb = await getOccupiedProjectNumbers(year);
+
+  // 4. Run the atomic, fully idempotent transaction that binds counter increment AND project creation together
+  const result = await runTransaction(db, async (transaction) => {
+    // A. Read the project document first to see if it already exists
+    const projectSnap = await transaction.get(projectDocRef);
+    if (projectSnap.exists()) {
+      console.warn(`[projectService] Idempotent creation triggered: project with key ${finalIdempotencyKey} already exists. Returning it.`);
+      return {
+        project: {
+          ...projectSnap.data(),
+          id: projectSnap.id,
+        } as Project,
+        isNew: false,
+      };
+    }
+
+    // B. Read the counter document
+    const counterSnap = await transaction.get(counterRef);
+
+    let reservedMap: Record<string, number> = {};
+    if (counterSnap.exists()) {
+      reservedMap = counterSnap.data().reservedMap || {};
+    }
+
+    const now = Date.now();
+    const CLEANUP_THRESHOLD_MS = 60000; // 60s threshold for in-flight reservations
+
+    const activeOccupied = new Set<number>(occupiedInDb);
+    const cleanedReservedMap: Record<string, number> = {};
+
+    Object.entries(reservedMap).forEach(([numStr, timestamp]) => {
+      const num = parseInt(numStr, 10);
+      const isRecent = (now - timestamp) < CLEANUP_THRESHOLD_MS;
+      if (activeOccupied.has(num) || isRecent) {
+        activeOccupied.add(num);
+        cleanedReservedMap[numStr] = timestamp;
+      }
+    });
+
+    // C. Find smallest available positive integer starting from 1
+    let candidate = 1;
+    while (activeOccupied.has(candidate)) {
+      candidate++;
+    }
+
+    const projectNumber = `${prefix}${candidate.toString().padStart(3, '0')}`;
+
+    // D. Update counter reservedMap
+    cleanedReservedMap[candidate.toString()] = now;
+
+    if (counterSnap.exists()) {
+      transaction.update(counterRef, {
+        reservedMap: cleanedReservedMap,
+        lastAssigned: candidate,
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      transaction.set(counterRef, {
+        type: 'project',
+        year,
+        reservedMap: cleanedReservedMap,
+        lastAssigned: candidate,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    // E. Prepare project document write
+    const nowIso = new Date().toISOString();
+    const newProjectData: Omit<Project, 'id'> = {
+      ...projectData,
+      projectNumber,
+      origin: selectedQuoteId ? 'Cotización' : 'Manual',
+      quoteId: selectedQuoteId || undefined,
+      quoteCommercialId: selectedQuoteId ? selectedQuoteCommercialId : undefined,
+      isActive: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      createdBy,
+      createdByDisplayName,
+      idempotencyKey: finalIdempotencyKey,
+    };
+
+    // F. Commit the project creation atomically
+    transaction.set(projectDocRef, newProjectData);
+
+    return {
+      project: {
+        ...newProjectData,
+        id: finalIdempotencyKey,
+      } as Project,
+      isNew: true,
+    };
+  });
 
   return {
-    newProject: {
-      ...newProjectData,
-      id: docRef.id,
-    } as Project,
+    newProject: result.project,
     unlinkedProjectId,
   };
 };
