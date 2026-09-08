@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { User } from '../../../../types';
 import { getVehicleCatalog, vehicleWarehouseService } from '../services/vehicleWarehouseService';
-import { ActionButton, DataTable, TableColumn } from '../../../../design-system';
-import { FiRefreshCw, FiSearch, FiX } from 'react-icons/fi';
+import { ActionButton } from '../../../../design-system';
+import { FiRefreshCw, FiSearch, FiX, FiBox, FiChevronRight } from 'react-icons/fi';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
 
@@ -67,64 +67,6 @@ export const VehicleInventoryTab: React.FC<Props> = ({
 
   // Modal state for multiple transfer
   const [showTransferModal, setShowTransferModal] = useState(false);
-
-  const columns = useMemo<TableColumn<VehicleWarehouseItem>[]>(() => [
-    {
-      header: 'Código',
-      accessor: 'code',
-      mobileGrid: 'left',
-      mobileOrder: 1,
-      render: (item) => (
-        <span className="text-[11px] font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
-          {item.code}
-        </span>
-      )
-    },
-    {
-      header: 'Material / Descripción',
-      accessor: 'description',
-      mobileGrid: 'full',
-      mobileOrder: 2,
-      render: (item) => (
-        <div className="flex flex-col">
-          <span className="text-[12px] font-semibold text-slate-900 leading-tight">{item.description}</span>
-          <span className="text-[10px] text-slate-500">{item.category}</span>
-        </div>
-      )
-    },
-    {
-      header: 'Stock',
-      accessor: 'physicalStock',
-      mobileGrid: 'right',
-      mobileOrder: 3,
-      render: (item) => (
-        <div className="flex flex-col items-end">
-          <span className="text-[14px] font-bold text-slate-800">
-            {item.physicalStock} <span className="text-[10px] text-slate-500 font-normal">{item.unit}</span>
-          </span>
-          <div className="flex items-center gap-2 text-[10px] mt-0.5">
-            <span className="text-orange-600 font-medium" title="Comprometido en solicitudes abiertas">
-              Comp: {item.committedStock}
-            </span>
-            <span className="text-emerald-600 font-bold" title="Disponible real para transferir o consumir">
-              Disp: {item.physicalStock - item.committedStock}
-            </span>
-          </div>
-        </div>
-      )
-    },
-    {
-      header: 'Última Act.',
-      accessor: 'updatedAt',
-      hideOnMobile: true,
-      render: (item) => (
-        <div className="flex flex-col">
-          <span className="text-[11px] text-slate-600">{item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : '-'}</span>
-          <span className="text-[9px] text-slate-400">{item.updatedBy?.split('@')[0] || '-'}</span>
-        </div>
-      )
-    }
-  ], []);
 
   return (
     <div className="space-y-2.5 sm:space-y-3">
@@ -203,15 +145,107 @@ export const VehicleInventoryTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Inventory Table directly below */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <DataTable
-          data={filteredItems}
-          columns={columns}
-          keyField="id"
-          emptyMessage={`No hay inventario registrado en ${selectedVehicle?.alias || 'este vehículo'}.`}
-        />
-      </div>
+      {/* Grilla de Tarjetas de Materiales */}
+      {filteredItems.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center text-slate-400">
+          No hay inventario registrado en {selectedVehicle?.alias || 'este vehículo'}.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 animate-fade-in">
+          {filteredItems.map((item) => (
+            <div 
+              key={item.id} 
+              className="bg-white rounded-xl border border-slate-200 shadow-xs p-3 sm:p-3.5 flex flex-col justify-between hover:shadow-sm hover:border-slate-300 transition-all duration-200"
+            >
+              {/* AREA SUPERIOR: Imagen + Detalles del Material */}
+              <div className="flex gap-3 items-start">
+                {/* Espacio reservado para la imagen (limpio/neutral) */}
+                <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center shrink-0">
+                  <FiBox className="w-6 h-6 text-slate-300" />
+                </div>
+
+                {/* Detalles textuales */}
+                <div className="flex-1 min-w-0">
+                  {/* Fila superior: Código + Última Actualización */}
+                  <div className="flex items-start justify-between gap-1.5">
+                    <span className="inline-block text-[10px] font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded leading-none shrink-0">
+                      {item.code}
+                    </span>
+                    <div className="text-right text-[9px] text-slate-400 leading-tight">
+                      <div className="font-medium">Últ. act. {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : '-'}</div>
+                      <div className="truncate max-w-[90px] sm:max-w-[110px] ml-auto font-normal text-slate-400" title={item.updatedBy}>
+                        {item.updatedBy?.split('@')[0] || '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nombre/Descripción del Material */}
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight leading-snug mt-1 line-clamp-2" title={item.description}>
+                    {item.description}
+                  </h4>
+
+                  {/* Categoría */}
+                  <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5 truncate">
+                    {item.category}
+                  </span>
+                </div>
+              </div>
+
+              {/* Divisor delgado */}
+              <div className="border-t border-slate-100 my-2.5" />
+
+              {/* AREA INFERIOR: Indicadores de Cantidades */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center flex-1 min-w-0">
+                  {/* Indicador 1: Stock */}
+                  <div className="flex items-center min-w-0 shrink-0">
+                    <FiBox className="w-4 h-4 text-slate-400 shrink-0" />
+                    <div className="ml-1.5 leading-none">
+                      <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Stock</div>
+                      <div className="text-xs sm:text-sm font-black text-slate-800 mt-0.5">
+                        {item.physicalStock} <span className="text-[9px] text-slate-400 font-normal">{item.unit || 'Unid.'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Divisor Vertical */}
+                  <div className="border-r border-slate-200 h-6 mx-2 sm:mx-3 shrink-0" />
+
+                  {/* Indicador 2: Comprometido */}
+                  <div className="flex items-center min-w-0 shrink-0">
+                    <FiBox className="w-4 h-4 text-orange-500 shrink-0" />
+                    <div className="ml-1.5 leading-none">
+                      <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Comp.</div>
+                      <div className="text-xs sm:text-sm font-black text-orange-600 mt-0.5">
+                        {item.committedStock}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Divisor Vertical */}
+                  <div className="border-r border-slate-200 h-6 mx-2 sm:mx-3 shrink-0" />
+
+                  {/* Indicador 3: Disponible */}
+                  <div className="flex items-center min-w-0 shrink-0">
+                    <FiBox className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <div className="ml-1.5 leading-none">
+                      <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Disp.</div>
+                      <div className="text-xs sm:text-sm font-black text-emerald-600 mt-0.5">
+                        {item.physicalStock - item.committedStock}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Icono de Navegación discreto */}
+                <div className="text-slate-300 hover:text-slate-400 ml-2 shrink-0">
+                  <FiChevronRight className="w-5 h-5" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Multiple Transfer Modal */}
       {showTransferModal && (
