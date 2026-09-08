@@ -53,10 +53,8 @@ export async function stampOverlayOnImage(
   });
 
   const canvas = document.createElement('canvas');
-  const imgWidth = img.naturalWidth || img.width || 1920;
-  const imgHeight = img.naturalHeight || img.height || 1080;
-  canvas.width = imgWidth;
-  canvas.height = imgHeight;
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
 
   const ctx = canvas.getContext('2d');
   if (!ctx) {
@@ -64,10 +62,10 @@ export async function stampOverlayOnImage(
   }
 
   // 1. Dibujar fotografía original completa
-  ctx.drawImage(img, 0, 0, imgWidth, imgHeight);
+  ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
 
   // 2. Escala proporcional basada en la resolución de la foto (diseñado para 1080p base)
-  const scale = Math.max(0.7, Math.min(2.5, imgWidth / 1080));
+  const scale = Math.max(0.7, Math.min(2.5, img.naturalWidth / 1080));
 
   // 3. Preparar líneas de texto del overlay
   const lines: { text: string; color: string; isBold?: boolean }[] = [
@@ -393,44 +391,7 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
     setIsCapturing(true);
 
     try {
-      let targetWidth = 1080; // Defaults de seguridad en retrato
-      let targetHeight = 1920;
-
-      try {
-        const sizesResult = await CameraPreview.getSupportedPictureSizes();
-        if (sizesResult && sizesResult.supportedPictureSizes) {
-          const currentFacing = cameraPosition === 'front' ? 'front' : 'rear';
-          const sizeGroup = sizesResult.supportedPictureSizes.find(
-            (s: any) => s.facing?.toLowerCase() === currentFacing
-          );
-
-          if (sizeGroup && sizeGroup.supportedPictureSizes && sizeGroup.supportedPictureSizes.length > 0) {
-            // Ordenar de mayor a menor por total de píxeles
-            const sortedSizes = [...sizeGroup.supportedPictureSizes].sort((a: any, b: any) => {
-              const pixelsA = (a.width || 0) * (a.height || 0);
-              const pixelsB = (b.width || 0) * (b.height || 0);
-              return pixelsB - pixelsA;
-            });
-
-            const bestSize = sortedSizes[0];
-            if (bestSize && bestSize.width && bestSize.height) {
-              const w = bestSize.width;
-              const h = bestSize.height;
-              // Asegurar proporción vertical (ancho < alto) para formato de pantalla vertical (retrato)
-              // Esto evita que el plugin rellene con fondo negro el lienzo horizontal al capturar
-              targetWidth = Math.min(w, h);
-              targetHeight = Math.max(w, h);
-              console.log(`[TimelineCamera] Usando la máxima resolución soportada en retrato: ${targetWidth}x${targetHeight}`);
-            }
-          }
-        }
-      } catch (sizeErr) {
-        console.warn('[TimelineCamera] No se pudieron obtener los tamaños soportados, usando defaults de alta resolución:', sizeErr);
-      }
-
       const result = await CameraPreview.capture({
-        width: targetWidth,
-        height: targetHeight,
         quality: 95,
         format: 'jpeg',
       });

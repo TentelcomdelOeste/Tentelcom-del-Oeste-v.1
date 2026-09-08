@@ -1,6 +1,6 @@
 import React from 'react';
 import { IconButton, ACTION_ICONS } from '../../design-system';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Clipboard } from 'lucide-react';
 
 interface ActionButtonsProps {
   onEdit?: () => void;
@@ -11,6 +11,7 @@ interface ActionButtonsProps {
   onPdf?: () => void;
   onAttachments?: () => void;
   onTimeline?: () => void;
+  onCopy?: () => void;
   
   editTitle?: string;
   deleteTitle?: string;
@@ -20,6 +21,7 @@ interface ActionButtonsProps {
   pdfTitle?: string;
   attachmentsTitle?: string;
   timelineTitle?: string;
+  copyTitle?: string;
 }
 
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
@@ -31,6 +33,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   onPdf,
   onAttachments,
   onTimeline,
+  onCopy,
   editTitle = "Editar",
   deleteTitle = "Eliminar",
   viewTitle = "Ver Detalle",
@@ -39,9 +42,18 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   pdfTitle = "Descargar PDF",
   attachmentsTitle = "Gestionar Archivos",
   timelineTitle = "Bitácora Operativa",
+  copyTitle = "Copiar información",
 }) => {
   return (
     <div className="flex justify-center gap-2 items-center" onClick={(e) => e.stopPropagation()}>
+      {onCopy && (
+        <IconButton 
+          icon={<Clipboard size={16} />} 
+          onClick={onCopy} 
+          variant="neutral" 
+          title={copyTitle} 
+        />
+      )}
       {onPdf && (
         <IconButton 
           icon={<ACTION_ICONS.pdf />} 

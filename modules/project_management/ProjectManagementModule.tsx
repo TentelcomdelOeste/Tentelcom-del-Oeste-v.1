@@ -7,6 +7,7 @@ import { User } from '../../utils/types';
 import { can, isAdmin } from '../../utils/permissions';
 import { Project } from './types';
 import { ProjectFormModal } from './components/ProjectFormModal';
+import { toast } from 'react-hot-toast';
 import { 
   deleteProject, 
   subscribeToProjects, 
@@ -172,6 +173,35 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     setShowModal(true);
   };
 
+  const handleCopyProject = (project: Project) => {
+    const name = (project.name || '').trim();
+    const code = (project.projectNumber || '').trim();
+    const client = (project.clientName || '').trim();
+    
+    const textToCopy = `${name}/${code}/${client}`;
+    
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => {
+        toast.success('Información copiada', { id: 'copy-project-success' });
+      })
+      .catch((err) => {
+        console.error('Error copying to clipboard:', err);
+        try {
+          const textArea = document.createElement("textarea");
+          textArea.value = textToCopy;
+          textArea.style.position = "fixed";
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          toast.success('Información copiada', { id: 'copy-project-success' });
+        } catch (e) {
+          toast.error('No se pudo copiar la información');
+        }
+      });
+  };
+
   // Combinar proyectos paginados en tiempo real y resultados extra de búsqueda deduplicando por ID
   const combinedMap = new Map<string, Project>();
   projects.forEach(p => combinedMap.set(p.id, p));
@@ -226,7 +256,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage title="Gestión de Proyectos" subtitle="Expediente 360°">
       <ModuleToolbar>
-        <div className="flex flex-col md:flex-row gap-4 items-center w-full md:w-auto">
+        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center w-full md:w-auto">
           {selectedId ? (
             <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 px-4 py-2 rounded-xl animate-in slide-in-from-top-2 duration-300">
               <span className="text-xs font-bold text-yellow-800">Mostrando resultado de búsqueda</span>
@@ -265,29 +295,51 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
               </select>
             </div>
           )}
-          <div className="w-full md:w-72 relative">
-            <SearchInput 
-              value={search} 
-              onChange={(e) => setSearch(e.target.value)} 
-              placeholder="Buscar por nombre, número o cliente..." 
-              className="w-full" 
-            />
-            {isSearchingFirestore && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+
+          {/* Fila de Búsqueda y Botón NUEVO en móvil, pero individuales en desktop */}
+          <div className="flex gap-2 w-full md:w-auto items-center">
+            <div className="relative flex-1 md:w-72 md:flex-initial">
+              <SearchInput 
+                value={search} 
+                onChange={(e) => setSearch(e.target.value)} 
+                placeholder="Buscar por nombre, número o cliente..." 
+                className="w-full" 
+              />
+              {isSearchingFirestore && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                </div>
+              )}
+            </div>
+
+            {canCreate && (
+              <div className="block md:hidden shrink-0">
+                <ActionButton 
+                  onClick={() => { 
+                    setProjectToEdit(null); 
+                    setShowModal(true); 
+                  }} 
+                  label="NUEVO" 
+                  variant="primary"
+                  className="whitespace-nowrap"
+                />
               </div>
             )}
           </div>
         </div>
+
+        {/* Botón NUEVO de escritorio */}
         {canCreate && (
-          <ActionButton 
-            onClick={() => { 
-              setProjectToEdit(null); 
-              setShowModal(true); 
-            }} 
-            label="NUEVO" 
-            variant="primary"
-          />
+          <div className="hidden md:block">
+            <ActionButton 
+              onClick={() => { 
+                setProjectToEdit(null); 
+                setShowModal(true); 
+              }} 
+              label="NUEVO" 
+              variant="primary"
+            />
+          </div>
         )}
       </ModuleToolbar>
 
@@ -421,6 +473,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                             <ActionButtons 
                               onEdit={canEdit ? () => handleEdit(project) : undefined}
                               onDelete={canDelete ? () => setProjectToDelete(project) : undefined}
+                              onCopy={() => handleCopyProject(project)}
                             />
                           </div>
                         </div>
@@ -454,6 +507,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                         <ActionButtons
                           onEdit={canEdit ? () => handleEdit(project) : undefined}
                           onDelete={canDelete ? () => setProjectToDelete(project) : undefined}
+                          onCopy={() => handleCopyProject(project)}
                         />
                       </div>
                   </div>

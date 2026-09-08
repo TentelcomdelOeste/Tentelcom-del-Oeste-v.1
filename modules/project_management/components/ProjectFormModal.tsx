@@ -47,7 +47,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
     savedClients, 
     hasMore: hasMoreClients,
     loadMore: loadMoreClients,
-    loadingMore: loadingMoreClients
+    loadingMore: loadingMoreClients,
+    addClient
   } = useClients(currentUser);
 
   useEffect(() => {
@@ -137,6 +138,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
     setSelectedQuoteId(quoteId);
     if (!quoteId) {
       setOriginSelection('manual');
+      setClientId('');
+      setClientName('');
       return;
     }
 
@@ -172,9 +175,16 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       return;
     }
 
-    if (!clientId.trim() || !clientName.trim()) {
-      setErrorMsg('Debe seleccionar un cliente del directorio.');
-      return;
+    if (originSelection === 'quote') {
+      if (!clientId.trim() || !clientName.trim()) {
+        setErrorMsg('Debe seleccionar un cliente del directorio.');
+        return;
+      }
+    } else {
+      if (!clientName.trim()) {
+        setErrorMsg('Debe ingresar un cliente.');
+        return;
+      }
     }
 
     if (!startDate) {
@@ -184,6 +194,31 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
 
     setIsSubmitting(true);
     try {
+      let finalClientId = clientId.trim();
+      let finalClientName = clientName.trim().toUpperCase();
+
+      if (originSelection === 'manual') {
+        const existingClient = savedClients.find(
+          c => c.empresa.trim().toUpperCase() === finalClientName
+        );
+
+        if (existingClient) {
+          finalClientId = existingClient.id;
+          finalClientName = existingClient.empresa;
+        } else {
+          // Create the new client in the directory!
+          const created = await addClient({
+            empresa: finalClientName,
+            contacto: 'Contacto Manual',
+            telefono: '',
+            correo: '',
+            isActive: true
+          });
+          finalClientId = created.id;
+          finalClientName = created.empresa;
+        }
+      }
+
       let quoteCommercialId: string | undefined;
       if (selectedQuoteId) {
         const q = findSelectedQuote(selectedQuoteId);
@@ -198,8 +233,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
           projectData: {
             name: trimmedName,
             status,
-            clientId: clientId.trim(),
-            clientName: clientName.trim(),
+            clientId: finalClientId,
+            clientName: finalClientName,
             startDate,
           },
           selectedQuoteId: selectedQuoteId || undefined,
@@ -214,8 +249,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
           projectData: {
             name: trimmedName,
             status: 'Planificación',
-            clientId: clientId.trim(),
-            clientName: clientName.trim(),
+            clientId: finalClientId,
+            clientName: finalClientName,
             startDate,
           },
           selectedQuoteId: selectedQuoteId || undefined,
@@ -313,7 +348,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
             <input
               type="text"
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={e => setName(e.target.value.toUpperCase())}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm font-medium"
               placeholder="Ej. Instalación de Red"
               required
@@ -323,17 +358,26 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cliente asociado *</label>
             <div className="flex gap-2">
-              <div
-                className={`flex-1 px-4 py-3 border rounded-xl text-sm font-medium transition-all truncate ${
-                  clientIsLockedByQuote 
-                    ? 'bg-slate-100 border-slate-200 text-slate-700' 
-                    : clientName 
-                      ? 'bg-blue-50 border-blue-200 text-blue-900' 
-                      : 'bg-slate-50 border-slate-200 text-slate-400'
-                }`}
-              >
-                {clientName || 'Seleccione un cliente...'}
-              </div>
+              {clientIsLockedByQuote ? (
+                <div
+                  className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium transition-all truncate bg-slate-100 text-slate-700"
+                >
+                  {clientName}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={clientName}
+                  onChange={e => {
+                    const upperValue = e.target.value.toUpperCase();
+                    setClientName(upperValue);
+                    setClientId('');
+                  }}
+                  className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm font-medium"
+                  placeholder="Escriba o busque un cliente..."
+                  required
+                />
+              )}
               {!clientIsLockedByQuote && (
                 <IconButton
                   type="button"
@@ -348,7 +392,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
             {clientIsLockedByQuote ? (
               <p className="text-[11px] text-slate-400 mt-1">Bloqueado porque proviene de la cotización seleccionada.</p>
             ) : (
-              <p className="text-[11px] text-slate-400 mt-1">Seleccione un cliente del directorio para proyecto manual.</p>
+              <p className="text-[11px] text-slate-400 mt-1">Escriba el nombre del cliente o selecciónelo del directorio.</p>
             )}
           </div>
 
