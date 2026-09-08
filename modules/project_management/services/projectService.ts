@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, orderBy, where, limit, updateDoc, deleteDoc, deleteField, onSnapshot, runTransaction } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, getDocFromServer, query, orderBy, where, limit, updateDoc, deleteDoc, deleteField, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Project } from '../types';
 import { Quote } from '../../../utils/types';
@@ -416,6 +416,19 @@ export const createProjectWithQuoteHandling = async ({
 }): Promise<{ newProject: Project; unlinkedProjectId?: string }> => {
   let unlinkedProjectId: string | undefined;
 
+  const year = projectData.startDate ? parseInt(projectData.startDate.substring(0, 4), 10) : new Date().getFullYear();
+  const counterRef = doc(db, 'counters', `project_${year}`);
+  const prefix = `TTC-${year}-`;
+
+  // Pre-wake Firestore connection and ensure we are fully online and authenticated 
+  // before starting any complex range query or transactions.
+  try {
+    await getDocFromServer(counterRef);
+  } catch (err) {
+    console.warn("[projectService] Connection pre-wake failed (client offline or server unreachable):", err);
+    throw new Error("No se pudo establecer una conexión estable con el servidor de Base de Datos. Verifique su conexión a internet e inténtelo de nuevo.");
+  }
+
   // 1. Unlink legacy projects from this quote if needed
   if (selectedQuoteId) {
     const existingProject = await getProjectByQuoteId(selectedQuoteId);
@@ -434,10 +447,6 @@ export const createProjectWithQuoteHandling = async ({
   // 2. Enforce deterministic document ID using the idempotencyKey
   const finalIdempotencyKey = idempotencyKey || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
   const projectDocRef = doc(db, COLLECTION_NAME, finalIdempotencyKey);
-
-  const year = projectData.startDate ? parseInt(projectData.startDate.substring(0, 4), 10) : new Date().getFullYear();
-  const counterRef = doc(db, 'counters', `project_${year}`);
-  const prefix = `TTC-${year}-`;
 
   // 3. Fetch live occupied project numbers from the projects collection BEFORE running the transaction
   // to keep the transaction extremely fast, predictable, and fully standard-compliant (no standard reads inside transaction).
@@ -562,6 +571,17 @@ export const updateProjectWithQuoteHandling = async ({
 }): Promise<{ updatedProject: Project; unlinkedProjectId?: string }> => {
   let unlinkedProjectId: string | undefined;
 
+  const docRef = doc(db, COLLECTION_NAME, id);
+
+  // Pre-wake Firestore connection and ensure we are fully online and authenticated
+  // before starting any complex operations or writes.
+  try {
+    await getDocFromServer(docRef);
+  } catch (err) {
+    console.warn("[projectService] Connection pre-wake for update failed (client offline or server unreachable):", err);
+    throw new Error("No se pudo establecer una conexión estable con el servidor de Base de Datos para actualizar el proyecto. Verifique su conexión a internet e inténtelo de nuevo.");
+  }
+
   if (selectedQuoteId) {
     const existingProject = await getProjectByQuoteId(selectedQuoteId);
     if (existingProject && existingProject.id !== id) {
@@ -576,7 +596,6 @@ export const updateProjectWithQuoteHandling = async ({
     }
   }
 
-  const docRef = doc(db, COLLECTION_NAME, id);
   const now = new Date().toISOString();
 
   if (selectedQuoteId) {

@@ -588,9 +588,6 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
               return [p, ...list];
             }
           });
-          if (!projectToEdit) {
-            setCurrentProject(p);
-          }
         }}
         currentUser={currentUser}
         initialData={projectToEdit}

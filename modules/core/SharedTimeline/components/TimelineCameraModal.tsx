@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CameraPreview } from '@capgo/camera-preview';
 import { Capacitor } from '@capacitor/core';
-import { FiX, FiZap, FiZapOff, FiPlus, FiMinus, FiMapPin, FiClock, FiUser, FiNavigation, FiRefreshCw } from 'react-icons/fi';
+import { FiX, FiZap, FiZapOff, FiPlus, FiMinus, FiRefreshCw } from 'react-icons/fi';
 import { IconButton } from '@/design-system';
 
 interface TimelineCameraModalProps {
