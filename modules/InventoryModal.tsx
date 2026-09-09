@@ -5,12 +5,15 @@ import { FiX, FiSave, FiAlertCircle, FiPlus, FiTrash2 } from "react-icons/fi";
 import { InventoryItem } from '../inventoryTypes';
 import { User } from '../utils/types';
 import useLockBodyScroll from '../hooks/useLockBodyScroll';
+import { addInventoryProvider } from '../services/inventoryProviderService';
 import { ActionButton, IconButton, Select } from '../design-system';
+import { ProviderCombobox } from './inventario/components/ProviderCombobox';
 
 interface InventoryModalProps {
   show: boolean;
   onClose: () => void;
   onSubmit: (data: Partial<InventoryItem>) => Promise<void>;
+  checkCodeStatus?: (code: string, excludeId?: string) => Promise<import('../inventoryTypes').CodeStatusResult>;
   currentUser: User;
   initialData?: InventoryItem | null;
   uniqueProviders?: string[];
@@ -22,6 +25,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
   show, 
   onClose, 
   onSubmit, 
+  checkCodeStatus,
   currentUser, 
   initialData,
   uniqueProviders = [],
@@ -44,6 +48,8 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [promptReuse, setPromptReuse] = useState(false);
+  const [reuseItemDesc, setReuseItemDesc] = useState<string>('');
 
   useLockBodyScroll(show);
 
@@ -68,7 +74,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
           unit: 'unidad',
           stock: '',
           minStock: '',
-          location: '',
+          location: 'BODEGA PRINCIPAL',
           price: '',
           currency: 'USD',
           providers: [],
@@ -76,6 +82,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
         });
       }
       setError(null);
+      setPromptReuse(false);
     }
   }, [show, initialData]);
 
@@ -97,9 +104,10 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
     setFormData({ ...formData, providers });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, forceReuse: boolean = false) => {
     e.preventDefault();
     setError(null);
+    setPromptReuse(false);
 
     if (!formData.code?.trim()) {
       setError("El código es obligatorio.");
@@ -110,8 +118,38 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
       return;
     }
 
+    const allowedCategories = ["FIBRA ÓPTICA", "CABLEADO ESTRUCTURADO", "EQUIPOS", "HERRAMIENTAS", "UNIFORMES"];
+    if (!formData.category?.trim() || !allowedCategories.includes(formData.category.trim().toUpperCase())) {
+      setError("La categoría es obligatoria y debe ser una opción válida.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
+      if (checkCodeStatus && !forceReuse) {
+        const codeStatus = await checkCodeStatus(formData.code, initialData?.id);
+        if (codeStatus.status === 'ACTIVE_EXISTS') {
+           throw new Error(`El código "${formData.code}" ya está en uso por un material activo (${codeStatus.activeItem?.description || 'en inventario'}).`);
+        }
+        if (codeStatus.status === 'PREVIOUSLY_USED') {
+           setReuseItemDesc(codeStatus.previousItem?.description || 'Desconocido');
+           setPromptReuse(true);
+           setIsSubmitting(false);
+           return;
+        }
+      }
+
+      // Register any new providers in the catalog
+      for (const p of formData.providers || []) {
+        if (p.name && p.name.trim()) {
+          try {
+            await addInventoryProvider(p.name, currentUser);
+          } catch (e) {
+            console.error("Failed to add provider:", e);
+          }
+        }
+      }
+
       // Convert empty strings to 0 before submitting
       const dataToSubmit = {
         ...formData,
@@ -178,11 +216,17 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
               {/* Categoría */}
               <Select
-                label="Categoría"
-                options={uniqueCategories}
+                label="Categoría *"
+                options={[
+                  { label: "FIBRA ÓPTICA", value: "FIBRA ÓPTICA" },
+                  { label: "CABLEADO ESTRUCTURADO", value: "CABLEADO ESTRUCTURADO" },
+                  { label: "EQUIPOS", value: "EQUIPOS" },
+                  { label: "HERRAMIENTAS", value: "HERRAMIENTAS" },
+                  { label: "UNIFORMES", value: "UNIFORMES" }
+                ]}
                 value={formData.category}
                 onChange={val => setFormData({ ...formData, category: val.toUpperCase() })}
-                placeholder="Ej: Cableado"
+                placeholder="Seleccione Categoría..."
               />
 
               {/* Descripción */}
@@ -218,10 +262,11 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
               {/* Ubicación */}
               <Select
                 label="Ubicación Física"
-                options={uniqueLocations}
+                options={uniqueLocations.map(l => ({ label: l, value: l }))}
                 value={formData.location}
                 onChange={val => setFormData({ ...formData, location: val.toUpperCase() })}
-                placeholder="Ej: Estante A-1"
+                placeholder="Ej: BODEGA PRINCIPAL"
+                allowCustomValue={true}
               />
 
               {/* Stock Inicial / Actual */}
@@ -333,12 +378,13 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                   <div key={index} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3 animate-in slide-in-from-left-2 relative">
                     <div className="flex gap-2 items-start">
                       <div className="flex-1">
-                        <Select
+                        <ProviderCombobox
                           label="Proveedor"
                           options={uniqueProviders}
                           value={provider.name}
                           onChange={val => handleProviderChange(index, 'name', val)}
                           placeholder="Nombre del proveedor"
+                          required
                         />
                       </div>
                       <div className="pt-5">
@@ -413,6 +459,28 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
               <div className="bg-red-50 text-red-600 text-xs font-bold p-4 rounded-2xl border border-red-100 flex items-center gap-3 animate-pulse">
                 <FiAlertCircle className="flex-none text-lg" />
                 <p>{error}</p>
+              </div>
+            )}
+
+            {promptReuse && (
+              <div className="bg-amber-50 text-amber-700 text-xs font-bold p-4 rounded-2xl border border-amber-200 flex flex-col gap-3 animate-in fade-in">
+                <div className="flex items-start gap-3">
+                  <FiAlertCircle className="flex-none text-lg mt-0.5" />
+                  <div>
+                    <p className="mb-1">El código <strong>{formData.code}</strong> fue utilizado anteriormente por el material:</p>
+                    <p className="font-black text-amber-900 mb-2">"{reuseItemDesc}"</p>
+                    <p className="text-[10px] text-amber-600/80 uppercase tracking-wider">Este material fue eliminado del inventario. ¿Deseas reutilizar el código para este nuevo registro manteniendo el historial intacto?</p>
+                  </div>
+                </div>
+                <div className="flex justify-end mt-2">
+                  <ActionButton 
+                    type="button"
+                    variant="primary"
+                    label="Reutilizar Código"
+                    onClick={(e) => handleSubmit(e as any, true)}
+                    className="!bg-amber-500 hover:!bg-amber-600 !text-white !py-2 !px-4 !rounded-xl"
+                  />
+                </div>
               </div>
             )}
           </div>

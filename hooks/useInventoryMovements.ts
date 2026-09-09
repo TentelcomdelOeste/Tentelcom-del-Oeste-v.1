@@ -98,6 +98,20 @@ export const useInventoryMovements = (currentUser: User | null) => {
             }
         }
 
+        // Leer contador para nuevo ID si aplica (DEV-XXXX para Devolución, MOV-XXXX para movimientos independientes)
+        let counterRef: any = null;
+        let counterSnap: any = null;
+        const needsDevCounter = movementData.type === 'Devolución';
+        const needsMovCounter = movementData.type !== 'Devolución' && !movementData.requestNumber;
+        
+        if (needsDevCounter) {
+            counterRef = doc(db, "counters", "returnNumber");
+            counterSnap = await transaction.get(counterRef);
+        } else if (needsMovCounter) {
+            counterRef = doc(db, "counters", "movementNumber");
+            counterSnap = await transaction.get(counterRef);
+        }
+
         // Leer todos los items de inventario
         const itemRefs = itemsToProcess.map(item => 
             doc(db, "inventory_items", item.inventoryItemId)
@@ -109,6 +123,20 @@ export const useInventoryMovements = (currentUser: User | null) => {
         // =========================
         // 2. VALIDACIONES Y CÁLCULOS
         // =========================
+        
+        let finalRequestNumber = movementData.requestNumber || null;
+        let nextNumber = 1;
+        if (needsDevCounter || needsMovCounter) {
+            if (counterSnap && counterSnap.exists()) {
+                nextNumber = (counterSnap.data().lastNumber || 0) + 1;
+            }
+            if (needsDevCounter) {
+                finalRequestNumber = `DEV-${String(nextNumber).padStart(4, '0')}`;
+            } else if (needsMovCounter) {
+                finalRequestNumber = `MOV-${String(nextNumber).padStart(4, '0')}`;
+            }
+        }
+
         const processedItems: MovementItemDetail[] = [];
         const dispatchItems = dispatchDoc?.data()?.items || [];
         
@@ -188,6 +216,14 @@ export const useInventoryMovements = (currentUser: User | null) => {
             transaction.update(preFetchedDispatchRef, { items: dispatchItems });
         }
 
+        // Actualizar el contador si fue utilizado
+        if (counterRef) {
+            transaction.set(counterRef, {
+                lastNumber: nextNumber,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+        }
+
         // Crear el documento de movimiento
         const newMovementRef = doc(collection(db, "inventory_movements"));
         const mainItem = processedItems[0];
@@ -195,6 +231,7 @@ export const useInventoryMovements = (currentUser: User | null) => {
 
         transaction.set(newMovementRef, {
             ...movementData,
+            requestNumber: finalRequestNumber, // Overrides any potentially null or original requestNumber for devoluciones
             // Datos legacy (usamos el primero o un resumen)
             inventoryItemId: mainItem.inventoryItemId,
             inventoryItemCode: mainItem.inventoryItemCode,

@@ -17,11 +17,27 @@ export interface InventoryItem {
   price: number; // Precio unitario (visible solo para admin)
   currency: 'USD' | 'CRC';
   providers?: ProductProvider[]; // Lista de precios por proveedor
+  deleted?: boolean; // Marca de eliminación lógica
   updatedAt: string;
   updatedBy: string;
   _sync?: {
     status: 'synced' | 'pending';
     updatedAt: string;
+  };
+}
+
+export interface CodeStatusResult {
+  status: 'AVAILABLE' | 'ACTIVE_EXISTS' | 'PREVIOUSLY_USED';
+  activeItem?: {
+    id: string;
+    code: string;
+    description: string;
+  };
+  previousItem?: {
+    id?: string;
+    code: string;
+    description?: string;
+    source?: 'inventory_items' | 'movements' | 'assignments';
   };
 }
 

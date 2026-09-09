@@ -38,6 +38,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
     addInventoryItem, 
     updateInventoryItem, 
     deleteInventoryItem, 
+    checkCodeStatus,
     isLoading,
     loadMore,
     hasMore,
@@ -620,6 +621,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               show={showModal}
               onClose={() => setShowModal(false)}
               onSubmit={handleSave}
+              checkCodeStatus={checkCodeStatus}
               currentUser={currentUser}
               initialData={editingItem}
               uniqueProviders={uniqueProviders}

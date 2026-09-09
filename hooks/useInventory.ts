@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
 import { collection, query, orderBy, onSnapshot, limit, where, getDocs } from 'firebase/firestore';
-import { InventoryItem } from '../inventoryTypes';
+import { InventoryItem, CodeStatusResult } from '../inventoryTypes';
 import { User } from '../utils/types';
 import { setVersionedDocOffline, updateVersionedDocOffline } from '../core/versionControl';
 import { localDocStore } from '../core/offline/localDocStore';
@@ -229,39 +229,107 @@ export const useInventory = (currentUser: User | null) => {
      setCurrentLimit(prev => prev + 50);
   }, [hasMore, loadingMore]);
 
-  // Verificar si un código ya existe (para evitar duplicados)
-  const checkCodeExists = useCallback(async (code: string, excludeId?: string): Promise<boolean> => {
-    const normalizedCode = code.trim().toUpperCase();
+  // Verificar el estado detallado de disponibilidad de un código
+  const checkCodeStatus = useCallback(async (code: string, excludeId?: string): Promise<CodeStatusResult> => {
+    const normalizedCode = code?.trim().toUpperCase();
+    if (!normalizedCode) return { status: 'AVAILABLE' };
     
-    // Primero verificar en el estado actual (que es híbrido)
-    const localMatch = items.find(i => 
+    // 1. Verificar primero en el estado activo actual (híbrido)
+    const localActive = items.find(i => 
       i.code?.trim().toUpperCase() === normalizedCode && 
       i.id !== excludeId &&
       (i as any).deleted !== true
     );
     
-    if (localMatch) return true;
+    if (localActive) {
+      return {
+        status: 'ACTIVE_EXISTS',
+        activeItem: {
+          id: localActive.id,
+          code: localActive.code,
+          description: localActive.description
+        }
+      };
+    }
 
-    // Si no estamos en línea, ya verificamos localmente todo lo que podemos
-    if (!navigator.onLine) return false;
-
-    if (!authReady || !currentUser) return false;
+    // Si no estamos en línea o no hay auth, ya verificamos localmente
+    if (!navigator.onLine || !authReady || !currentUser) {
+      return { status: 'AVAILABLE' };
+    }
 
     try {
+      // 2. Consultar colección inventory_items en Firestore
       const q = query(collection(db, "inventory_items"), where("code", "==", normalizedCode));
       const snapshot = await getDocs(q);
       
-      if (snapshot.empty) return false;
-      
-      if (excludeId) {
-          return snapshot.docs.some(doc => String(doc.id) !== String(excludeId));
+      let activeDoc: any = null;
+      let deletedDoc: any = null;
+
+      snapshot.docs.forEach(docSnap => {
+        if (excludeId && String(docSnap.id) === String(excludeId)) return;
+        const data = docSnap.data() || {};
+        if (data.deleted === true) {
+          if (!deletedDoc) deletedDoc = { id: docSnap.id, ...data };
+        } else {
+          activeDoc = { id: docSnap.id, ...data };
+        }
+      });
+
+      if (activeDoc) {
+        return {
+          status: 'ACTIVE_EXISTS',
+          activeItem: {
+            id: activeDoc.id,
+            code: activeDoc.code || normalizedCode,
+            description: activeDoc.description || 'Sin descripción'
+          }
+        };
       }
-      return true;
+
+      if (deletedDoc) {
+        return {
+          status: 'PREVIOUSLY_USED',
+          previousItem: {
+            id: deletedDoc.id,
+            code: deletedDoc.code || normalizedCode,
+            description: deletedDoc.description,
+            source: 'inventory_items'
+          }
+        };
+      }
+
+      // 3. Si no está en inventory_items, verificar en historial de asignaciones
+      try {
+        const assignQ = query(collection(db, "tool_assignments"), where("itemCode", "==", normalizedCode), limit(1));
+        const assignSnap = await getDocs(assignQ);
+        if (!assignSnap.empty) {
+          const assignData = assignSnap.docs[0].data() || {};
+          return {
+            status: 'PREVIOUSLY_USED',
+            previousItem: {
+              id: assignData.itemId,
+              code: assignData.itemCode || normalizedCode,
+              description: assignData.itemDescription,
+              source: 'assignments'
+            }
+          };
+        }
+      } catch (histErr) {
+        // Fallback no bloqueante si no hay permisos de asignaciones
+      }
+
+      return { status: 'AVAILABLE' };
     } catch (err) {
       console.warn("Error verificando código en Firestore, usando fallback local:", err);
-      return false;
+      return { status: 'AVAILABLE' };
     }
   }, [items, authReady, currentUser]);
+
+  // Verificar si un código ya existe en materiales ACTIVOS (para compatibilidad)
+  const checkCodeExists = useCallback(async (code: string, excludeId?: string): Promise<boolean> => {
+    const result = await checkCodeStatus(code, excludeId);
+    return result.status === 'ACTIVE_EXISTS';
+  }, [checkCodeStatus]);
 
   const normalizeItem = (item: any) => ({
     ...item,
@@ -277,21 +345,30 @@ export const useInventory = (currentUser: User | null) => {
     }
     
     const normalizedItem = normalizeItem(item);
-    const exists = await checkCodeExists(normalizedItem.code);
-    if (exists) {
-        throw new Error(`El código "${normalizedItem.code}" ya existe en el inventario.`);
+    const statusResult = await checkCodeStatus(normalizedItem.code);
+    if (statusResult.status === 'ACTIVE_EXISTS') {
+        throw new Error(`El código "${normalizedItem.code}" ya está en uso por un material activo (${statusResult.activeItem?.description || 'en inventario'}).`);
     }
 
     const id = crypto.randomUUID();
     const itemData = {
       ...normalizedItem,
+      deleted: false,
       updatedAt: new Date().toISOString(),
       updatedBy: currentUser?.email || 'dev-user@tentelcom.com',
     };
 
     await setVersionedDocOffline("inventory_items", id, itemData);
+    
+    // Actualizar estado local inmediatamente
+    setItems(prev => {
+      const next = [...prev.filter(i => i.id !== id), { ...itemData, id } as InventoryItem];
+      next.sort((a, b) => (a.description || "").localeCompare(b.description || ""));
+      return next;
+    });
+
     return { ...itemData, id };
-  }, [currentUser, checkCodeExists]);
+  }, [currentUser, checkCodeStatus, authReady]);
 
   const updateInventoryItem = useCallback(async (id: string, item: Partial<InventoryItem>) => {
     if (!authReady || !currentUser) {
@@ -302,10 +379,10 @@ export const useInventory = (currentUser: User | null) => {
     const normalizedItem = normalizeItem(item);
     const currentItem = items.find(i => i.id === id);
     
-    if (normalizedItem.code && currentItem && normalizedItem.code !== currentItem.code) {
-        const exists = await checkCodeExists(normalizedItem.code, id);
-        if (exists) {
-            throw new Error(`El código "${normalizedItem.code}" ya está en uso por otro material.`);
+    if (normalizedItem.code && currentItem && normalizedItem.code.trim().toUpperCase() !== currentItem.code.trim().toUpperCase()) {
+        const statusResult = await checkCodeStatus(normalizedItem.code, id);
+        if (statusResult.status === 'ACTIVE_EXISTS') {
+            throw new Error(`El código "${normalizedItem.code}" ya está en uso por otro material activo (${statusResult.activeItem?.description || 'en inventario'}).`);
         }
     }
 
@@ -316,7 +393,10 @@ export const useInventory = (currentUser: User | null) => {
     };
 
     await updateVersionedDocOffline("inventory_items", id, itemData);
-  }, [currentUser, items, checkCodeExists]);
+
+    // Actualizar estado local
+    setItems(prev => prev.map(i => i.id === id ? { ...i, ...itemData } : i));
+  }, [currentUser, items, checkCodeStatus, authReady]);
 
   const deleteInventoryItem = useCallback(async (id: string) => {
     if (!authReady || !currentUser) {
@@ -329,7 +409,7 @@ export const useInventory = (currentUser: User | null) => {
     
     // Actualizar estado local inmediatamente para feedback visual
     setItems(prev => prev.filter(i => i.id !== id));
-  }, [currentUser]);
+  }, [currentUser, authReady]);
 
   return {
     items: itemsWithReserved,
@@ -338,6 +418,8 @@ export const useInventory = (currentUser: User | null) => {
     addInventoryItem,
     updateInventoryItem,
     deleteInventoryItem,
+    checkCodeStatus,
+    checkCodeExists,
     loadMore,
     hasMore,
     loadingMore,

@@ -90,7 +90,7 @@ export const toolAssignmentService = {
     const assignmentRef = doc(collection(db, 'tool_assignments'));
     const movementRef = doc(collection(db, 'inventory_movements'));
     const itemRef = doc(db, 'inventory_items', dto.itemId);
-    const counterRef = doc(db, 'counters', 'requestNumber');
+    const counterRef = doc(db, 'counters', 'movementNumber');
 
     const nowIso = new Date().toISOString();
 
@@ -117,7 +117,7 @@ export const toolAssignmentService = {
           lastNumber = counterSnap.data().lastNumber || 0;
         }
         const newNumber = lastNumber + 1;
-        const finalRequestNumber = `SOL-${String(newNumber).padStart(4, '0')}`;
+        const finalRequestNumber = `MOV-${String(newNumber).padStart(4, '0')}`;
 
         const itemData = itemDoc.data();
         const currentStock = Number(itemData.stock || 0);
@@ -263,6 +263,7 @@ export const toolAssignmentService = {
 
     const assignmentRef = doc(db, 'tool_assignments', dto.assignmentId);
     const movementRef = doc(collection(db, 'inventory_movements'));
+    const counterRef = doc(db, 'counters', 'returnNumber');
     const nowIso = new Date().toISOString();
 
     await guardedWrite(() =>
@@ -283,9 +284,22 @@ export const toolAssignmentService = {
           throw new Error('La cantidad a devolver debe ser mayor a 0');
         }
 
-        // 2. Leer artículo de inventario
+        // 2. Leer artículo de inventario y contador
         const itemRef = doc(db, 'inventory_items', assignmentData.itemId);
         const itemDoc = await transaction.get(itemRef);
+        
+        const counterSnap = await transaction.get(counterRef);
+        let lastNumber = 0;
+        if (counterSnap.exists()) {
+          lastNumber = counterSnap.data().lastNumber || 0;
+        }
+        const newNumber = lastNumber + 1;
+        const finalRequestNumber = `DEV-${String(newNumber).padStart(4, '0')}`;
+
+        transaction.set(counterRef, {
+          lastNumber: newNumber,
+          updatedAt: nowIso
+        }, { merge: true });
 
         let currentStock = 0;
         let newStock = qtyToReturn;
@@ -315,7 +329,7 @@ export const toolAssignmentService = {
           subtype: 'Devolución de Herramienta',
           originType: 'herramientas_asignadas',
           isAssignment: true,
-          requestNumber: assignmentData.requestNumber || '',
+          requestNumber: finalRequestNumber,
           date: dto.returnDate || nowIso.split('T')[0],
           reason: `Devolución de herramienta de ${assignmentData.recipientName}. Condición: ${dto.returnCondition}. ${dto.returnObservations ? `Observaciones: ${dto.returnObservations}` : ''}`,
           origin: assignmentData.recipientName,

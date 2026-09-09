@@ -219,11 +219,11 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
         )
     },
     {
-        header: 'ID Solicitud',
+        header: 'Identificador',
         render: (m) => (
             <div className="flex flex-col">
                 <span className="text-[10px] font-mono text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 w-fit">
-                    {m.requestNumber || 'SOL-XXXX'}
+                    {m.requestNumber || '---'}
                 </span>
                 <span className="text-[9px] text-slate-400 font-medium mt-1">{m.date || '---'}</span>
             </div>
@@ -262,6 +262,19 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
                                 Custodia: {m.destination || m.recipientName}
                             </span>
                         )}
+                    </div>
+                );
+            }
+
+            if (m.type === 'Entrada' && (m.origin === 'Proveedor' || normalizeOrigin(m.origin) === 'Proveedor')) {
+                return (
+                    <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-900">
+                            PROVEEDOR
+                        </span>
+                        <span className="text-[10px] text-blue-600 font-medium">
+                            {m.provider || 'Proveedor no especificado'}
+                        </span>
                     </div>
                 );
             }

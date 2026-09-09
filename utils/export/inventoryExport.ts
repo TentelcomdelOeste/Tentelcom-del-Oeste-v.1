@@ -28,7 +28,7 @@ export const exportMovementToExcel = (movement: InventoryMovement) => {
         'Tipo': movement.type,
         'Cantidad': item.quantity,
         'Proyecto / Origen': defaultOrigin,
-        'ID Solicitud': movement.requestNumber || 'SOL-XXXX',
+        'Identificador': movement.requestNumber || '---',
         'Destinatario': movement.destination || movement.recipientName || '---',
         'Usuario': movement.userName || movement.createdBy || '---',
         'Fecha': movement.date,
@@ -42,7 +42,7 @@ export const exportMovementToExcel = (movement: InventoryMovement) => {
         'Tipo': movement.type,
         'Cantidad': movement.quantity,
         'Proyecto / Origen': defaultOrigin,
-        'ID Solicitud': movement.requestNumber || 'SOL-XXXX',
+        'Identificador': movement.requestNumber || '---',
         'Destinatario': movement.destination || movement.recipientName || '---',
         'Usuario': movement.userName || movement.createdBy || '---',
         'Fecha': movement.date,
@@ -125,7 +125,7 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
       ? (movement.projectNumber ? `[${movement.projectNumber}] ${movement.projectName}` : movement.projectName)
       : 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
 
-    const solId = movement.requestNumber || 'SOL-XXXX';
+    const solId = movement.requestNumber || '---';
     const movDate = movement.date || new Date().toISOString().split('T')[0];
     const movTypeLabel = movement.subtype || (movement.type === 'Salida' ? 'Salida por Asignación' : movement.type);
     const recipientLabel = movement.destination || movement.recipientName || (movement.type === 'Devolución' ? movement.origin : '---');
@@ -346,36 +346,60 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
 
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
-  doc.setFont('helvetica', 'bold');
-  
-  doc.text(`Proyecto:`, margin + 10, boxY + 20);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`${metadata.proyecto}`, margin + 70, boxY + 20);
-  
-  doc.setFont('helvetica', 'bold');
-  doc.text(`ID Solicitud:`, margin + 300, boxY + 20);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`${metadata.solicitud}`, margin + 370, boxY + 20);
-  
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Fecha:`, margin + 10, boxY + 40);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`${metadata.fecha}`, margin + 70, boxY + 40);
-  
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Cotización:`, margin + 300, boxY + 40);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`${metadata.cotizacion}`, margin + 370, boxY + 40);
-  
-  doc.setFont('helvetica', 'bold');
-  doc.text(`TORRE:`, margin + 10, boxY + 60);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`${metadata.torre}`, margin + 70, boxY + 60);
-  
-  doc.setFont('helvetica', 'bold');
-  doc.text(`LUGAR / DISTRITO:`, margin + 300, boxY + 60);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`${metadata.lugar}`, margin + 410, boxY + 60);
+
+  const isProviderEntry = movement.type === 'Entrada' && (movement.origin === 'Proveedor' || normalizeOrigin(movement.origin) === 'Proveedor');
+
+  if (isProviderEntry) {
+      doc.setFont('helvetica', 'bold');
+      doc.text(`PROVEEDOR:`, margin + 10, boxY + 20);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${movement.provider || 'No especificado'}`, margin + 90, boxY + 20);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`ID MOVIMIENTO:`, margin + 300, boxY + 20);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${metadata.solicitud}`, margin + 400, boxY + 20);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Fecha:`, margin + 10, boxY + 40);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${metadata.fecha}`, margin + 70, boxY + 40);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Factura:`, margin + 300, boxY + 40);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${movement.factura || '---'}`, margin + 370, boxY + 40);
+  } else {
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Proyecto:`, margin + 10, boxY + 20);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${metadata.proyecto}`, margin + 70, boxY + 20);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(movement.type === 'Devolución' ? `ID Devolución:` : (movement.requestNumber?.startsWith('MOV') ? `ID Movimiento:` : `ID Solicitud:`), margin + 300, boxY + 20);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${metadata.solicitud}`, margin + 390, boxY + 20);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Fecha:`, margin + 10, boxY + 40);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${metadata.fecha}`, margin + 70, boxY + 40);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Cotización:`, margin + 300, boxY + 40);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${metadata.cotizacion}`, margin + 370, boxY + 40);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`TORRE:`, margin + 10, boxY + 60);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${metadata.torre}`, margin + 70, boxY + 60);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`LUGAR / DISTRITO:`, margin + 300, boxY + 60);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${metadata.lugar}`, margin + 410, boxY + 60);
+  }
 
   const items = (movement.items && movement.items.length > 0) 
     ? movement.items 
@@ -475,7 +499,7 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
   // Forzar descarga de forma más robusta
   const cleanProject = (metadata.proyecto || 'S-P').replace(/[^a-z0-9]/gi, '_').substring(0, 20);
   const cleanOrigin = (movement.origin || 'S-O').replace(/[^a-z0-9]/gi, '_').substring(0, 15);
-  const sol = metadata.solicitud || 'SOL-XXXX';
+  const sol = metadata.solicitud || '---';
   const fileName = `${movement.type.toUpperCase()}_${cleanProject}_${cleanOrigin}_${sol}.pdf`;
   
   const blob = doc.output('blob');
@@ -485,7 +509,7 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
 export const exportConsumptionToExcel = (projectName: string, consumptionData: any[], selectedData?: any) => {
   const metaRows = selectedData ? [
     { 'Código': 'Proyecto / Origen', 'Material': normalizeOrigin(selectedData.origin || selectedData.projectName || '---') },
-    { 'Código': 'ID Solicitud', 'Material': selectedData.requestNumber || 'SOL-XXXX' },
+    { 'Código': 'Identificador', 'Material': selectedData.requestNumber || '---' },
     { 'Código': 'Fecha', 'Material': selectedData.date || '---' },
     { 'Código': 'FDH', 'Material': selectedData.fdh || '---' },
     { 'Código': 'Torre', 'Material': selectedData.tower || selectedData.torre || '---' },
