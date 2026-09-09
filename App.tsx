@@ -382,7 +382,7 @@ const SidebarContent = ({
               { id: 'material_reports', label: 'Solicitudes', perm: 'solicitudes' },
               { id: 'material_report', label: 'Reporte de Materiales', perm: 'reportes' },
               { id: 'vehicle_warehouses', label: 'Bodegas Vehiculares', perm: 'bodegas_vehiculares' },
-              { id: 'assigned_tools', label: 'Herramientas y Equipos Asignados', perm: 'herramientas_asignadas' },
+              { id: 'assigned_tools', label: 'Control de Asignaciones', perm: 'herramientas_asignadas' },
             ]
               .filter(item => can(currentUser, `inventario.${item.perm}`))
               .map(item => (

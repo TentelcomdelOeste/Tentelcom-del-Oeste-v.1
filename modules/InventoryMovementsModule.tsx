@@ -3,6 +3,7 @@ import { useInventoryMovements } from '../hooks/useInventoryMovements';
 import { useInventory } from '../hooks/useInventory';
 import { useQuotes } from '../hooks/useQuotes';
 import { useMaterialRequests } from '../hooks/useMaterialRequests';
+import { useInventoryProviders } from '../hooks/useInventoryProviders';
 import { User } from '../utils/types';
 import { InventoryMovementModal } from './InventoryMovementModal';
 import { ProjectConsumptionModule } from './ProjectConsumptionModule';
@@ -91,18 +92,24 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
       return Array.from(projects.entries());
   }, [movements]);
 
-  // Proveedores únicos para el autocompletado (Desde Inventario General)
-  const uniqueProviders = useMemo(() => {
+  // Proveedores iniciales desde Inventario General para sincronizar catálogo
+  const initialItemProviders = useMemo(() => {
       const providers = new Set<string>();
       inventoryItems.forEach(item => {
           if (item.providers) {
               item.providers.forEach(p => {
-                  if (p.name) providers.add(p.name);
+                  if (p.name && p.name.trim()) providers.add(p.name.trim());
               });
           }
       });
-      return Array.from(providers).sort();
+      return Array.from(providers);
   }, [inventoryItems]);
+
+  const {
+    providerNames: uniqueProviders,
+    addProvider,
+    deleteProvider
+  } = useInventoryProviders(currentUser, initialItemProviders);
 
   const filteredMovements = useMemo(() => {
     // Si hay un ID seleccionado de la búsqueda y tenemos datos
@@ -121,6 +128,11 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
         const matchesSearch = itemsMatch || 
             (m.observations && m.observations.toLowerCase().includes(search)) ||
             (m.projectName && m.projectName.toLowerCase().includes(search)) ||
+            (m.origin && m.origin.toLowerCase().includes(search)) ||
+            (m.destination && m.destination.toLowerCase().includes(search)) ||
+            (m.recipientName && m.recipientName.toLowerCase().includes(search)) ||
+            (m.subtype && m.subtype.toLowerCase().includes(search)) ||
+            (m.reference && m.reference.toLowerCase().includes(search)) ||
             (m.requestNumber && m.requestNumber.toLowerCase().includes(search)) ||
             (m.fdh && m.fdh.toLowerCase().includes(search)) ||
             (m.torre && m.torre.toLowerCase().includes(search));
@@ -172,13 +184,26 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
     {
         header: 'Tipo',
         align: 'center',
-        width: '120px',
+        width: '130px',
         render: (m) => {
+            const isAssignment = 
+                m.isAssignment || 
+                m.originType === 'herramientas_asignadas' || 
+                m.subtype === 'Asignación de Herramienta' ||
+                m.subtype === 'Devolución de Herramienta' ||
+                m.origin === 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+
             const badgeVariant = m.type === 'Entrada' ? 'success' : m.type === 'Devolución' ? 'warning' : 'danger';
             const typeLabel = m.type === 'Entrada' ? '+ ENTRADA' : m.type === 'Devolución' ? '↺ DEVOLUCIÓN' : '- SALIDA';
+            
             return (
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center gap-1">
                     <StatusBadge label={typeLabel} variant={badgeVariant} />
+                    {isAssignment && (
+                        <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            {m.subtype || 'Asignación'}
+                        </span>
+                    )}
                 </div>
             );
         }
@@ -186,7 +211,12 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
     {
         header: 'FDH',
         accessorKey: 'fdh',
-        width: '80px'
+        width: '80px',
+        render: (m) => (
+            <span className="text-xs text-slate-600 font-mono">
+                {m.fdh || '---'}
+            </span>
+        )
     },
     {
         header: 'ID Solicitud',
@@ -201,11 +231,47 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
     },
     {
         header: 'PROYECTO / ORIGEN',
-        render: (m) => (
-            <span className="text-xs font-medium text-slate-700">
-                {normalizeOrigin(m.origin || '---')}
-            </span>
-        )
+        render: (m) => {
+            const isAssignment = 
+                m.isAssignment || 
+                m.originType === 'herramientas_asignadas' || 
+                m.subtype === 'Asignación de Herramienta' ||
+                m.subtype === 'Devolución de Herramienta' ||
+                m.origin === 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+
+            if (isAssignment) {
+                if (m.projectName && m.projectName.trim() !== '') {
+                    return (
+                        <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-900">
+                                {m.projectNumber ? `[${m.projectNumber}] ` : ''}{m.projectName}
+                            </span>
+                            <span className="text-[10px] text-blue-600 font-medium">
+                                Custodia: {m.destination || m.recipientName || 'Colaborador / Unidad'}
+                            </span>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-900">
+                            HERRAMIENTAS Y EQUIPOS ASIGNADOS
+                        </span>
+                        {(m.destination || m.recipientName) && (
+                            <span className="text-[10px] text-slate-500 font-medium">
+                                Custodia: {m.destination || m.recipientName}
+                            </span>
+                        )}
+                    </div>
+                );
+            }
+
+            return (
+                <span className="text-xs font-medium text-slate-700">
+                    {normalizeOrigin(m.origin || '---')}
+                </span>
+            );
+        }
     },
     {
         header: 'Acciones',
@@ -350,6 +416,8 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
               requests={requests}
               initialData={editingMovement}
               uniqueProviders={uniqueProviders}
+              onAddProvider={addProvider}
+              onDeleteProvider={deleteProvider}
           />
           
           <ConfirmModal show={confirmDeleteModal.show} onClose={() => setConfirmDeleteModal({ show: false, movement: null })} onConfirm={confirmDelete} title="¿Eliminar Movimiento?" description="Esta acción eliminará el registro del movimiento. ¿Deseas continuar?" />

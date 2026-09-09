@@ -11,6 +11,7 @@ import { useAuditPermanence } from '../hooks/useAuditPermanence';
 import { FiX, FiLogOut, FiLogIn, FiRotateCcw, FiInfo, FiPlusCircle, FiSearch, FiAlertCircle, FiTrash2 } from "react-icons/fi";
 import { DataTable, TableColumn, ActionButton, IconButton, Select } from '../design-system';
 import { formatCurrency } from '../utils/formatCurrency';
+import { ProviderCombobox } from './inventario/components/ProviderCombobox';
 
 import { sanitizeObject } from '../utils/security';
 
@@ -24,6 +25,8 @@ interface InventoryMovementModalProps {
   requests: MaterialRequest[]; // Nueva prop
   initialData?: InventoryMovement | null;
   uniqueProviders?: string[];
+  onAddProvider?: (name: string) => Promise<any>;
+  onDeleteProvider?: (name: string) => Promise<any>;
 }
 
 interface TempItem {
@@ -41,7 +44,17 @@ interface TempItem {
 }
 
 export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({ 
-    show, onClose, onSubmit, currentUser, inventoryItems, approvedQuotes, requests, initialData, uniqueProviders = []
+    show, 
+    onClose, 
+    onSubmit, 
+    currentUser, 
+    inventoryItems, 
+    approvedQuotes, 
+    requests, 
+    initialData, 
+    uniqueProviders = [],
+    onAddProvider,
+    onDeleteProvider
 }) => {
   useAuditPermanence({
     module: 'Inventario',
@@ -571,6 +584,18 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
           ? `#${selectedProject.id.toString().padStart(3, '0')}-${getYearFromDateString(selectedProject.fecha)}` 
           : null;
 
+        // Registrar nuevo proveedor en catálogo si es necesario
+        if (sanitizedFormData.origin === 'Proveedor' && sanitizedFormData.provider && sanitizedFormData.provider.trim() !== '') {
+            const provName = sanitizedFormData.provider.trim();
+            if (onAddProvider) {
+                try {
+                    await onAddProvider(provName);
+                } catch (pErr) {
+                    console.warn("No se pudo registrar el proveedor en catálogo:", pErr);
+                }
+            }
+        }
+
         try {
             await onSubmit({
                 items: addedItems.map(item => {
@@ -792,15 +817,13 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
             {/* Campo Proveedor (Condicional) */}
             {formData.origin === 'Proveedor' && (
                 <div className="animate-in fade-in slide-in-from-top-2">
-                    <Select
+                    <ProviderCombobox
                         label="Nombre del Proveedor"
-                        options={[
-                            { label: '-- Seleccione Proveedor --', value: '' },
-                            ...uniqueProviders.map(p => ({ label: p, value: p }))
-                        ]}
                         value={formData.provider}
-                        onChange={val => setFormData({...formData, provider: val})}
-                        error={!formData.provider}
+                        onChange={val => setFormData(prev => ({ ...prev, provider: val }))}
+                        options={uniqueProviders}
+                        onDeleteOption={onDeleteProvider}
+                        error={!formData.provider && error !== null}
                         required
                     />
                 </div>

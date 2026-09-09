@@ -43,7 +43,7 @@ export interface InventoryMovement {
   createdAt: string;
 
   // Nuevos campos de Origen y Metadatos
-  origin?: 'IBUX-CLARO' | 'CNFL' | 'PRIVADO' | 'Proveedor';
+  origin?: 'IBUX-CLARO' | 'CNFL' | 'PRIVADO' | 'Proveedor' | string;
   provider?: string; // Nombre del proveedor si origin === 'Proveedor'
   fdh?: string;
   torre?: string;
@@ -51,4 +51,15 @@ export interface InventoryMovement {
   linkedRequestId?: string; // ID de la solicitud de materiales vinculada
   dispatchId?: string;
   requestNumber?: string;
+  
+  // Campos para trazabilidad de asignación de herramientas
+  isAssignment?: boolean;
+  subtype?: string;
+  originType?: string;
+  destination?: string;
+  recipientName?: string;
+  recipientType?: string;
+  initialCondition?: string;
+  reference?: string;
+  reason?: string;
 }

@@ -90,24 +90,34 @@ export const toolAssignmentService = {
     const assignmentRef = doc(collection(db, 'tool_assignments'));
     const movementRef = doc(collection(db, 'inventory_movements'));
     const itemRef = doc(db, 'inventory_items', dto.itemId);
+    const counterRef = doc(db, 'counters', 'requestNumber');
 
     const nowIso = new Date().toISOString();
-    const historyEntry: ToolAssignmentHistoryEntry = {
-      id: `${Date.now()}_initial`,
-      date: nowIso,
-      action: 'Asignación',
-      performedBy: dto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
-      details: `Asignación inicial de ${dto.quantity} ${dto.itemUnit || 'unid'} a ${dto.recipientType === 'colaborador' ? 'Colaborador: ' : 'Unidad: '}${dto.recipientName}. Condición inicial: ${dto.initialCondition}.`,
-      newStatus: 'Asignado'
-    };
 
     await guardedWrite(() =>
       runTransaction(db, async (transaction) => {
-        // 1. Lectura del artículo de inventario
+        // ==========================================
+        // 1. TODAS LAS LECTURAS (READS FIRST)
+        // ==========================================
+        // A. Lectura del contador correlativo global SOL-XXXX
+        const counterSnap = await transaction.get(counterRef);
+
+        // B. Lectura del artículo de inventario
         const itemDoc = await transaction.get(itemRef);
         if (!itemDoc.exists()) {
           throw new Error('El artículo seleccionado no existe en el inventario general.');
         }
+
+        // ==========================================
+        // 2. CÁLCULOS Y VALIDACIONES
+        // ==========================================
+        // Cálculo del consecutivo correlativo único del sistema
+        let lastNumber = 0;
+        if (counterSnap.exists()) {
+          lastNumber = counterSnap.data().lastNumber || 0;
+        }
+        const newNumber = lastNumber + 1;
+        const finalRequestNumber = `SOL-${String(newNumber).padStart(4, '0')}`;
 
         const itemData = itemDoc.data();
         const currentStock = Number(itemData.stock || 0);
@@ -119,22 +129,75 @@ export const toolAssignmentService = {
         }
 
         const newStock = currentStock - dto.quantity;
+        const itemPrice = Number(itemData.price || 0);
+        const itemCurrency = (itemData.currency as 'USD' | 'CRC') || 'USD';
+        const subtotal = itemPrice * dto.quantity;
 
-        // 2. Escritura: Descontar stock en inventario
+        // Determinación de Proyecto / Referencia
+        const hasProject = Boolean(dto.projectId && dto.projectName && dto.projectName.trim() !== '');
+        const originLabel = hasProject ? dto.projectName! : 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+        const referenceLabel = hasProject
+          ? (dto.projectNumber ? `[${dto.projectNumber}] ${dto.projectName}` : dto.projectName!)
+          : 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+
+        const historyEntry: ToolAssignmentHistoryEntry = {
+          id: `${Date.now()}_initial`,
+          date: nowIso,
+          action: 'Asignación',
+          performedBy: dto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
+          details: `Asignación inicial (${finalRequestNumber}) de ${dto.quantity} ${dto.itemUnit || 'unid'} a ${dto.recipientType === 'colaborador' ? 'Colaborador: ' : 'Unidad: '}${dto.recipientName}. Condición inicial: ${dto.initialCondition}. ${dto.observations ? `Notas: ${dto.observations}` : ''}`,
+          newStatus: 'Asignado'
+        };
+
+        // ==========================================
+        // 3. TODAS LAS ESCRITURAS (WRITES)
+        // ==========================================
+        // A. Actualizar contador correlativo global
+        transaction.set(counterRef, { lastNumber: newNumber }, { merge: true });
+
+        // B. Descontar stock en inventario
         transaction.update(itemRef, {
           stock: newStock,
           updatedAt: nowIso,
           updatedBy: currentUser.email || currentUser.name || 'Sistema'
         });
 
-        // 3. Escritura: Registrar movimiento en historial de inventario para trazabilidad total
+        // C. Registrar movimiento en historial de inventario (inventory_movements)
         transaction.set(movementRef, {
           type: 'Salida',
           subtype: 'Asignación de Herramienta',
+          originType: 'herramientas_asignadas',
+          isAssignment: true,
+          requestNumber: finalRequestNumber,
           date: dto.assignedDate || nowIso.split('T')[0],
-          reason: `Asignación de herramienta a ${dto.recipientName} (${dto.recipientType === 'colaborador' ? 'Colaborador' : 'Unidad Vehicular'})`,
+          origin: originLabel,
+          reference: referenceLabel,
+          projectId: hasProject ? dto.projectId : '',
+          projectNumber: hasProject ? (dto.projectNumber || '') : '',
+          projectName: hasProject ? dto.projectName : '',
           destination: dto.recipientName,
-          reference: dto.otCode || dto.projectNumber || 'Asignación de Equipo',
+          recipientName: dto.recipientName,
+          recipientType: dto.recipientType,
+          initialCondition: dto.initialCondition || 'Bueno',
+          reason: dto.observations 
+            ? `Asignación a ${dto.recipientName} (${dto.recipientType === 'colaborador' ? 'Colaborador' : 'Unidad Vehicular'}): ${dto.observations}` 
+            : `Asignación de herramienta a ${dto.recipientName} (${dto.recipientType === 'colaborador' ? 'Colaborador' : 'Unidad Vehicular'})`,
+          observations: dto.observations || '',
+          userId: currentUser.uid || '',
+          userName: dto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
+          createdBy: currentUser.email || currentUser.name || 'Sistema',
+          createdAt: nowIso,
+          // Campos planos para compatibilidad con vistas legacy
+          inventoryItemId: dto.itemId,
+          inventoryItemCode: dto.itemCode || itemData.code || '',
+          inventoryItemName: dto.itemDescription || itemData.description || '',
+          quantity: dto.quantity,
+          unitPrice: itemPrice,
+          subtotal: subtotal,
+          currency: itemCurrency,
+          previousStock: currentStock,
+          newStock: newStock,
+          // Estructura de items detallada
           items: [
             {
               inventoryItemId: dto.itemId,
@@ -143,18 +206,19 @@ export const toolAssignmentService = {
               quantity: dto.quantity,
               previousStock: currentStock,
               newStock: newStock,
-              unitPrice: itemData.price || 0,
-              total: (itemData.price || 0) * dto.quantity,
-              currency: itemData.currency || 'USD'
+              unitPrice: itemPrice,
+              subtotal: subtotal,
+              total: subtotal,
+              currency: itemCurrency
             }
-          ],
-          createdBy: currentUser.email || currentUser.name || 'Sistema',
-          createdAt: nowIso
+          ]
         });
 
-        // 4. Escritura: Crear documento de asignación
+        // D. Crear documento de asignación
         const assignmentData: ToolAssignment = {
           id: assignmentRef.id,
+          requestNumber: finalRequestNumber,
+          movementId: movementRef.id,
           itemId: dto.itemId,
           itemCode: dto.itemCode || itemData.code || '',
           itemDescription: dto.itemDescription || itemData.description || '',
@@ -168,9 +232,9 @@ export const toolAssignmentService = {
           assignedDate: dto.assignedDate || nowIso.split('T')[0],
           status: 'Asignado',
           initialCondition: dto.initialCondition || 'Bueno',
-          projectId: dto.projectId || '',
-          projectNumber: dto.projectNumber || '',
-          projectName: dto.projectName || '',
+          projectId: hasProject ? (dto.projectId || '') : '',
+          projectNumber: hasProject ? (dto.projectNumber || '') : '',
+          projectName: hasProject ? (dto.projectName || '') : '',
           jobId: dto.jobId || '',
           otCode: dto.otCode || '',
           observations: dto.observations || '',
@@ -225,11 +289,15 @@ export const toolAssignmentService = {
 
         let currentStock = 0;
         let newStock = qtyToReturn;
+        let itemPrice = 0;
+        let itemCurrency: 'USD' | 'CRC' = 'USD';
 
         if (itemDoc.exists()) {
           const itemData = itemDoc.data();
           currentStock = Number(itemData.stock || 0);
           newStock = currentStock + qtyToReturn;
+          itemPrice = Number(itemData.price || 0);
+          itemCurrency = (itemData.currency as 'USD' | 'CRC') || 'USD';
 
           // 3. Incrementar stock en inventario
           transaction.update(itemRef, {
@@ -239,14 +307,41 @@ export const toolAssignmentService = {
           });
         }
 
+        const hasProject = Boolean(assignmentData.projectId && assignmentData.projectName && assignmentData.projectName.trim() !== '');
+
         // 4. Registrar movimiento de devolución en inventario
         transaction.set(movementRef, {
           type: 'Entrada',
           subtype: 'Devolución de Herramienta',
+          originType: 'herramientas_asignadas',
+          isAssignment: true,
+          requestNumber: assignmentData.requestNumber || '',
           date: dto.returnDate || nowIso.split('T')[0],
-          reason: `Devolución de herramienta de ${assignmentData.recipientName}. Condición: ${dto.returnCondition}. Observaciones: ${dto.returnObservations || 'Sin observaciones'}`,
+          reason: `Devolución de herramienta de ${assignmentData.recipientName}. Condición: ${dto.returnCondition}. ${dto.returnObservations ? `Observaciones: ${dto.returnObservations}` : ''}`,
           origin: assignmentData.recipientName,
-          reference: assignmentData.otCode || assignmentData.projectNumber || 'Devolución de Equipo',
+          destination: 'Bodega Principal',
+          reference: hasProject 
+            ? (assignmentData.projectNumber ? `[${assignmentData.projectNumber}] ${assignmentData.projectName}` : assignmentData.projectName!)
+            : 'HERRAMIENTAS Y EQUIPOS ASIGNADOS',
+          projectId: hasProject ? assignmentData.projectId : '',
+          projectNumber: hasProject ? (assignmentData.projectNumber || '') : '',
+          projectName: hasProject ? assignmentData.projectName : '',
+          recipientName: assignmentData.recipientName,
+          recipientType: assignmentData.recipientType,
+          observations: dto.returnObservations || '',
+          userId: currentUser.uid || '',
+          userName: dto.returnHandledBy || currentUser.name || currentUser.email || 'Sistema',
+          createdBy: currentUser.email || currentUser.name || 'Sistema',
+          createdAt: nowIso,
+          inventoryItemId: assignmentData.itemId,
+          inventoryItemCode: assignmentData.itemCode || '',
+          inventoryItemName: assignmentData.itemDescription || '',
+          quantity: qtyToReturn,
+          previousStock: currentStock,
+          newStock: newStock,
+          unitPrice: itemPrice,
+          subtotal: 0,
+          currency: itemCurrency,
           items: [
             {
               inventoryItemId: assignmentData.itemId,
@@ -255,13 +350,12 @@ export const toolAssignmentService = {
               quantity: qtyToReturn,
               previousStock: currentStock,
               newStock: newStock,
-              unitPrice: 0,
+              unitPrice: itemPrice,
+              subtotal: 0,
               total: 0,
-              currency: 'USD'
+              currency: itemCurrency
             }
-          ],
-          createdBy: currentUser.email || currentUser.name || 'Sistema',
-          createdAt: nowIso
+          ]
         });
 
         // 5. Actualizar estado e historial de la asignación

@@ -10,42 +10,65 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { triggerFileDownload } from '../fileUtils';
 
 export const exportMovementToExcel = (movement: InventoryMovement) => {
+  const isAssignment =
+    movement.isAssignment === true ||
+    movement.originType === 'herramientas_asignadas' ||
+    movement.subtype === 'Asignación de Herramienta' ||
+    movement.subtype === 'Devolución de Herramienta' ||
+    movement.origin === 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+
+  const defaultOrigin = isAssignment
+    ? (movement.projectName && movement.projectName.trim() !== '' ? movement.projectName : 'HERRAMIENTAS Y EQUIPOS ASIGNADOS')
+    : (movement.projectName || '---');
+
   const data = (movement.items && movement.items.length > 0) 
     ? movement.items.map(item => ({
         'Código': item.inventoryItemCode,
         'Descripción': item.inventoryItemName,
         'Tipo': movement.type,
         'Cantidad': item.quantity,
-        'Proyecto': movement.projectName || '---',
-        'Usuario': movement.userName,
+        'Proyecto / Origen': defaultOrigin,
+        'ID Solicitud': movement.requestNumber || 'SOL-XXXX',
+        'Destinatario': movement.destination || movement.recipientName || '---',
+        'Usuario': movement.userName || movement.createdBy || '---',
         'Fecha': movement.date,
-        'Moneda': item.currency,
-        'Precio Unitario': item.unitPrice,
-        'Total': item.quantity * item.unitPrice
+        'Moneda': item.currency || movement.currency || 'USD',
+        'Precio Unitario': item.unitPrice || 0,
+        'Total': item.quantity * (item.unitPrice || 0)
       }))
     : [{
         'Código': movement.inventoryItemCode,
         'Descripción': movement.inventoryItemName,
         'Tipo': movement.type,
         'Cantidad': movement.quantity,
-        'Proyecto': movement.projectName || '---',
-        'Usuario': movement.userName,
+        'Proyecto / Origen': defaultOrigin,
+        'ID Solicitud': movement.requestNumber || 'SOL-XXXX',
+        'Destinatario': movement.destination || movement.recipientName || '---',
+        'Usuario': movement.userName || movement.createdBy || '---',
         'Fecha': movement.date,
-        'Moneda': movement.currency,
-        'Precio Unitario': movement.unitPrice,
+        'Moneda': movement.currency || 'USD',
+        'Precio Unitario': movement.unitPrice || 0,
         'Total': movement.quantity * (movement.unitPrice || 0)
       }];
 
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Movimiento');
-  XLSX.writeFile(wb, `Movimiento_${movement.id.substring(0, 8)}.xlsx`);
+  const filePrefix = isAssignment ? 'Asignacion' : 'Movimiento';
+  XLSX.writeFile(wb, `${filePrefix}_${(movement.requestNumber || movement.id.substring(0, 8))}.xlsx`);
 };
 
 export const exportMovementToPdf = async (movement: InventoryMovement, linkedRequest?: any) => {
   let request = linkedRequest || null;
 
-  if (!request && movement.requestNumber) {
+  const isAssignment =
+    movement.isAssignment === true ||
+    movement.originType === 'herramientas_asignadas' ||
+    movement.subtype === 'Asignación de Herramienta' ||
+    movement.subtype === 'Devolución de Herramienta' ||
+    movement.origin === 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+
+  if (!isAssignment && !request && movement.requestNumber) {
     const snapshot = await getDocs(
       query(
         collection(db, "material_reports"),
@@ -56,11 +79,6 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     if (!snapshot.empty) {
       request = snapshot.docs[0].data();
     }
-  }
-
-
-  if (!request) {
-    console.warn("⚠️ NO SE ENCONTRÓ REQUEST PARA ESTE MOVIMIENTO");
   }
 
   const doc = new jsPDF('p', 'pt', 'letter');
@@ -78,6 +96,187 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
   doc.setFontSize(16);
   doc.setTextColor(30, 58, 138);
   doc.setFont('helvetica', 'bold');
+
+  // =========================================================================
+  // CASO 1: MOVIMIENTO ORIGINADO DESDE CONTROL DE ASIGNACIONES (FORMATO ESPECÍFICO)
+  // =========================================================================
+  if (isAssignment) {
+    let title = "ASIGNACIÓN DE HERRAMIENTAS Y EQUIPOS";
+    if (movement.type === 'Devolución' || movement.subtype === 'Devolución de Herramienta') {
+      title = "DEVOLUCIÓN DE HERRAMIENTAS Y EQUIPOS";
+    } else if (movement.type === 'Entrada') {
+      title = "ENTRADA POR DEVOLUCIÓN DE EQUIPOS";
+    }
+    doc.text(title, pageWidth / 2, margin + 25, { align: 'center' });
+
+    // Subtítulo
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont('helvetica', 'normal');
+    doc.text("Registro de asignación para control y trazabilidad de herramientas y equipos", pageWidth / 2, margin + 40, { align: 'center' });
+
+    // Recuadro de Metadatos Específico (SIN TORRE, COTIZACIÓN NI LUGAR/DISTRITO)
+    const boxY = margin + 95;
+    doc.setDrawColor(230, 230, 250);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(margin, boxY, pageWidth - 2 * margin, 80, 5, 5, 'FD');
+
+    const originDisplay = movement.projectName && movement.projectName.trim() !== ''
+      ? (movement.projectNumber ? `[${movement.projectNumber}] ${movement.projectName}` : movement.projectName)
+      : 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+
+    const solId = movement.requestNumber || 'SOL-XXXX';
+    const movDate = movement.date || new Date().toISOString().split('T')[0];
+    const movTypeLabel = movement.subtype || (movement.type === 'Salida' ? 'Salida por Asignación' : movement.type);
+    const recipientLabel = movement.destination || movement.recipientName || (movement.type === 'Devolución' ? movement.origin : '---');
+    const conditionLabel = movement.initialCondition || 'Bueno';
+
+    doc.setFontSize(9.5);
+    doc.setTextColor(0, 0, 0);
+
+    // Fila 1: Proyecto / Origen y ID Movimiento
+    doc.setFont('helvetica', 'bold');
+    doc.text(`PROYECTO / ORIGEN:`, margin + 15, boxY + 22);
+    doc.setFont('helvetica', 'normal');
+    doc.text(originDisplay, margin + 135, boxY + 22);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text(`ID MOVIMIENTO:`, margin + 340, boxY + 22);
+    doc.setFont('helvetica', 'normal');
+    doc.text(solId, margin + 440, boxY + 22);
+
+    // Fila 2: Fecha y Tipo de Movimiento
+    doc.setFont('helvetica', 'bold');
+    doc.text(`FECHA:`, margin + 15, boxY + 44);
+    doc.setFont('helvetica', 'normal');
+    doc.text(movDate, margin + 135, boxY + 44);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TIPO MOVIMIENTO:`, margin + 340, boxY + 44);
+    doc.setFont('helvetica', 'normal');
+    doc.text(movTypeLabel, margin + 440, boxY + 44);
+
+    // Fila 3: Destinatario y Condición
+    doc.setFont('helvetica', 'bold');
+    doc.text(`DESTINATARIO:`, margin + 15, boxY + 66);
+    doc.setFont('helvetica', 'normal');
+    doc.text(recipientLabel, margin + 135, boxY + 66);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text(`CONDICIÓN:`, margin + 340, boxY + 66);
+    doc.setFont('helvetica', 'normal');
+    doc.text(conditionLabel, margin + 440, boxY + 66);
+
+    // Tabla de Items
+    const items = (movement.items && movement.items.length > 0)
+      ? movement.items
+      : [{
+          inventoryItemCode: movement.inventoryItemCode || '---',
+          inventoryItemName: movement.inventoryItemName || '---',
+          quantity: movement.quantity || 1,
+          unitPrice: movement.unitPrice || 0,
+          currency: movement.currency || 'USD'
+        }];
+
+    const tableData = items.map(item => {
+      const price = item.unitPrice ?? movement.unitPrice ?? 0;
+      const total = item.quantity * price;
+      const currency = item.currency || movement.currency || 'USD';
+      const itemTypeLabel = movement.type === 'Salida' ? 'Salida (Asignación)' : movement.type;
+
+      return [
+        item.inventoryItemCode || '---',
+        item.inventoryItemName || '---',
+        itemTypeLabel,
+        item.quantity.toLocaleString('es-CR'),
+        currency,
+        price.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        total.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      ];
+    });
+
+    autoTable(doc, {
+      startY: boxY + 100,
+      head: [['Código', 'Descripción', 'Tipo Movimiento', 'Cant.', 'Moneda', 'Precio U.', 'Total']],
+      body: tableData,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 4, textColor: [41, 51, 61], lineColor: [230, 230, 230] },
+      headStyles: { fillColor: [30, 58, 138], textColor: 255, halign: 'center', fontStyle: 'bold' },
+      columnStyles: {
+        3: { halign: 'right' },
+        4: { halign: 'center' },
+        5: { halign: 'right' },
+        6: { halign: 'right' }
+      }
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY + 20;
+
+    // Resumen de Totales
+    const totals = items.reduce((acc, item) => {
+      const currency = item.currency || movement.currency || 'USD';
+      acc[currency] = (acc[currency] || 0) + (item.quantity * (item.unitPrice || 0));
+      return acc;
+    }, {} as Record<string, number>);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 58, 138);
+    doc.text('RESUMEN DE LA ASIGNACIÓN', margin, finalY);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    let currentY = finalY + 15;
+
+    Object.entries(totals).forEach(([currency, total]) => {
+      if (total > 0) {
+        doc.text(`Total ${currency}: ${total.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, margin, currentY);
+        currentY += 15;
+      }
+    });
+
+    // Observaciones y Trazabilidad
+    const obsText = movement.observations || movement.reason || '';
+    if (obsText) {
+      currentY += 5;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 58, 138);
+      doc.text('OBSERVACIONES / DETALLES DE CUSTODIA', margin, currentY);
+
+      currentY += 5;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(50, 50, 50);
+
+      const splitObs = doc.splitTextToSize(obsText, pageWidth - 2 * margin - 20);
+      const boxHeight = (splitObs.length * 12) + 15;
+
+      doc.setDrawColor(230, 230, 250);
+      doc.setFillColor(252, 252, 255);
+      doc.roundedRect(margin, currentY, pageWidth - 2 * margin, boxHeight, 5, 5, 'FD');
+
+      doc.text(splitObs, margin + 10, currentY + 15);
+      currentY += boxHeight + 20;
+    }
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text("TENTELCOM DEL OESTE S.A. – Control y Asignación de Herramientas y Equipos", pageWidth / 2, doc.internal.pageSize.height - 20, { align: 'center' });
+
+    const cleanProject = originDisplay.replace(/[^a-z0-9]/gi, '_').substring(0, 25);
+    const fileName = `ASIGNACION_${cleanProject}_${solId}.pdf`;
+
+    const blob = doc.output('blob');
+    triggerFileDownload(blob, fileName);
+    return;
+  }
+
+  // =========================================================================
+  // CASO 2: MOVIMIENTO NORMAL DE SOLICITUD DE MATERIALES (FORMATO GENERAL)
+  // =========================================================================
   let title = "DETALLE DE MOVIMIENTO";
   switch (movement.type) {
     case 'Salida':

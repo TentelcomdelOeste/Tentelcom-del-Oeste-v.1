@@ -18,7 +18,7 @@ import { useToolAssignments } from '@/hooks/useToolAssignments';
 import { useInventory } from '@/hooks/useInventory';
 import { useEmployees } from '@/hooks/useEmployees';
 import { getVehicleCatalog } from '@/modules/inventario/bodegas_vehiculares/services/vehicleWarehouseService';
-import { ToolAssignment, RecipientType, AssignmentStatus } from '@/types/toolAssignment.types';
+import { ToolAssignment, RecipientType } from '@/types/toolAssignment.types';
 import { ModulePage } from '@/components/ui/ModulePage';
 import { ModuleToolbar } from '@/components/ui/ModuleToolbar';
 import {
@@ -28,10 +28,8 @@ import {
   Select,
   ActionButton,
   IconButton,
-  StatusBadge,
   useConfirm
 } from '@/design-system';
-import { ActionButtons } from '@/components/ui/ActionButtons';
 import { exportToExcel, exportToPDF } from '@/utils/exportUtils';
 import { isAdmin } from '@/utils/permissions';
 
@@ -173,7 +171,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
 
     exportToExcel(
       dataToExport,
-      `Herramientas_Asignadas_${new Date().toISOString().split('T')[0]}`,
+      `Control_Asignaciones_${new Date().toISOString().split('T')[0]}`,
       'Asignaciones'
     );
   };
@@ -187,7 +185,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       { header: 'Destinatario', dataKey: 'recipientName', width: 120 },
       { header: 'Cant.', dataKey: 'quantity', width: 40, align: 'center' as const },
       { header: 'Fecha Asig.', dataKey: 'assignedDate', width: 60, align: 'center' as const },
-      { header: 'Estado', dataKey: 'status', width: 70, align: 'center' as const }
+      { header: 'Condición', dataKey: 'initialCondition', width: 70, align: 'center' as const }
     ];
 
     const data = filteredAssignments.map((a) => ({
@@ -197,13 +195,13 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       recipientName: a.recipientName,
       quantity: `${a.quantity} ${a.itemUnit || 'unid'}`,
       assignedDate: a.assignedDate,
-      status: a.status
+      initialCondition: a.initialCondition
     }));
 
     exportToPDF({
-      title: 'Reporte de Herramientas y Equipos Asignados',
+      title: 'Control de Asignaciones',
       subtitle: `Total Registros: ${filteredAssignments.length} | Fecha: ${new Date().toLocaleDateString('es-CR')}`,
-      fileName: `Herramientas_Asignadas_${new Date().toISOString().split('T')[0]}`,
+      fileName: `Control_Asignaciones_${new Date().toISOString().split('T')[0]}`,
       columns,
       data,
       orientation: 'l'
@@ -250,20 +248,6 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
     setShowIncidentModal(true);
   };
 
-  // Status variant helper
-  const getStatusVariant = (status: AssignmentStatus) => {
-    switch (status) {
-      case 'Devuelto':
-        return 'success';
-      case 'Con incidencia':
-        return 'danger';
-      case 'En uso':
-      case 'Asignado':
-      default:
-        return 'info';
-    }
-  };
-
   // Definición de columnas de DataTable
   const columns: TableColumn<ToolAssignment>[] = [
     {
@@ -293,10 +277,10 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       render: (assignment) => (
         <div className="flex items-center gap-2">
           <div
-            className={`w-8 h-8 rounded-xl flex items-center justify-center flex-none text-xs font-bold ${
+            className={`w-7 h-7 rounded-lg flex items-center justify-center flex-none text-xs font-bold ${
               assignment.recipientType === 'colaborador'
-                ? 'bg-blue-100 text-blue-700'
-                : 'bg-emerald-100 text-emerald-700'
+                ? 'bg-blue-50 text-blue-600'
+                : 'bg-emerald-50 text-emerald-600'
             }`}
           >
             {assignment.recipientType === 'colaborador' ? (
@@ -305,15 +289,9 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
               <FiTruck className="text-sm" />
             )}
           </div>
-          <div>
-            <p className="font-bold text-xs text-slate-900 leading-tight">
-              {assignment.recipientName}
-            </p>
-            <p className="text-[10px] text-slate-500 font-medium">
-              {assignment.recipientType === 'colaborador' ? 'Colaborador' : 'Unidad Vehicular'}
-              {assignment.recipientDetail ? ` • ${assignment.recipientDetail}` : ''}
-            </p>
-          </div>
+          <span className="font-bold text-xs text-slate-800 leading-tight">
+            {assignment.recipientName}
+          </span>
         </div>
       )
     },
@@ -354,36 +332,6 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       )
     },
     {
-      key: 'project',
-      header: 'Proyecto / Trabajo',
-      render: (assignment) => (
-        assignment.projectName ? (
-          <div className="text-xs max-w-[180px]">
-            <span className="font-mono text-[10px] font-bold text-blue-700 block truncate">
-              {assignment.projectNumber || 'PROY'}
-            </span>
-            <span className="text-slate-800 font-medium truncate block" title={assignment.projectName}>
-              {assignment.projectName}
-            </span>
-          </div>
-        ) : (
-          <span className="text-[11px] text-slate-400 italic">No asignado</span>
-        )
-      )
-    },
-    {
-      key: 'status',
-      header: 'Estado',
-      align: 'center',
-      render: (assignment) => (
-        <StatusBadge
-          status={assignment.status}
-          variant={getStatusVariant(assignment.status)}
-          size="sm"
-        />
-      )
-    },
-    {
       key: 'actions',
       header: 'Acciones',
       align: 'right',
@@ -392,51 +340,43 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
         const isUserAdmin = currentUser ? isAdmin(currentUser.role) : false;
 
         return (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
             <IconButton
               icon={<FiEye />}
-              variant="ghost"
-              size="sm"
+              variant="primary"
               title="Ver detalle y trazabilidad"
               onClick={() => handleOpenDetail(assignment)}
-              className="text-slate-600 hover:text-blue-600 hover:bg-blue-50"
             />
             {!isReturned && (
               <IconButton
                 icon={<FiCornerDownLeft />}
-                variant="ghost"
-                size="sm"
+                variant="success"
                 title="Registrar devolución"
                 onClick={() => handleOpenReturn(assignment)}
-                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
               />
             )}
             {!isReturned && (
               <IconButton
                 icon={<FiAlertTriangle />}
-                variant="ghost"
-                size="sm"
+                variant={
+                  assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
+                    ? 'warning'
+                    : 'danger'
+                }
                 title={
                   assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
                     ? 'Resolver Incidencia'
                     : 'Reportar Incidencia'
                 }
                 onClick={() => handleOpenIncident(assignment)}
-                className={
-                  assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
-                    ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
-                    : 'text-rose-500 hover:text-rose-600 hover:bg-rose-50'
-                }
               />
             )}
             {isUserAdmin && (
               <IconButton
                 icon={<FiTrash2 />}
-                variant="ghost"
-                size="sm"
+                variant="danger"
                 title="Eliminar asignación"
                 onClick={() => handleDelete(assignment)}
-                className="text-slate-400 hover:text-rose-600 hover:bg-rose-50"
               />
             )}
           </div>
@@ -448,7 +388,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage
-        title="Herramientas y Equipos Asignados"
+        title="Control de Asignaciones"
         subtitle="Control de entrega, recepción y trazabilidad de herramientas y equipos asignados a colaboradores y unidades vehiculares."
         rightContent={
           <ActionButton

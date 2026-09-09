@@ -60,6 +60,10 @@ export interface ToolAssignment {
   jobId?: string;
   otCode?: string;
 
+  // Identificador de movimiento e ID correlativo
+  requestNumber?: string;
+  movementId?: string;
+
   // Observaciones y responsables
   observations?: string;
   assignedBy: string; // Nombre de quien entrega

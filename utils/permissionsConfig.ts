@@ -29,7 +29,7 @@ export const MODULES_CONFIG = {
       solicitudes: "Solicitudes",
       reportes: "Reporte de Materiales",
       bodegas_vehiculares: "Bodegas Vehiculares",
-      herramientas_asignadas: "Herramientas y Equipos Asignados"
+      herramientas_asignadas: "Control de Asignaciones"
     }
   },
 

@@ -147,6 +147,9 @@ service cloud.firestore {
       allow read: if hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "herramientas_asignadas") || hasPermission("trabajos") || isAdmin();
       allow write: if hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "herramientas_asignadas") || hasPermission("trabajos") || isAdmin();
     }
+    match /inventory_providers/{id} {
+      allow read, write: if hasNestedPermission("inventario", "movimientos") || hasNestedPermission("inventario", "general") || hasPermission("trabajos") || isAdmin();
+    }
     match /tool_assignments/{id} {
       allow read: if hasNestedPermission("inventario", "herramientas_asignadas") || hasNestedPermission("inventario", "general") || hasPermission("trabajos") || isAdmin();
       allow write: if hasNestedPermission("inventario", "herramientas_asignadas") || hasNestedPermission("inventario", "general") || isAdmin();
