@@ -33,10 +33,13 @@ export interface ModulePermissions {
   pre_analysis?: boolean; // NUEVO PERMISO PARA EVALUACIÓN DE PROYECTOS
   trabajos?: boolean;
   inventario?: {
-    general: boolean;
-    movimientos: boolean;
-    solicitudes: boolean;
-    reportes: boolean;
+    general?: boolean;
+    movimientos?: boolean;
+    solicitudes?: boolean;
+    reportes?: boolean;
+    bodegas_vehiculares?: boolean;
+    herramientas_asignadas?: boolean;
+    [key: string]: boolean | undefined;
   };
   finanzas?: {
     movimientos: boolean;

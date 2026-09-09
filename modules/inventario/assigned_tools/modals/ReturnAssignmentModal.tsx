@@ -94,8 +94,8 @@ export const ReturnAssignmentModal: React.FC<ReturnAssignmentModalProps> = ({
   if (!show || !assignment) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh] border border-slate-100 animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[200] p-2 md:p-4 overflow-y-auto animate-in fade-in duration-300">
+      <div className="bg-white rounded-2xl md:rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh] border border-slate-100 animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-5 md:p-6 bg-emerald-800 text-white flex justify-between items-center flex-none">
           <div className="flex items-center gap-3">

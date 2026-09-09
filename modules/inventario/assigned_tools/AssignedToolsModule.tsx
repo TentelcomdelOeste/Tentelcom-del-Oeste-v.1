@@ -5,7 +5,6 @@ import {
   FiTruck,
   FiAlertTriangle,
   FiRotateCcw,
-  FiPlus,
   FiDownload,
   FiEye,
   FiTrash2,
@@ -447,18 +446,18 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
   ];
 
   return (
-    <ModulePage
-      title="Herramientas y Equipos Asignados"
-      subtitle="Control de entrega, recepción y trazabilidad de herramientas y equipos asignados a colaboradores y unidades vehiculares."
-      rightContent={
-        <ActionButton
-          label="Nueva Asignación"
-          icon={<FiPlus />}
-          onClick={() => setShowNewModal(true)}
-          variant="primary"
-        />
-      }
-    >
+    <div className="-mx-2 md:-mx-4 -mt-4">
+      <ModulePage
+        title="Herramientas y Equipos Asignados"
+        subtitle="Control de entrega, recepción y trazabilidad de herramientas y equipos asignados a colaboradores y unidades vehiculares."
+        rightContent={
+          <ActionButton
+            label="Nueva Asignación"
+            onClick={() => setShowNewModal(true)}
+            variant="primary"
+          />
+        }
+      >
       {/* KPI STAT CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 mb-6">
         {/* Total Asignados Activos */}
@@ -654,7 +653,6 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
           </p>
           <ActionButton
             label="Nueva Asignación"
-            icon={<FiPlus />}
             onClick={() => setShowNewModal(true)}
             variant="primary"
           />
@@ -712,5 +710,6 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
         onOpenIncident={handleOpenIncident}
       />
     </ModulePage>
+    </div>
   );
 };

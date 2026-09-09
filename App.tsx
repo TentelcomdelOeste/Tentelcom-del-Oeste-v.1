@@ -45,6 +45,7 @@ const ExternalProductModule = safeLazy(() => import('./modules/external_products
 const WebAnalysisModule = safeLazy(() => import('./modules/web_analysis/WebAnalysisModule').then(module => ({ default: module.WebAnalysisModule })));
 const HealthDashboard = safeLazy(() => import('./modules/admin/HealthDashboard'));
 const VehiclesModule = safeLazy(() => import('./modules/vehicles/VehiclesModule'));
+const AssignedToolsModule = safeLazy(() => import('./modules/inventario/assigned_tools/AssignedToolsModule').then(m => ({ default: m.AssignedToolsModule })));
 
 import { User } from './utils/types';
 import { can, isAdmin } from './utils/permissions';
@@ -122,6 +123,7 @@ const MODULE_PATHS: Record<string, string> = {
   'material_reports': '/solicitudes-materiales',
   'material_report': '/reporte-materiales',
   'vehicle_warehouses': '/bodegas-vehiculares',
+  'assigned_tools': '/herramientas-equipos-asignados',
   'external_products': '/productos-externos',
   'product_ingestion': '/ingestion-productos',
   'web_analysis': '/analisis-web',
@@ -158,6 +160,7 @@ const getModuleLabel = (modId: string): string => {
     'material_reports': 'Inventario',
     'material_report': 'Inventario',
     'vehicle_warehouses': 'Inventario',
+    'assigned_tools': 'Inventario',
     'external_products': 'Productos Externos',
     'health_dashboard': 'Sistema'
   };
@@ -1272,7 +1275,13 @@ function App() {
                   </div>
                 )}
 
-                {!['home', 'health_dashboard', 'operational_log', 'cotizaciones', 'project_management', 'job_scheduling', 'external_products', 'web_analysis', 'vehicles_logs', 'vehicles_analysis', 'vehicles_analysis_detail', 'analisis_costos'].includes(activeModule.module) && (
+                {activeModule.module === 'assigned_tools' && (
+                  checkAccess('assigned_tools')
+                    ? <AssignedToolsModule currentUser={currentUser!} />
+                    : <div className="flex h-full items-center justify-center"><p className="text-slate-400 font-bold">Acceso Restringido</p></div>
+                )}
+
+                {!['home', 'health_dashboard', 'operational_log', 'cotizaciones', 'project_management', 'job_scheduling', 'external_products', 'web_analysis', 'vehicles_logs', 'vehicles_analysis', 'vehicles_analysis_detail', 'analisis_costos', 'assigned_tools'].includes(activeModule.module) && (
                   checkAccess(activeModule.module)
                     ? (
                       <FinanceModule

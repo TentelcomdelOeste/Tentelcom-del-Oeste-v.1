@@ -11,6 +11,7 @@ export const precacheModules = async (): Promise<void> => {
     () => import('../modules/web_analysis/WebAnalysisModule'),
     () => import('../modules/admin/HealthDashboard'),
     () => import('../modules/vehicles/VehiclesModule'),
+    () => import('../modules/inventario/assigned_tools/AssignedToolsModule'),
   ];
   
   for (const moduleLoader of modules) {
