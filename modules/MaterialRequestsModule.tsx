@@ -11,7 +11,7 @@ import { ModulePage } from '../components/ui/ModulePage';
 import { ModuleToolbar } from '../components/ui/ModuleToolbar';
 import { ActionButtons } from '../components/ui/ActionButtons';
 import { isAdmin, hasPermission } from '../utils/permissions';
-import { FiLoader } from "react-icons/fi";
+import { FiLoader, FiUser, FiBox } from "react-icons/fi";
 import { generateMaterialRequestPDF } from '../utils/pdfGenerator';
 import { 
   useConfirm, 
@@ -19,6 +19,8 @@ import {
   TableColumn, 
   SearchInput, 
   ActionButton, 
+  IconButton,
+  ACTION_ICONS,
   StatusBadge,
   Select
 } from '../design-system';
@@ -36,6 +38,19 @@ const STATUS_OPTIONS = [
     { label: 'Aprobadas', value: 'Aprobada' },
     { label: 'Rechazadas', value: 'Rechazada' },
     { label: 'Despachadas', value: 'Despachada' }
+];
+
+const MOBILE_STATUS_OPTIONS = [
+    { label: 'Todos', value: 'Todos' },
+    { label: 'Pendientes', value: 'Pendiente' },
+    { label: 'Aprobadas', value: 'Aprobada' },
+    { label: 'Rechazadas', value: 'Rechazada' },
+    { label: 'Despachadas', value: 'Despachada' }
+];
+
+const SECTION_OPTIONS = [
+    { label: 'Solicitudes', value: 'Requests' },
+    { label: 'Faltantes de inventario', value: 'Shortages' }
 ];
 
 const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ currentUser, selectedId, selectedKey, onClearSelectedId }) => {
@@ -336,8 +351,8 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
         title="Solicitudes de Material" 
         subtitle="Requisiciones de materiales para despliegue en campo y proyectos."
       >
-          {/* Navegación de Vistas */}
-          <div className="flex gap-4 mb-6 border-b border-slate-200">
+          {/* Navegación de Vistas (Solo Escritorio) */}
+          <div className="hidden md:flex gap-4 mb-4 md:mb-6 border-b border-slate-200">
               <button 
                   onClick={() => setView('Requests')}
                   className={`pb-2 text-xs font-black uppercase tracking-widest transition-all ${view === 'Requests' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
@@ -354,34 +369,92 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
 
           {view === 'Requests' ? (
               <>
-                  <ModuleToolbar>
-                      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                          {selectedId ? (
-                            <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 px-4 py-2 rounded-xl animate-in slide-in-from-top-2 duration-300">
-                                <span className="text-xs font-bold text-yellow-800">Mostrando resultado de búsqueda</span>
-                                <ActionButton 
-                                    onClick={onClearSelectedId} 
-                                    label="Ver todos" 
-                                    variant="secondary" 
-                                    className="h-7 px-3 text-[10px] bg-white border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                  {/* Toolbar para Escritorio (Intacto) */}
+                  <div className="hidden md:block">
+                    <ModuleToolbar>
+                        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                            {selectedId ? (
+                              <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 px-4 py-2 rounded-xl animate-in slide-in-from-top-2 duration-300">
+                                  <span className="text-xs font-bold text-yellow-800">Mostrando resultado de búsqueda</span>
+                                  <ActionButton 
+                                      onClick={onClearSelectedId} 
+                                      label="Ver todos" 
+                                      variant="secondary" 
+                                      className="h-7 px-3 text-[10px] bg-white border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                                  />
+                              </div>
+                            ) : (
+                              <>
+                                <SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar proyecto o solicitante..." className="w-full md:w-64" />
+                                <Select
+                                    options={STATUS_OPTIONS}
+                                    value={statusFilter}
+                                    onChange={val => setStatusFilter(val)}
+                                    className="w-full md:w-48"
+                                    isSearchable={false}
                                 />
-                            </div>
-                          ) : (
-                            <>
-                              <SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar proyecto o solicitante..." className="w-full md:w-64" />
-                             <Select
-                                 options={STATUS_OPTIONS}
-                                 value={statusFilter}
-                                 onChange={val => setStatusFilter(val)}
-                                 className="w-full md:w-48"
-                                 isSearchable={false}
-                             />
-                            </>
-                          )}
-                      </div>
-                      <ActionButton onClick={() => { setEditingRequest(null); setShowModal(true); }} label="Nueva Solicitud" />
-                  </ModuleToolbar>
+                              </>
+                            )}
+                        </div>
+                        <ActionButton onClick={() => { setEditingRequest(null); setShowModal(true); }} label="Nueva Solicitud" />
+                    </ModuleToolbar>
+                  </div>
 
+                  {/* Controles Superiores Optimizados Exclusivos para Móvil */}
+                  <div className="block md:hidden space-y-2 mb-3 px-1">
+                      {selectedId ? (
+                        <div className="flex items-center justify-between gap-2 bg-yellow-50 border border-yellow-200 px-3 py-2 rounded-xl">
+                            <span className="text-xs font-bold text-yellow-800 truncate">Resultado de búsqueda</span>
+                            <ActionButton 
+                                onClick={onClearSelectedId} 
+                                label="Ver todos" 
+                                variant="secondary" 
+                                className="h-7 px-2.5 text-[10px] bg-white border-yellow-300 text-yellow-700 shrink-0"
+                            />
+                        </div>
+                      ) : (
+                        <>
+                          {/* Fila 1: Buscador a la izquierda + Selector de Sección a la derecha */}
+                          <div className="flex items-center gap-2">
+                              <div className="flex-1 min-w-0">
+                                  <SearchInput 
+                                      value={searchTerm} 
+                                      onChange={(e) => setSearchTerm(e.target.value)} 
+                                      placeholder="Buscar..." 
+                                      className="w-full" 
+                                  />
+                              </div>
+                              <div className="w-[145px] shrink-0">
+                                  <Select
+                                      options={SECTION_OPTIONS}
+                                      value={view}
+                                      onChange={(val) => setView(val as 'Requests' | 'Shortages')}
+                                      className="w-full"
+                                      isSearchable={false}
+                                  />
+                              </div>
+                          </div>
+
+                          {/* Fila 2: Filtro de Estados ('TODOS') a la izquierda + Botón Nueva Solicitud a la derecha */}
+                          <div className="grid grid-cols-2 gap-2 items-center">
+                              <Select
+                                  options={MOBILE_STATUS_OPTIONS}
+                                  value={statusFilter}
+                                  onChange={val => setStatusFilter(val)}
+                                  className="w-full"
+                                  isSearchable={false}
+                              />
+                              <ActionButton 
+                                  onClick={() => { setEditingRequest(null); setShowModal(true); }} 
+                                  label="Nueva Solicitud"
+                                  className="w-full justify-center !py-2.5 text-xs font-bold uppercase tracking-wider"
+                              />
+                          </div>
+                        </>
+                      )}
+                  </div>
+
+                  {/* Tabla para Escritorio (Intacto) */}
                   <div className="hidden md:block">
                     <DataTable 
                         data={filteredRequests} 
@@ -398,10 +471,11 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
                     />
                   </div>
 
-                  <div className="md:hidden space-y-4 px-2">
+                  {/* Lista de Cards Optimizada para Móvil */}
+                  <div className="md:hidden space-y-3 px-1">
                     {isLoading ? (
                       <div className="py-12 text-center text-slate-400">
-                        <FiLoader className="mr-2 animate-spin"  /> Cargando datos...
+                        <FiLoader className="inline-block mr-2 animate-spin" /> Cargando datos...
                       </div>
                     ) : filteredRequests.length === 0 ? (
                       <div className="py-12 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
@@ -422,62 +496,146 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
                           else if (req.status === 'Aprobada') variant = 'success';
                           else if (req.status === 'Rechazada') variant = 'danger';
 
+                          const isVehicle = req.destinationType === 'vehicle' || !!req.targetVehiculoPlaca;
                           const isIBUX = req.origin === 'IBUX-CLARO' || (req.projectName || "").toUpperCase().includes('IBUX');
                           const isCNFL = req.origin === 'CNFL';
 
                           return (
-                            <div key={req.id} className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm space-y-4">
-                              <div className="flex justify-between items-start">
-                                <div className="space-y-1 flex-1 min-w-0 pr-2">
-                                  <p className="font-mono text-blue-800 font-bold text-[10px]">{req.requestNumber || "---"}</p>
-                                  <p className="font-black text-blue-900 text-sm leading-tight uppercase tracking-tight break-words">{(req.projectName || "Sin Nombre").replace(" MANTENIMIENTO", "")}</p>
-                                  
-                                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100 uppercase tracking-tighter">{(req.origin || "N/A").replace(" MANTENIMIENTO", "")}</span>
-                                    {isIBUX && req.torre && (
-                                      <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 uppercase">T: {req.torre}</span>
-                                    )}
-                                    <span className="text-[10px] font-mono text-slate-400">{req.date || "N/A"}</span>
-                                  </div>
-
-                                  {(isIBUX && req.locationDetails) && (
-                                    <div className="pt-1">
-                                      <p className="text-[10px] font-medium text-slate-500 bg-slate-50/50 px-2 py-1 rounded-lg border border-slate-100/50">
-                                        Distrito: <span className="font-black text-slate-700 uppercase tracking-tighter">{req.locationDetails}</span>
-                                      </p>
-                                    </div>
-                                  )}
-
-                                  {(isCNFL && req.planta) && (
-                                    <div className="pt-1">
-                                      <p className="text-[10px] font-medium text-slate-500 bg-slate-50/50 px-2 py-1 rounded-lg border border-slate-100/50">
-                                        Plantel: <span className="font-black text-slate-700 uppercase tracking-tighter">{req.planta}</span>
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
+                            <div 
+                              key={req.id} 
+                              className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-xs space-y-2 hover:border-slate-300 transition-colors"
+                            >
+                              {/* Fila 1: ID de Solicitud y Estado */}
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-xs font-bold text-slate-500">
+                                  {req.requestNumber || "SOL-XXXX"}
+                                </span>
                                 <StatusBadge label={req.status || "Pendiente"} variant={variant} />
                               </div>
 
-                              <div className="grid grid-cols-2 gap-4 py-3 border-y border-slate-50">
-                                <div>
-                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Solicitante</p>
-                                  <p className="text-xs font-bold text-slate-700">{(req.requestedByName || "").split('@')[0]}</p>
+                              {/* Fila 2: Nombre del Proyecto / Destino */}
+                              <h4 className="font-black text-slate-900 text-sm tracking-tight leading-snug truncate uppercase">
+                                {isVehicle ? (
+                                  `${req.targetVehiculoAlias || req.projectName || 'Unidad Vehicular'}${req.targetVehiculoPlaca ? ` (${req.targetVehiculoPlaca})` : ''}`
+                                ) : (
+                                  (req.projectName || "Sin Proyecto").replace(" MANTENIMIENTO", "")
+                                )}
+                              </h4>
+
+                              {/* Fila 3: Tipo / Origen, Fecha y Torre */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded uppercase tracking-tight">
+                                  {isVehicle ? 'BODEGA VEHICULAR' : (req.origin || "N/A").replace(" MANTENIMIENTO", "")}
+                                </span>
+                                <span className="text-[11px] font-mono text-slate-500 font-medium">
+                                  {req.date || (req.createdAt ? req.createdAt.split('T')[0] : "N/A")}
+                                </span>
+                                {isIBUX && req.torre && (
+                                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 uppercase">
+                                    T: {req.torre}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Fila 4: Plantel / Distrito / Referencia (si aplica) */}
+                              {isCNFL && req.planta && (
+                                <p className="text-[11px] text-slate-500 truncate leading-tight">
+                                  <span className="text-slate-400 font-medium">Plantel:</span>{' '}
+                                  <span className="font-bold text-slate-800 uppercase">{req.planta}</span>
+                                </p>
+                              )}
+                              {isIBUX && req.locationDetails && (
+                                <p className="text-[11px] text-slate-500 truncate leading-tight">
+                                  <span className="text-slate-400 font-medium">Distrito:</span>{' '}
+                                  <span className="font-bold text-slate-800 uppercase">{req.locationDetails}</span>
+                                </p>
+                              )}
+                              {isVehicle && req.movementReference && (
+                                <p className="text-[11px] text-slate-500 truncate leading-tight">
+                                  <span className="text-slate-400 font-medium">Ref:</span>{' '}
+                                  <span className="font-bold text-slate-800 uppercase">{req.movementReference}</span>
+                                </p>
+                              )}
+
+                              {/* Fila 5: Solicitante e Items */}
+                              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100/80">
+                                {/* Solicitante */}
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <FiUser className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  <div className="min-w-0">
+                                    <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none">
+                                      SOLICITANTE
+                                    </span>
+                                    <span className="block text-xs font-bold text-slate-700 truncate leading-tight mt-0.5">
+                                      {(req.requestedByName || "").split('@')[0] || "---"}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div>
-                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Items</p>
-                                  <p className="text-xs font-black text-blue-600">{(req.items || []).length} productos</p>
+
+                                {/* Items */}
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <FiBox className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  <div className="min-w-0">
+                                    <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none">
+                                      ITEMS
+                                    </span>
+                                    <span className="block text-xs font-black text-blue-600 truncate leading-tight mt-0.5">
+                                      {(req.items || []).length} {(req.items || []).length === 1 ? 'producto' : 'productos'}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
 
-                              <div className="flex justify-end pt-1">
-                                <ActionButtons 
-                                  onApprove={canApproveReject && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Aprobada') : undefined}
-                                  onReject={canApproveReject && req.status === 'Pendiente' ? () => handleStatusChange(req, 'Rechazada') : undefined}
-                                  onEdit={req.status === 'Pendiente' ? () => handleEdit(req) : undefined}
-                                  onDelete={canDelete ? () => handleDelete(req) : undefined}
-                                  onPdf={() => generateMaterialRequestPDF(req)}
+                              {/* Fila 6: Zona de Acciones delimitada */}
+                              <div className="pt-2 border-t border-slate-100/80 flex items-center justify-end gap-1.5 flex-wrap">
+                                {/* Botón PDF (Rojo) */}
+                                <IconButton 
+                                  icon={<ACTION_ICONS.pdf />} 
+                                  onClick={() => generateMaterialRequestPDF(req)} 
+                                  variant="danger" 
+                                  title="Descargar PDF" 
+                                  className="!p-1.5 !w-7 !h-7 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200"
                                 />
+
+                                {/* Acciones para Administradores / Pendientes */}
+                                {canApproveReject && req.status === 'Pendiente' && (
+                                  <>
+                                    <IconButton 
+                                      icon={<ACTION_ICONS.approve />} 
+                                      onClick={() => handleStatusChange(req, 'Aprobada')} 
+                                      variant="success" 
+                                      title="Aprobar Solicitud" 
+                                      className="!p-1.5 !w-7 !h-7 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+                                    />
+                                    <IconButton 
+                                      icon={<ACTION_ICONS.reject />} 
+                                      onClick={() => handleStatusChange(req, 'Rechazada')} 
+                                      variant="danger" 
+                                      title="Rechazar Solicitud" 
+                                      className="!p-1.5 !w-7 !h-7 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200"
+                                    />
+                                  </>
+                                )}
+
+                                {req.status === 'Pendiente' && (
+                                  <IconButton 
+                                    icon={<ACTION_ICONS.edit />} 
+                                    onClick={() => handleEdit(req)} 
+                                    variant="primary" 
+                                    title="Editar Solicitud" 
+                                    className="!p-1.5 !w-7 !h-7"
+                                  />
+                                )}
+
+                                {canDelete && (
+                                  <IconButton 
+                                    icon={<ACTION_ICONS.delete />} 
+                                    onClick={() => handleDelete(req)} 
+                                    variant="danger" 
+                                    title="Eliminar Solicitud" 
+                                    className="!p-1.5 !w-7 !h-7"
+                                  />
+                                )}
                               </div>
                             </div>
                           );
@@ -503,7 +661,24 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
                   </div>
               </>
           ) : (
-              <ShortagesView currentUser={currentUser} />
+              <>
+                  {/* Selector de Sección Móvil en Faltantes de Inventario */}
+                  <div className="block md:hidden mb-3 px-1">
+                      <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sección:</span>
+                          <div className="w-[180px]">
+                              <Select
+                                  options={SECTION_OPTIONS}
+                                  value={view}
+                                  onChange={(val) => setView(val as 'Requests' | 'Shortages')}
+                                  className="w-full"
+                                  isSearchable={false}
+                              />
+                          </div>
+                      </div>
+                  </div>
+                  <ShortagesView currentUser={currentUser} />
+              </>
           )}
 
           <MaterialRequestModal show={showModal} onClose={() => { setShowModal(false); onClearSelectedId?.(); }} onSubmit={handleSave} currentUser={currentUser} inventoryItems={inventoryItems} approvedQuotes={approvedQuotes} initialData={editingRequest} />

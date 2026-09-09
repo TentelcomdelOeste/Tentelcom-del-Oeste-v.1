@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ActionButton, IconButton } from '../../../../design-system';
-import { FiX, FiCheck, FiTrash2, FiSearch, FiChevronDown } from 'react-icons/fi';
+import { FiX, FiCheck, FiTrash2, FiSearch, FiChevronDown, FiTruck, FiFolder, FiBox } from 'react-icons/fi';
 import { getVehicleCatalog } from '../services/vehicleWarehouseService';
 import { subscribeToProjects } from '../../../project_management/services/projectService';
 import { Project } from '../../../project_management/types';
@@ -37,6 +37,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
   const [projectInput, setProjectInput] = useState<string>('');
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState<boolean>(false);
   const projectDropdownRef = useRef<HTMLDivElement>(null);
+  const mobileProjectDropdownRef = useRef<HTMLDivElement>(null);
 
   // State for items in request
   const [items, setItems] = useState<{
@@ -51,6 +52,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
   const [adderSearchTerm, setAdderSearchTerm] = useState<string>('');
   const [isAdderDropdownOpen, setIsAdderDropdownOpen] = useState<boolean>(false);
   const adderDropdownRef = useRef<HTMLDivElement>(null);
+  const mobileAdderDropdownRef = useRef<HTMLDivElement>(null);
 
   // Form error message
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -62,6 +64,9 @@ export const VehicleRequestModal: React.FC<Props> = ({
   const availableMaterials = useMemo(() => {
     return itemsList.filter(i => i.vehiculoId === selectedVehicle);
   }, [itemsList, selectedVehicle]);
+
+  const selectedVehicleObj = useMemo(() => vehicles.find(v => v.id === selectedVehicle), [vehicles, selectedVehicle]);
+  const totalUnits = useMemo(() => items.reduce((sum, i) => sum + (i.quantity || 0), 0), [items]);
 
   useEffect(() => {
     const unsub = subscribeToProjects((loadedProjects) => {
@@ -148,10 +153,18 @@ export const VehicleRequestModal: React.FC<Props> = ({
   // Handle outside click for dropdowns
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const isInsideProject = 
+        (projectDropdownRef.current && projectDropdownRef.current.contains(target)) ||
+        (mobileProjectDropdownRef.current && mobileProjectDropdownRef.current.contains(target));
+      if (!isInsideProject) {
         setIsProjectDropdownOpen(false);
       }
-      if (adderDropdownRef.current && !adderDropdownRef.current.contains(e.target as Node)) {
+
+      const isInsideAdder = 
+        (adderDropdownRef.current && adderDropdownRef.current.contains(target)) ||
+        (mobileAdderDropdownRef.current && mobileAdderDropdownRef.current.contains(target));
+      if (!isInsideAdder) {
         setIsAdderDropdownOpen(false);
       }
     };
@@ -382,7 +395,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-0 md:p-4 bg-slate-900/50 backdrop-blur-sm">
       <div className="bg-white md:rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col h-[95vh] md:h-auto md:max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
+        <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
           <h2 className="text-lg font-black text-slate-800">
             {initialData ? 'Editar Solicitud' : 'Nueva Solicitud'}
           </h2>
@@ -395,67 +408,76 @@ export const VehicleRequestModal: React.FC<Props> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-4 md:p-6 space-y-5 overflow-y-auto flex-1">
+        <div className="p-3.5 sm:p-4 md:p-6 overflow-y-auto flex-1">
           {/* Error alert if any */}
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-600">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-600 mb-3 md:mb-4">
               {errorMessage}
             </div>
           )}
 
-          {/* Form Fields: Vehículo Origen & Proyecto Destino */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Vehículo Origen */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Vehículo Origen
-              </label>
-              <div className="relative">
-                <select 
-                  value={selectedVehicle}
-                  onChange={(e) => handleVehicleChange(e.target.value)}
-                  className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-10"
-                >
-                  {vehicles.map(v => (
-                    <option key={v.id} value={v.id}>{v.alias} - {v.placa}</option>
-                  ))}
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                  <FiChevronDown />
+          {/* ======================================================== */}
+          {/* VISTA MÓVIL (block md:hidden)                            */}
+          {/* ======================================================== */}
+          <div className="block md:hidden space-y-3">
+            {/* 1. Vehículo origen */}
+            <div className="bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 shadow-xs relative">
+              <div className="flex items-center gap-2.5">
+                <FiTruck className="w-5 h-5 text-slate-600 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] text-slate-500 font-medium block leading-tight">
+                    Vehículo origen
+                  </span>
+                  <p className="text-xs font-bold text-slate-900 truncate leading-tight mt-0.5">
+                    {selectedVehicleObj ? `${selectedVehicleObj.alias} - ${selectedVehicleObj.placa}` : 'Seleccione vehículo'}
+                  </p>
                 </div>
+                <FiChevronDown className="w-4 h-4 text-slate-400 shrink-0 ml-auto pointer-events-none" />
               </div>
+              <select 
+                value={selectedVehicle}
+                onChange={(e) => handleVehicleChange(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              >
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.id}>{v.alias} - {v.placa}</option>
+                ))}
+              </select>
             </div>
 
-            {/* Proyecto Destino — Editable Combobox con Autocompletado */}
-            <div className="relative" ref={projectDropdownRef}>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Proyecto Destino
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Ej: #106-2026 o Proyecto..."
-                  value={projectInput}
-                  onChange={(e) => {
-                    setProjectInput(e.target.value);
-                    setIsProjectDropdownOpen(true);
-                    setErrorMessage(null);
-                  }}
-                  onFocus={() => setIsProjectDropdownOpen(true)}
-                  className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none pr-10"
-                />
+            {/* 2. Proyecto destino */}
+            <div className="bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 shadow-xs relative" ref={mobileProjectDropdownRef}>
+              <div className="flex items-center gap-2.5">
+                <FiFolder className="w-5 h-5 text-slate-600 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] text-slate-500 font-medium block leading-tight">
+                    Proyecto destino
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Seleccione o escriba proyecto..."
+                    value={projectInput}
+                    onChange={(e) => {
+                      setProjectInput(e.target.value);
+                      setIsProjectDropdownOpen(true);
+                      setErrorMessage(null);
+                    }}
+                    onFocus={() => setIsProjectDropdownOpen(true)}
+                    className="w-full text-xs font-bold text-slate-900 placeholder-slate-400 outline-none truncate bg-transparent leading-tight mt-0.5"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => setIsProjectDropdownOpen(prev => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="p-1 text-slate-400 hover:text-slate-600 shrink-0 ml-auto"
                 >
-                  <FiChevronDown />
+                  <FiChevronDown className="w-4 h-4" />
                 </button>
               </div>
 
               {/* Suggestions Dropdown */}
               {isProjectDropdownOpen && (
-                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                   {filteredProjects.length > 0 ? (
                     filteredProjects.map(p => {
                       const pCode = p.projectNumber || (p as any).code || p.id;
@@ -485,106 +507,98 @@ export const VehicleRequestModal: React.FC<Props> = ({
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Sección de Agregar Material */}
-          <div className="border-t border-slate-100 pt-5">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-              Seleccionar y Agregar Material
-            </h3>
-            
-            <div className="bg-slate-50 rounded-xl p-3 md:p-4 border border-slate-200 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                {/* Selector / Buscador de Material */}
-                <div className="md:col-span-7 relative" ref={adderDropdownRef}>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Material Disponible
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Buscar código o descripción..."
-                      value={adderMaterialId ? (currentAdderMaterial ? `${currentAdderMaterial.code} — ${currentAdderMaterial.description}` : adderSearchTerm) : adderSearchTerm}
-                      onChange={(e) => {
+            {/* 3. Agregar material */}
+            <div className="bg-blue-50/40 rounded-xl p-3 border border-blue-100 space-y-2.5 shadow-xs" ref={mobileAdderDropdownRef}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-black text-slate-900">Agregar material</h3>
+                <span className="text-[10px] text-slate-400 font-normal">Busca el material y agrega la cantidad</span>
+              </div>
+
+              {/* Search bar */}
+              <div className="relative">
+                <div className="relative flex items-center bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 shadow-xs">
+                  <FiSearch className="w-3.5 h-3.5 text-slate-400 shrink-0 mr-2" />
+                  <input
+                    type="text"
+                    placeholder="Buscar código o descripción..."
+                    value={adderMaterialId ? (currentAdderMaterial ? `${currentAdderMaterial.code} — ${currentAdderMaterial.description}` : adderSearchTerm) : adderSearchTerm}
+                    onChange={(e) => {
+                      setAdderMaterialId('');
+                      setAdderSearchTerm(e.target.value);
+                      setIsAdderDropdownOpen(true);
+                    }}
+                    onFocus={() => {
+                      setIsAdderDropdownOpen(true);
+                      if (adderMaterialId) {
+                        setAdderSearchTerm('');
                         setAdderMaterialId('');
-                        setAdderSearchTerm(e.target.value);
-                        setIsAdderDropdownOpen(true);
-                      }}
-                      onFocus={() => {
-                        setIsAdderDropdownOpen(true);
-                        if (adderMaterialId) {
-                          setAdderSearchTerm('');
-                          setAdderMaterialId('');
-                        }
-                      }}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none pr-8 truncate"
-                    />
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                      {adderSearchTerm || !adderMaterialId ? <FiSearch /> : <FiChevronDown />}
-                    </div>
-                  </div>
-
-                  {/* Dropdown de Materiales */}
-                  {isAdderDropdownOpen && (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                      {filteredAdderMaterials.length > 0 ? (
-                        filteredAdderMaterials.map(m => {
-                          const existingInItems = items.find(i => i.inventoryItemId === m.inventoryItemId);
-                          const alreadyCommittedInThisEdit = initialData?.items.find(
-                            x => x.inventoryItemId === m.inventoryItemId
-                          )?.quantityCommitted || 0;
-                          const usableStock = m.availableStock + alreadyCommittedInThisEdit - (existingInItems ? existingInItems.quantity : 0);
-
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              disabled={usableStock <= 0}
-                              onClick={() => {
-                                setAdderMaterialId(m.inventoryItemId);
-                                setAdderSearchTerm(`${m.code} — ${m.description}`);
-                                setIsAdderDropdownOpen(false);
-                                setAdderQuantity(1);
-                              }}
-                              className={`w-full text-left p-2.5 border-b border-slate-100 last:border-b-0 flex justify-between items-center transition-colors ${
-                                usableStock <= 0 
-                                  ? 'opacity-40 bg-slate-50 cursor-not-allowed' 
-                                  : 'hover:bg-blue-50'
-                              }`}
-                            >
-                              <div>
-                                <p className="text-xs font-bold text-slate-800">{m.code}</p>
-                                <p className="text-[11px] text-slate-600 truncate max-w-[220px] md:max-w-[280px]">{m.description}</p>
-                              </div>
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                usableStock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'
-                              }`}>
-                                Disp: {usableStock} {m.unit}
-                              </span>
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="p-3 text-xs text-slate-400 text-center">
-                          No se encontraron materiales para este vehículo.
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      }
+                    }}
+                    className="w-full text-xs font-medium text-slate-800 placeholder-slate-400 outline-none truncate bg-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsAdderDropdownOpen(prev => !prev)}
+                    className="text-slate-400 hover:text-slate-600 shrink-0 ml-1"
+                  >
+                    <FiChevronDown className="w-3.5 h-3.5" />
+                  </button>
                 </div>
 
-                {/* Cantidad */}
-                <div className="md:col-span-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      Cantidad
-                    </label>
-                    {currentAdderMaterial && (
-                      <span className="text-[10px] font-bold text-blue-600">
-                        Disp: {maxAvailableForAdder} {currentAdderMaterial.unit}
-                      </span>
+                {/* Dropdown de Materiales */}
+                {isAdderDropdownOpen && (
+                  <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                    {filteredAdderMaterials.length > 0 ? (
+                      filteredAdderMaterials.map(m => {
+                        const existingInItems = items.find(i => i.inventoryItemId === m.inventoryItemId);
+                        const alreadyCommittedInThisEdit = initialData?.items.find(
+                          x => x.inventoryItemId === m.inventoryItemId
+                        )?.quantityCommitted || 0;
+                        const usableStock = m.availableStock + alreadyCommittedInThisEdit - (existingInItems ? existingInItems.quantity : 0);
+
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            disabled={usableStock <= 0}
+                            onClick={() => {
+                              setAdderMaterialId(m.inventoryItemId);
+                              setAdderSearchTerm(`${m.code} — ${m.description}`);
+                              setIsAdderDropdownOpen(false);
+                              setAdderQuantity(1);
+                            }}
+                            className={`w-full text-left p-2.5 border-b border-slate-100 last:border-b-0 flex justify-between items-center transition-colors ${
+                              usableStock <= 0 
+                                ? 'opacity-40 bg-slate-50 cursor-not-allowed' 
+                                : 'hover:bg-blue-50'
+                            }`}
+                          >
+                            <div>
+                              <p className="text-xs font-bold text-slate-800">{m.code}</p>
+                              <p className="text-[11px] text-slate-600 truncate max-w-[200px]">{m.description}</p>
+                            </div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                              usableStock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'
+                            }`}>
+                              Disp: {usableStock} {m.unit}
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="p-3 text-xs text-slate-400 text-center">
+                        No se encontraron materiales para este vehículo.
+                      </div>
                     )}
                   </div>
+                )}
+              </div>
+
+              {/* Cantidad & Botón AGREGAR en la misma fila */}
+              <div className="flex items-center justify-between gap-2 pt-0.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[10px] font-semibold text-slate-500 shrink-0">Cantidad</span>
                   <input
                     type="number"
                     min="1"
@@ -596,118 +610,436 @@ export const VehicleRequestModal: React.FC<Props> = ({
                     }}
                     placeholder="1"
                     disabled={!currentAdderMaterial || maxAvailableForAdder <= 0}
-                    className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-500 disabled:opacity-50"
+                    className="w-16 h-8 bg-white border border-slate-200 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-500 shadow-xs disabled:opacity-50"
                   />
+                  <span className="text-[10px] text-slate-500 font-medium truncate">
+                    {currentAdderMaterial ? `${currentAdderMaterial.unit} (Máx: ${maxAvailableForAdder})` : 'Unidad'}
+                  </span>
                 </div>
 
-                {/* Botón Agregar */}
-                <div className="md:col-span-2">
-                  <ActionButton
-                    label="Agregar"
-                    variant="primary"
-                    disabled={!currentAdderMaterial || adderQuantity <= 0 || adderQuantity > maxAvailableForAdder}
-                    onClick={handleAddMaterialToRequest}
-                    className="w-full justify-center !text-xs !py-2"
-                  />
-                </div>
+                <button
+                  type="button"
+                  disabled={!currentAdderMaterial || adderQuantity <= 0 || adderQuantity > maxAvailableForAdder}
+                  onClick={handleAddMaterialToRequest}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg text-xs font-black tracking-wide shadow-xs shrink-0 transition-colors disabled:opacity-50"
+                >
+                  AGREGAR
+                </button>
               </div>
+            </div>
+
+            {/* 4. Materiales en la solicitud */}
+            <div className="space-y-2.5 pt-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <FiBox className="w-4 h-4 text-slate-900" />
+                  <h3 className="text-xs font-black text-slate-900">
+                    Materiales en la solicitud ({items.length})
+                  </h3>
+                </div>
+                <span className="text-[10px] font-medium text-slate-500">
+                  Total: {totalUnits} {totalUnits === 1 ? 'unidad' : 'unidades'}
+                </span>
+              </div>
+
+              {items.length === 0 ? (
+                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 border-dashed text-center">
+                  <p className="text-xs font-medium text-slate-500">
+                    Aún no hay materiales en esta solicitud. Seleccione un material arriba y pulse &quot;AGREGAR&quot;.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {items.map((item) => {
+                    const currentMat = availableMaterials.find(m => m.inventoryItemId === item.inventoryItemId);
+                    const alreadyCommittedInThisEdit = initialData?.items.find(
+                      x => x.inventoryItemId === item.inventoryItemId
+                    )?.quantityCommitted || 0;
+                    const maxAvail = currentMat 
+                      ? currentMat.availableStock + alreadyCommittedInThisEdit
+                      : item.quantity;
+
+                    return (
+                      <div 
+                        key={item.id} 
+                        className="bg-white border border-slate-200/90 rounded-xl p-3 shadow-xs space-y-1.5"
+                      >
+                        {/* Header: Code + Category + Trash Button */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-[10px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
+                              {currentMat?.code || 'MATERIAL'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">
+                              {currentMat?.category || 'GENERAL'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                            title="Eliminar material"
+                          >
+                            <FiTrash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Description */}
+                        <p className="text-xs font-black text-slate-900 tracking-tight leading-snug">
+                          {currentMat?.description || 'Material asignado'}
+                        </p>
+
+                        {/* Quantity Input & Max Unit */}
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <span className="text-[10px] font-semibold text-slate-500 shrink-0">Cantidad</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={maxAvail}
+                            value={item.quantity || ''}
+                            onChange={(e) => handleItemQuantityChange(item.id, parseInt(e.target.value) || 1)}
+                            className="w-16 h-7 bg-white border border-slate-200 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-500 shadow-xs"
+                          />
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            {currentMat?.unit || 'und'} (Máx: {maxAvail})
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 5. Botones Inferiores en la Misma Fila (Al final del flujo del contenido) */}
+            <div className="grid grid-cols-2 gap-3 pt-3 pb-2 mt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 text-blue-600 border border-blue-500 rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-xs"
+              >
+                CANCELAR
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-xs"
+              >
+                GUARDAR
+              </button>
             </div>
           </div>
 
-          {/* Lista de Materiales Asignados */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-800">
-                Materiales en la Solicitud ({items.length})
-              </h3>
+          {/* ======================================================== */}
+          {/* VISTA ESCRITORIO (hidden md:block)                       */}
+          {/* ======================================================== */}
+          <div className="hidden md:block space-y-5">
+            {/* Form Fields: Vehículo Origen & Proyecto Destino */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Vehículo Origen */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Vehículo Origen
+                </label>
+                <div className="relative">
+                  <select 
+                    value={selectedVehicle}
+                    onChange={(e) => handleVehicleChange(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-10"
+                  >
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.alias} - {v.placa}</option>
+                    ))}
+                  </select>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                    <FiChevronDown />
+                  </div>
+                </div>
+              </div>
+
+              {/* Proyecto Destino — Editable Combobox con Autocompletado */}
+              <div className="relative" ref={projectDropdownRef}>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Proyecto Destino
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Ej: #106-2026 o Proyecto..."
+                    value={projectInput}
+                    onChange={(e) => {
+                      setProjectInput(e.target.value);
+                      setIsProjectDropdownOpen(true);
+                      setErrorMessage(null);
+                    }}
+                    onFocus={() => setIsProjectDropdownOpen(true)}
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsProjectDropdownOpen(prev => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <FiChevronDown />
+                  </button>
+                </div>
+
+                {/* Suggestions Dropdown */}
+                {isProjectDropdownOpen && (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                    {filteredProjects.length > 0 ? (
+                      filteredProjects.map(p => {
+                        const pCode = p.projectNumber || (p as any).code || p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setProjectInput(`${pCode} | ${p.name}`);
+                              setIsProjectDropdownOpen(false);
+                              setErrorMessage(null);
+                            }}
+                            className="w-full text-left p-2.5 hover:bg-blue-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                          >
+                            <p className="text-xs font-bold text-slate-800">{pCode}</p>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {p.name}{p.clientName ? ` • ${p.clientName}` : ''}
+                            </p>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="p-3 text-xs text-slate-500 text-center">
+                        Presiona fuera para usar <strong className="text-slate-700">&quot;{projectInput}&quot;</strong> como nuevo proyecto.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {items.length === 0 ? (
-              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 border-dashed text-center">
-                <p className="text-xs font-medium text-slate-500">
-                  Aún no hay materiales en esta solicitud. Seleccione un material arriba y pulse &quot;Agregar&quot;.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {items.map((item) => {
-                  const currentMat = availableMaterials.find(m => m.inventoryItemId === item.inventoryItemId);
-                  const alreadyCommittedInThisEdit = initialData?.items.find(
-                    x => x.inventoryItemId === item.inventoryItemId
-                  )?.quantityCommitted || 0;
-                  const maxAvail = currentMat 
-                    ? currentMat.availableStock + alreadyCommittedInThisEdit
-                    : item.quantity;
-                  
-                  return (
-                    <div 
-                      key={item.id} 
-                      className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                            {currentMat?.code || 'MATERIAL'}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase">
-                            {currentMat?.category}
-                          </span>
-                        </div>
-                        <p className="text-xs font-bold text-slate-800 mt-1">
-                          {currentMat?.description || 'Material asignado'}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-between md:justify-end gap-3 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <div className="w-20">
-                            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">
-                              Cantidad
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              max={maxAvail}
-                              value={item.quantity || ''}
-                              onChange={(e) => handleItemQuantityChange(item.id, parseInt(e.target.value) || 1)}
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-500"
-                            />
-                          </div>
-                          <div className="pt-3 text-[10px] text-slate-500 font-medium whitespace-nowrap">
-                            {currentMat?.unit || 'und'} (Máx: {maxAvail})
-                          </div>
-                        </div>
-
-                        <div className="pt-3">
-                          <IconButton 
-                            icon={<FiTrash2 />} 
-                            variant="danger" 
-                            onClick={() => handleRemoveItem(item.id)} 
-                          />
-                        </div>
+            {/* Sección de Agregar Material */}
+            <div className="border-t border-slate-100 pt-5">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                Seleccionar y Agregar Material
+              </h3>
+              
+              <div className="bg-slate-50 rounded-xl p-3 md:p-4 border border-slate-200 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                  {/* Selector / Buscador de Material */}
+                  <div className="md:col-span-7 relative" ref={adderDropdownRef}>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Material Disponible
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Buscar código o descripción..."
+                        value={adderMaterialId ? (currentAdderMaterial ? `${currentAdderMaterial.code} — ${currentAdderMaterial.description}` : adderSearchTerm) : adderSearchTerm}
+                        onChange={(e) => {
+                          setAdderMaterialId('');
+                          setAdderSearchTerm(e.target.value);
+                          setIsAdderDropdownOpen(true);
+                        }}
+                        onFocus={() => {
+                          setIsAdderDropdownOpen(true);
+                          if (adderMaterialId) {
+                            setAdderSearchTerm('');
+                            setAdderMaterialId('');
+                          }
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none pr-8 truncate"
+                      />
+                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                        {adderSearchTerm || !adderMaterialId ? <FiSearch /> : <FiChevronDown />}
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* Dropdown de Materiales */}
+                    {isAdderDropdownOpen && (
+                      <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                        {filteredAdderMaterials.length > 0 ? (
+                          filteredAdderMaterials.map(m => {
+                            const existingInItems = items.find(i => i.inventoryItemId === m.inventoryItemId);
+                            const alreadyCommittedInThisEdit = initialData?.items.find(
+                              x => x.inventoryItemId === m.inventoryItemId
+                            )?.quantityCommitted || 0;
+                            const usableStock = m.availableStock + alreadyCommittedInThisEdit - (existingInItems ? existingInItems.quantity : 0);
+
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                disabled={usableStock <= 0}
+                                onClick={() => {
+                                  setAdderMaterialId(m.inventoryItemId);
+                                  setAdderSearchTerm(`${m.code} — ${m.description}`);
+                                  setIsAdderDropdownOpen(false);
+                                  setAdderQuantity(1);
+                                }}
+                                className={`w-full text-left p-2.5 border-b border-slate-100 last:border-b-0 flex justify-between items-center transition-colors ${
+                                  usableStock <= 0 
+                                    ? 'opacity-40 bg-slate-50 cursor-not-allowed' 
+                                    : 'hover:bg-blue-50'
+                                }`}
+                              >
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800">{m.code}</p>
+                                  <p className="text-[11px] text-slate-600 truncate max-w-[220px] md:max-w-[280px]">{m.description}</p>
+                                </div>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                  usableStock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'
+                                }`}>
+                                  Disp: {usableStock} {m.unit}
+                                </span>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="p-3 text-xs text-slate-400 text-center">
+                            No se encontraron materiales para este vehículo.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Cantidad */}
+                  <div className="md:col-span-3">
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Cantidad
+                      </label>
+                      {currentAdderMaterial && (
+                        <span className="text-[10px] font-bold text-blue-600">
+                          Disp: {maxAvailableForAdder} {currentAdderMaterial.unit}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max={maxAvailableForAdder || 1}
+                      value={adderQuantity || ''}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setAdderQuantity(val);
+                      }}
+                      placeholder="1"
+                      disabled={!currentAdderMaterial || maxAvailableForAdder <= 0}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-500 disabled:opacity-50"
+                    />
+                  </div>
+
+                  {/* Botón Agregar */}
+                  <div className="md:col-span-2">
+                    <ActionButton
+                      label="Agregar"
+                      variant="primary"
+                      disabled={!currentAdderMaterial || adderQuantity <= 0 || adderQuantity > maxAvailableForAdder}
+                      onClick={handleAddMaterialToRequest}
+                      className="w-full justify-center !text-xs !py-2"
+                    />
+                  </div>
+                </div>
               </div>
-            )}
+            </div>
+
+            {/* Lista de Materiales Asignados */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-800">
+                  Materiales en la Solicitud ({items.length})
+                </h3>
+              </div>
+
+              {items.length === 0 ? (
+                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 border-dashed text-center">
+                  <p className="text-xs font-medium text-slate-500">
+                    Aún no hay materiales en esta solicitud. Seleccione un material arriba y pulse &quot;Agregar&quot;.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {items.map((item) => {
+                    const currentMat = availableMaterials.find(m => m.inventoryItemId === item.inventoryItemId);
+                    const alreadyCommittedInThisEdit = initialData?.items.find(
+                      x => x.inventoryItemId === item.inventoryItemId
+                    )?.quantityCommitted || 0;
+                    const maxAvail = currentMat 
+                      ? currentMat.availableStock + alreadyCommittedInThisEdit
+                      : item.quantity;
+                    
+                    return (
+                      <div 
+                        key={item.id} 
+                        className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                              {currentMat?.code || 'MATERIAL'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase">
+                              {currentMat?.category}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-slate-800 mt-1">
+                            {currentMat?.description || 'Material asignado'}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between md:justify-end gap-3 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <div className="w-20">
+                              <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">
+                                Cantidad
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                max={maxAvail}
+                                value={item.quantity || ''}
+                                onChange={(e) => handleItemQuantityChange(item.id, parseInt(e.target.value) || 1)}
+                                className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-500"
+                              />
+                            </div>
+                            <div className="pt-3 text-[10px] text-slate-500 font-medium whitespace-nowrap">
+                              {currentMat?.unit || 'und'} (Máx: {maxAvail})
+                            </div>
+                          </div>
+
+                          <div className="pt-3">
+                            <IconButton 
+                              icon={<FiTrash2 />} 
+                              variant="danger" 
+                              onClick={() => handleRemoveItem(item.id)} 
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-end gap-3">
+        {/* Desktop Footer Actions (Solo Escritorio) */}
+        <div className="hidden md:flex p-4 border-t border-slate-100 bg-slate-50/50 justify-end gap-3 shrink-0">
           <ActionButton 
             label="Cancelar" 
             variant="secondary" 
             onClick={onClose} 
-            className="w-full md:w-auto justify-center order-2 md:order-1" 
+            className="w-auto justify-center" 
           />
           <ActionButton 
             label={initialData ? "Guardar Cambios" : "Crear Solicitud"} 
             icon={<FiCheck />} 
             variant="primary" 
             onClick={handleSave} 
-            className="w-full md:w-auto justify-center order-1 md:order-2" 
+            className="w-auto justify-center" 
           />
         </div>
       </div>

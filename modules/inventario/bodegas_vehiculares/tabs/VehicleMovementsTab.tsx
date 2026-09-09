@@ -1,13 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { User } from '../../../../types';
 
-import { DataTable, TableColumn, StatusBadge } from '../../../../design-system';
+import { DataTable, TableColumn, StatusBadge, useConfirm } from '../../../../design-system';
+import { ActionButtons } from '../../../../components/ui/ActionButtons';
 import { VehicleMovement } from '../../../../types/vehicleWarehouse.types';
+import { isVehicleDeleteAuthorized, vehicleWarehouseService } from '../services/vehicleWarehouseService';
 import { format } from 'date-fns';
 
 interface Props {
   currentUser?: User | null;
   movements?: VehicleMovement[];
+  onDeleteMovement?: (movementId: string) => Promise<void> | void;
   activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
   onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
 }
@@ -28,15 +31,45 @@ const MONTH_NAMES = [
 ];
 
 export const VehicleMovementsTab: React.FC<Props> = ({
+  currentUser,
   movements: externalMovements,
+  onDeleteMovement,
   activeTab = 'movements',
   onTabChange
 }) => {
+  const confirm = useConfirm();
+  const canDelete = isVehicleDeleteAuthorized(currentUser);
   
   const rawMovements = externalMovements || [];
 
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
   const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+
+  const handleDeleteMovement = async (mov: VehicleMovement) => {
+    const confirmed = await confirm({
+      title: '¿Eliminar Movimiento?',
+      description: `¿Está seguro de eliminar permanentemente el registro de movimiento #${mov.movementNumber}? Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (confirmed) {
+      try {
+        if (onDeleteMovement) {
+          await onDeleteMovement(mov.id);
+        } else {
+          await vehicleWarehouseService.deleteMovement(mov.id, currentUser);
+        }
+      } catch (err: any) {
+        console.error('Error al eliminar movimiento:', err);
+        await confirm({
+          title: 'Error al eliminar movimiento',
+          description: err?.message || 'Ocurrió un error al procesar la eliminación del movimiento.',
+          confirmLabel: 'Aceptar',
+          variant: 'danger'
+        });
+      }
+    }
+  };
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -96,40 +129,45 @@ export const VehicleMovementsTab: React.FC<Props> = ({
   const columns: TableColumn<VehicleMovement>[] = [
     {
       header: 'Fecha / Ref',
+      align: 'center',
+      width: '130px',
       render: (mov) => (
-        <div>
-          <p className="font-mono text-xs font-bold text-slate-700">{mov.movementNumber}</p>
-          <p className="text-[10px] text-slate-500">{format(new Date(mov.createdAt), 'dd/MM/yyyy HH:mm')}</p>
+        <div className="text-center">
+          <span className="font-mono text-xs font-bold text-slate-800">#{mov.movementNumber}</span>
+          <p className="text-[10px] text-slate-400 font-medium">{format(new Date(mov.createdAt), 'dd/MM/yyyy HH:mm')}</p>
         </div>
       )
     },
     {
       header: 'Tipo',
+      align: 'center',
+      width: '160px',
       render: (mov) => (
         <StatusBadge status={getMovementLabel(mov.type)} variant={getMovementColor(mov.type) as any} />
       )
     },
     {
       header: 'Vehículo / Detalle',
+      className: 'flex-1 min-w-[190px]',
       render: (mov) => (
-        <div>
+        <div className="min-w-0">
           {mov.type === 'Traslado_Entre_Vehiculos' && mov.targetVehiculoPlaca ? (
             <p className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
-              <span>{mov.vehiculoPlaca}</span>
+              <span className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">{mov.vehiculoPlaca}</span>
               <span className="text-blue-600 font-extrabold">→</span>
-              <span>{mov.targetVehiculoPlaca}</span>
+              <span className="bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded font-mono">{mov.targetVehiculoPlaca}</span>
             </p>
           ) : mov.type === 'Traslado_Entrada' ? (
             <p className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
-              <span className="text-slate-500 font-medium">{mov.origin || 'Bodega Principal'}</span>
+              <span className="text-slate-500 font-medium">{mov.origin || 'Bodega Central'}</span>
               <span className="text-emerald-600 font-extrabold">→</span>
-              <span>{mov.destination || mov.targetVehiculoPlaca || mov.vehiculoPlaca}</span>
+              <span className="bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded font-mono">{mov.destination || mov.targetVehiculoPlaca || mov.vehiculoPlaca}</span>
             </p>
           ) : (
-            <span className="font-bold text-slate-700 text-xs">{mov.vehiculoPlaca}</span>
+            <span className="font-bold text-slate-700 text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono">{mov.vehiculoPlaca}</span>
           )}
           {mov.reason && (
-            <p className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[220px]" title={mov.reason}>
+            <p className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[220px]" title={mov.reason}>
               {mov.reason}
             </p>
           )}
@@ -137,22 +175,27 @@ export const VehicleMovementsTab: React.FC<Props> = ({
       )
     },
     {
-      header: 'Proyecto (si aplica)',
+      header: 'Proyecto',
+      width: '160px',
       render: (mov) =>
         mov.projectName ? (
-          <span className="text-xs text-slate-600 truncate max-w-[180px] block">{mov.projectName}</span>
+          <div className="min-w-0 truncate" title={mov.projectName}>
+            <span className="text-xs font-semibold text-slate-700 truncate block">{mov.projectName}</span>
+            {mov.projectCode && <span className="text-[10px] text-blue-600 font-mono font-medium block">{mov.projectCode}</span>}
+          </div>
         ) : (
           <span className="text-slate-400 text-xs">-</span>
         )
     },
     {
       header: 'Ítems Afectados',
+      width: '160px',
       render: (mov) => (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-0.5 max-h-14 overflow-y-auto pr-1">
           {mov.items.map((item, i) => (
-            <div key={i} className="text-xs">
-              <span className="font-bold text-slate-700">{item.quantity}</span> x{' '}
-              <span className="text-slate-500 font-mono">{item.code}</span>
+            <div key={i} className="text-xs flex items-center justify-between text-slate-700">
+              <span className="font-mono text-[11px] text-slate-600 truncate max-w-[100px]" title={item.code}>{item.code}</span>
+              <span className="font-black text-slate-800 ml-1">x{item.quantity}</span>
             </div>
           ))}
         </div>
@@ -160,8 +203,26 @@ export const VehicleMovementsTab: React.FC<Props> = ({
     },
     {
       header: 'Realizado por',
-      accessorKey: 'performedByName'
-    }
+      width: '140px',
+      render: (mov) => (
+        <span className="text-xs text-slate-600 truncate block" title={mov.performedByName}>
+          {mov.performedByName ? mov.performedByName.split('@')[0] : '-'}
+        </span>
+      )
+    },
+    ...(canDelete ? [{
+      header: 'Acciones',
+      align: 'center' as const,
+      width: '80px',
+      render: (mov: VehicleMovement) => (
+        <div className="flex justify-center items-center">
+          <ActionButtons
+            onDelete={() => handleDeleteMovement(mov)}
+            deleteTitle="Eliminar movimiento"
+          />
+        </div>
+      )
+    }] : [])
   ];
 
   return (
@@ -305,6 +366,15 @@ export const VehicleMovementsTab: React.FC<Props> = ({
                     <span>Ref: {mov.movementNumber}</span>
                     <span>{mov.performedByName}</span>
                   </div>
+
+                  {canDelete && (
+                    <div className="flex justify-end pt-1.5 border-t border-slate-100">
+                      <ActionButtons
+                        onDelete={() => handleDeleteMovement(mov)}
+                        deleteTitle="Eliminar movimiento"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

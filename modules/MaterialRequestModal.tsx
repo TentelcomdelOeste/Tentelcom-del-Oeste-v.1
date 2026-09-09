@@ -6,7 +6,7 @@ import { InventoryItem } from '@/inventoryTypes';
 import { ProjectOrigin, MaterialRequest, RequestDestinationType, RequestStatus } from '@/dispatchTypes';
 import useLockBodyScroll from '@/hooks/useLockBodyScroll';
 import { useAuditPermanence } from '@/hooks/useAuditPermanence';
-import { FiX, FiCircle, FiSearch, FiAlertCircle, FiAlertTriangle } from "react-icons/fi";
+import { FiX, FiCircle, FiSearch, FiAlertCircle, FiAlertTriangle, FiMessageSquare } from "react-icons/fi";
 import { ActionButton, IconButton, Select } from '../design-system';
 import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -82,6 +82,8 @@ export const MaterialRequestModal = ({
 
   const [showMobileSelector, setShowMobileSelector] = useState(false);
   const [showMobileProjectSelector, setShowMobileProjectSelector] = useState(false);
+  const [showMobileObservations, setShowMobileObservations] = useState(false);
+  const [expandedMobileComments, setExpandedMobileComments] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const qtyInputRef = React.useRef<HTMLInputElement>(null);
@@ -135,6 +137,8 @@ export const MaterialRequestModal = ({
 
             setPlanta(initialData.planta || (initialData as any).plantel || '');
             setObservations(initialData.observations || '');
+            setShowMobileObservations(Boolean(initialData.observations && initialData.observations.trim().length > 0));
+            setExpandedMobileComments({});
             setFdh(initialData.fdh || '');
             setTorre(initialData.torre || '');
             setLocationDetails(initialData.locationDetails || '');
@@ -162,6 +166,8 @@ export const MaterialRequestModal = ({
             setOrigin('');
             setProjectId('');
             setObservations('');
+            setShowMobileObservations(false);
+            setExpandedMobileComments({});
             setFdh('');
             setTorre('');
             setLocationDetails('');
@@ -528,11 +534,11 @@ export const MaterialRequestModal = ({
   if (!show) return null;
 
   return createPortal(
-    <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[200] p-4">
-      <div className="bg-white w-full max-w-lg md:max-w-5xl rounded-[32px] shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-stretch md:items-center z-[200] p-0 md:p-4">
+      <div className="bg-white w-full h-[100dvh] md:h-auto md:max-h-[90vh] md:max-w-5xl rounded-none md:rounded-[32px] shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden">
         <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
             {/* Header */}
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-[32px] flex-none">
+            <div className="p-4 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-white rounded-none md:rounded-t-[32px] flex-none">
                 <div>
                     <h3 className="text-xl font-black text-blue-950 uppercase tracking-tight">
                         {initialData ? `Solicitud ${initialData.requestNumber || ''}` : 'Nueva Solicitud'}
@@ -792,7 +798,8 @@ export const MaterialRequestModal = ({
                             </div>
                         )}
 
-                        <div className="suggestions-container" onClick={e => e.stopPropagation()}>
+                        {/* Observaciones Desktop: Siempre visible tal como está */}
+                        <div className="hidden md:block suggestions-container" onClick={e => e.stopPropagation()}>
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Observaciones</label>
                             <textarea 
                                 value={observations}
@@ -800,6 +807,45 @@ export const MaterialRequestModal = ({
                                 className="w-full p-4 rounded-xl bg-white border border-slate-200 text-sm font-medium text-slate-700 h-24 md:h-32 resize-none outline-none focus:ring-2 focus:ring-blue-100 shadow-sm"
                                 placeholder="Comentarios adicionales..."
                             ></textarea>
+                        </div>
+
+                        {/* Observaciones Móvil: Plegable / Bajo Demanda para ahorrar espacio vertical */}
+                        <div className="block md:hidden suggestions-container" onClick={e => e.stopPropagation()}>
+                            {(!showMobileObservations && (!observations || observations.trim() === '')) ? (
+                                <ActionButton
+                                    type="button"
+                                    onClick={() => setShowMobileObservations(true)}
+                                    label="AGREGAR OBSERVACIÓN"
+                                    icon={<FiMessageSquare />}
+                                    variant="secondary"
+                                    className="w-full !py-2.5 !text-xs !font-bold !rounded-xl !border-dashed !border-slate-300 !text-slate-600 hover:!text-slate-800 hover:!bg-slate-50 justify-center"
+                                />
+                            ) : (
+                                <div className="space-y-1 animate-in fade-in">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                            <FiMessageSquare className="text-blue-500" /> Observaciones
+                                        </label>
+                                        {!observations?.trim() && (
+                                            <ActionButton
+                                                type="button"
+                                                onClick={() => setShowMobileObservations(false)}
+                                                label="Ocultar"
+                                                variant="secondary"
+                                                size="sm"
+                                                className="!py-0.5 !px-2 !text-[9px] !font-bold !uppercase !rounded-md !text-slate-400 hover:!text-slate-600"
+                                            />
+                                        )}
+                                    </div>
+                                    <textarea 
+                                        value={observations}
+                                        onChange={e => setObservations(e.target.value)}
+                                        className="w-full p-3 rounded-xl bg-white border border-slate-200 text-sm font-medium text-slate-700 h-20 resize-none outline-none focus:ring-2 focus:ring-blue-100 shadow-sm"
+                                        placeholder="Comentarios adicionales..."
+                                        autoFocus={!observations?.trim()}
+                                    ></textarea>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -948,7 +994,7 @@ export const MaterialRequestModal = ({
                                                         </p>
                                                         <p className="text-[9px] font-mono text-slate-400">{item.code}</p>
                                                     </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
+                                                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                                                         <div className="flex flex-col items-end">
                                                             <input 
                                                                 type="text"
@@ -961,10 +1007,32 @@ export const MaterialRequestModal = ({
                                                                         handleUpdateQuantity(item.id, val);
                                                                     }
                                                                 }}
-                                                                className={`w-20 p-1.5 rounded-lg bg-slate-50 border text-[12px] font-black text-center outline-none focus:ring-2 transition-all ${item.error ? 'border-red-500 text-red-600 focus:ring-red-100' : 'border-slate-200 text-blue-600 focus:ring-blue-100'}`}
+                                                                className={`w-16 sm:w-20 p-1.5 rounded-lg bg-slate-50 border text-[12px] font-black text-center outline-none focus:ring-2 transition-all ${item.error ? 'border-red-500 text-red-600 focus:ring-red-100' : 'border-slate-200 text-blue-600 focus:ring-blue-100'}`}
                                                             />
                                                             <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">{item.unit}</span>
                                                         </div>
+
+                                                        {/* Mobile: Icono de Comentario integrado en la misma fila */}
+                                                        {(() => {
+                                                            const hasComment = Boolean(item.comment && item.comment.trim().length > 0);
+                                                            const isExpanded = Boolean(expandedMobileComments[item.id]);
+                                                            return (
+                                                                <div className="relative md:hidden">
+                                                                    <IconButton
+                                                                        icon={<FiMessageSquare className={hasComment ? "text-blue-600 text-xs" : isExpanded ? "text-blue-500 text-xs" : "text-slate-400 text-xs"} />}
+                                                                        onClick={() => setExpandedMobileComments(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                                                        variant="neutral"
+                                                                        size="sm"
+                                                                        className={`p-1.5 transition-colors ${hasComment ? '!bg-blue-50 !border !border-blue-200 !text-blue-600' : isExpanded ? '!bg-slate-100 !text-blue-600' : 'text-slate-400 hover:text-blue-600'}`}
+                                                                        title={hasComment ? `Comentario: ${item.comment}` : "Comentario del material"}
+                                                                    />
+                                                                    {hasComment && !isExpanded && (
+                                                                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white pointer-events-none" />
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+
                                                         <IconButton
                                                             icon={<FiX />}
                                                             onClick={() => setAddedItems(addedItems.filter(i => i.id !== item.id))}
@@ -974,7 +1042,9 @@ export const MaterialRequestModal = ({
                                                         />
                                                     </div>
                                                 </div>
-                                                <div className="px-1">
+
+                                                {/* Desktop: Comentario siempre visible tal como está */}
+                                                <div className="hidden md:block px-1">
                                                     <input 
                                                         type="text"
                                                         placeholder="Agregar comentario para este ítem..."
@@ -983,6 +1053,33 @@ export const MaterialRequestModal = ({
                                                         className="w-full p-1.5 rounded-lg bg-white border border-slate-100 text-[10px] font-bold text-slate-500 outline-none focus:ring-2 focus:ring-blue-50 transition-all italic"
                                                     />
                                                 </div>
+
+                                                {/* Mobile: Comentario desplegado bajo demanda ÚNICAMENTE al pulsar el icono */}
+                                                {Boolean(expandedMobileComments[item.id]) && (
+                                                    <div className="block md:hidden px-1 pt-1 animate-in fade-in slide-in-from-top-1">
+                                                        <div className="flex items-center justify-between gap-1 mb-1">
+                                                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                                                <FiMessageSquare className="text-[10px] text-blue-500" /> Comentario del ítem
+                                                            </span>
+                                                            <ActionButton
+                                                                type="button"
+                                                                onClick={() => setExpandedMobileComments(prev => ({ ...prev, [item.id]: false }))}
+                                                                label="Listo"
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                className="!py-0.5 !px-2 !text-[9px] !font-bold !uppercase !rounded-md"
+                                                            />
+                                                        </div>
+                                                        <input 
+                                                            type="text"
+                                                            placeholder="Escribir comentario..."
+                                                            value={item.comment || ''}
+                                                            onChange={e => handleUpdateComment(item.id, e.target.value)}
+                                                            autoFocus
+                                                            className="w-full p-2 rounded-lg bg-blue-50/50 border border-blue-200 text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all italic"
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                             {item.error && (
                                                 <div className="px-2 mt-0.5 flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
@@ -1005,10 +1102,29 @@ export const MaterialRequestModal = ({
                         <FiAlertCircle className="mr-1 inline"  /> {error}
                     </div>
                 )}
+
+                {/* Mobile Actions: Integrados en el flujo natural del scroll al final del contenido */}
+                <div className="pt-2 pb-6 sm:pb-8 flex gap-3 md:hidden">
+                    <ActionButton 
+                        type="button" 
+                        onClick={onClose} 
+                        label="Cancelar"
+                        variant="secondary"
+                        className="flex-1 !py-3 !text-xs !font-bold !uppercase !rounded-xl"
+                    />
+                    <ActionButton 
+                        type="submit" 
+                        disabled={isSubmitting} 
+                        isLoading={isSubmitting}
+                        label={initialData ? 'Guardar' : (destinationType === 'vehicle' ? 'Registrar Traslado' : 'Enviar Solicitud')}
+                        variant="primary"
+                        className="flex-1 !py-3 !text-xs !font-black !uppercase !rounded-xl"
+                    />
+                </div>
             </div>
 
-            {/* Footer */}
-            <div className="p-6 bg-slate-50 flex gap-3 border-t border-slate-100 flex-none">
+            {/* Desktop Footer: Fijo en la parte inferior única y exclusivamente en escritorio */}
+            <div className="hidden md:flex p-6 bg-slate-50 gap-3 border-t border-slate-100 flex-none rounded-b-[32px]">
                 <ActionButton 
                     type="button" 
                     onClick={onClose} 

@@ -1,14 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { User } from '../../../../types';
 
-import { DataTable, TableColumn } from '../../../../design-system';
+import { DataTable, TableColumn, useConfirm } from '../../../../design-system';
 import { ActionButtons } from '../../../../components/ui/ActionButtons';
 import { VehicleProjectConsumption } from '../../../../types/vehicleWarehouse.types';
+import { isVehicleDeleteAuthorized, vehicleWarehouseService } from '../services/vehicleWarehouseService';
 import { format } from 'date-fns';
 
 interface Props {
   currentUser?: User | null;
   consumptions?: VehicleProjectConsumption[];
+  onDeleteConsumption?: (consumptionId: string) => Promise<void> | void;
   activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
   onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
 }
@@ -31,14 +33,43 @@ const MONTH_NAMES = [
 export const VehicleReportsTab: React.FC<Props> = ({
   currentUser: _currentUser,
   consumptions: externalConsumptions,
+  onDeleteConsumption,
   activeTab = 'reports',
   onTabChange
 }) => {
+  const confirm = useConfirm();
+  const canDelete = isVehicleDeleteAuthorized(_currentUser);
   
   const rawConsumptions = externalConsumptions || [];
 
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
   const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+
+  const handleDeleteConsumption = async (cons: VehicleProjectConsumption) => {
+    const confirmed = await confirm({
+      title: '¿Eliminar Reporte de Consumo?',
+      description: `¿Está seguro de eliminar permanentemente el reporte de consumo del proyecto ${cons.projectName} (${cons.projectCode})? Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (confirmed) {
+      try {
+        if (onDeleteConsumption) {
+          await onDeleteConsumption(cons.id);
+        } else {
+          await vehicleWarehouseService.deleteConsumption(cons.id, _currentUser);
+        }
+      } catch (err: any) {
+        console.error('Error al eliminar consumo:', err);
+        await confirm({
+          title: 'Error al eliminar reporte',
+          description: err?.message || 'Ocurrió un error al procesar la eliminación del reporte.',
+          confirmLabel: 'Aceptar',
+          variant: 'danger'
+        });
+      }
+    }
+  };
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -74,31 +105,50 @@ export const VehicleReportsTab: React.FC<Props> = ({
   const columns: TableColumn<VehicleProjectConsumption>[] = [
     {
       header: 'Fecha Cierre',
-      render: (cons) => <span className="text-xs text-slate-600">{format(new Date(cons.closedAt), 'dd/MM/yyyy HH:mm')}</span>
+      align: 'center',
+      width: '130px',
+      render: (cons) => (
+        <div className="text-center">
+          <p className="text-xs font-semibold text-slate-700">{format(new Date(cons.closedAt), 'dd/MM/yyyy')}</p>
+          <p className="text-[10px] text-slate-400 font-medium">{format(new Date(cons.closedAt), 'HH:mm')}</p>
+        </div>
+      )
     },
     {
       header: 'Proyecto',
+      className: 'flex-1 min-w-[200px]',
       render: (cons) => (
-        <div>
-          <p className="font-bold text-xs text-slate-700">{cons.projectCode}</p>
-          <p className="text-[10px] text-slate-500 truncate max-w-[200px]">{cons.projectName}</p>
+        <div className="min-w-0 truncate">
+          <div className="font-bold text-xs text-slate-900 truncate" title={cons.projectName}>
+            {cons.projectName}
+          </div>
+          <span className="text-[10px] font-mono font-semibold text-blue-600 truncate block">
+            {cons.projectCode}
+          </span>
         </div>
       )
     },
     {
       header: 'Vehículo',
-      render: (cons) => <span className="font-bold text-slate-600">{cons.vehiculoAlias}</span>
+      align: 'center',
+      width: '130px',
+      render: (cons) => (
+        <span className="font-bold text-xs text-slate-700 bg-slate-100 px-2 py-1 rounded inline-block">
+          {cons.vehiculoAlias}
+        </span>
+      )
     },
     {
       header: 'Materiales Utilizados',
+      width: '280px',
       render: (cons) => (
-        <div className="flex flex-col gap-2 max-w-[300px]">
+        <div className="flex flex-col gap-1 max-h-16 overflow-y-auto pr-1">
           {cons.items.map((item, i) => (
-            <div key={i} className="bg-slate-50 p-2 rounded border border-slate-100 text-xs">
-              <p className="font-bold text-slate-700">{item.code}</p>
-              <div className="flex justify-between mt-1 text-[10px]">
-                <span className="text-slate-500">Uso Real: <strong className="text-slate-700">{item.consumed} {item.unit}</strong></span>
-                {item.surplus > 0 && <span className="text-emerald-600 font-bold">Sobró: {item.surplus} {item.unit}</span>}
+            <div key={i} className="bg-slate-50 px-2 py-1 rounded border border-slate-100 text-xs flex items-center justify-between">
+              <span className="font-mono text-[11px] text-slate-700 truncate max-w-[120px]" title={item.code}>{item.code}</span>
+              <div className="flex items-center gap-1 text-[10px]">
+                <span className="text-slate-600 font-medium">Uso: <strong className="text-slate-800 font-bold">{item.consumed} {item.unit}</strong></span>
+                {item.surplus > 0 && <span className="text-emerald-600 font-bold ml-1">(Sobró: {item.surplus})</span>}
               </div>
             </div>
           ))}
@@ -107,16 +157,17 @@ export const VehicleReportsTab: React.FC<Props> = ({
     },
     {
       header: 'Acciones',
-      width: '120px',
+      width: canDelete ? '130px' : '90px',
       align: 'center',
-      className: '!px-2',
-      render: () => (
+      render: (cons) => (
         <div className="flex justify-center items-center w-full">
           <ActionButtons
             onView={() => {}}
             viewTitle="Visualizar reporte"
             onPdf={() => {}}
             pdfTitle="Generar PDF"
+            onDelete={canDelete ? () => handleDeleteConsumption(cons) : undefined}
+            deleteTitle="Eliminar reporte de consumo"
           />
         </div>
       )
@@ -235,6 +286,8 @@ export const VehicleReportsTab: React.FC<Props> = ({
                     viewTitle="Visualizar reporte"
                     onPdf={() => {}}
                     pdfTitle="Generar PDF"
+                    onDelete={canDelete ? () => handleDeleteConsumption(cons) : undefined}
+                    deleteTitle="Eliminar reporte de consumo"
                   />
                 </div>
               </div>

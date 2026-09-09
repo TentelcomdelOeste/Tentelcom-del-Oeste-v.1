@@ -1,5 +1,5 @@
-import { db } from '@/firebase';
-import { collection, doc, runTransaction } from 'firebase/firestore';
+import { db, auth } from '@/firebase';
+import { collection, doc, runTransaction, deleteDoc } from 'firebase/firestore';
 import {
   VehicleWarehouseItem,
   VehicleMovement,
@@ -9,6 +9,14 @@ import {
 } from '@/types/vehicleWarehouse.types';
 import { VEHICLES } from '@/modules/job_scheduling/JobForm';
 import { extraerPlaca } from '@/types/vehicle.types';
+
+export const AUTHORIZED_VEHICLE_DELETE_EMAIL = 'jenamorado@tentelcom.com';
+
+export const isVehicleDeleteAuthorized = (user?: { email?: string | null } | null): boolean => {
+  const emailFromProp = user?.email?.toLowerCase().trim();
+  const emailFromAuth = typeof auth !== 'undefined' && auth.currentUser?.email ? auth.currentUser.email.toLowerCase().trim() : undefined;
+  return emailFromProp === AUTHORIZED_VEHICLE_DELETE_EMAIL.toLowerCase() || emailFromAuth === AUTHORIZED_VEHICLE_DELETE_EMAIL.toLowerCase();
+};
 
 export const BODEGA_EXCLUDED_VEHICLES = ['U3', 'U7'];
 
@@ -594,5 +602,53 @@ export const vehicleWarehouseService = {
         transaction.set(movementRef, movementData);
       }
     });
+  },
+
+  // 5. Delete Inventory Item from a vehicle warehouse (Exclusive for authorized admin)
+  async deleteInventoryItem(
+    itemId: string,
+    currentUser?: { id?: string; name?: string; email?: string } | null
+  ): Promise<void> {
+    if (!isVehicleDeleteAuthorized(currentUser)) {
+      throw new Error('No tiene permisos para eliminar registros de inventario vehicular. Acción exclusiva para jenamorado@tentelcom.com.');
+    }
+    const docRef = doc(db, 'vehicle_warehouse_items', itemId);
+    await deleteDoc(docRef);
+  },
+
+  // 6. Delete Material Request (Exclusive for authorized admin)
+  async deleteRequest(
+    requestId: string,
+    currentUser?: { id?: string; name?: string; email?: string } | null
+  ): Promise<void> {
+    if (!isVehicleDeleteAuthorized(currentUser)) {
+      throw new Error('No tiene permisos para eliminar solicitudes de bodega vehicular. Acción exclusiva para jenamorado@tentelcom.com.');
+    }
+    const docRef = doc(db, 'vehicle_material_requests', requestId);
+    await deleteDoc(docRef);
+  },
+
+  // 7. Delete Movement record (Exclusive for authorized admin)
+  async deleteMovement(
+    movementId: string,
+    currentUser?: { id?: string; name?: string; email?: string } | null
+  ): Promise<void> {
+    if (!isVehicleDeleteAuthorized(currentUser)) {
+      throw new Error('No tiene permisos para eliminar movimientos de bodega vehicular. Acción exclusiva para jenamorado@tentelcom.com.');
+    }
+    const docRef = doc(db, 'vehicle_movements', movementId);
+    await deleteDoc(docRef);
+  },
+
+  // 8. Delete Consumption record (Exclusive for authorized admin)
+  async deleteConsumption(
+    consumptionId: string,
+    currentUser?: { id?: string; name?: string; email?: string } | null
+  ): Promise<void> {
+    if (!isVehicleDeleteAuthorized(currentUser)) {
+      throw new Error('No tiene permisos para eliminar reportes de consumo vehicular. Acción exclusiva para jenamorado@tentelcom.com.');
+    }
+    const docRef = doc(db, 'vehicle_consumptions', consumptionId);
+    await deleteDoc(docRef);
   }
 };

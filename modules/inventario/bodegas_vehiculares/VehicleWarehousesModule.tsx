@@ -169,6 +169,22 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
     );
   };
 
+  const handleDeleteInventoryItem = async (itemId: string) => {
+    await vehicleWarehouseService.deleteInventoryItem(itemId, currentUser);
+  };
+
+  const handleDeleteRequest = async (requestId: string) => {
+    await vehicleWarehouseService.deleteRequest(requestId, currentUser);
+  };
+
+  const handleDeleteMovement = async (movementId: string) => {
+    await vehicleWarehouseService.deleteMovement(movementId, currentUser);
+  };
+
+  const handleDeleteConsumption = async (consumptionId: string) => {
+    await vehicleWarehouseService.deleteConsumption(consumptionId, currentUser);
+  };
+
   return (
     <div className="-mx-2 md:-mx-4 -mt-4">
       <ModulePage
@@ -213,6 +229,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               items={items}
               onTransfer={handleTransfer}
               onMultipleTransfer={handleMultipleTransfer}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
               selectedVehicleId={selectedVehicleId}
               onSelectVehicleId={setSelectedVehicleId}
               activeTab={activeTab}
@@ -229,6 +246,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               onCreateRequest={handleCreateRequest}
               onUpdateRequest={handleUpdateRequest}
               onCancelRequest={handleCancelRequest}
+              onDeleteRequest={handleDeleteRequest}
               onCloseRequest={handleCloseRequest}
               activeTab={activeTab}
               onTabChange={setActiveTab}
@@ -239,6 +257,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
             <VehicleMovementsTab
               currentUser={currentUser}
               movements={movements}
+              onDeleteMovement={handleDeleteMovement}
               activeTab={activeTab}
               onTabChange={setActiveTab}
             />
@@ -248,6 +267,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
             <VehicleReportsTab
               currentUser={currentUser}
               consumptions={consumptions}
+              onDeleteConsumption={handleDeleteConsumption}
               activeTab={activeTab}
               onTabChange={setActiveTab}
             />
