@@ -62,4 +62,5 @@ export interface InventoryMovement {
   initialCondition?: string;
   reference?: string;
   reason?: string;
+  assignedBy?: string;
 }

@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { db } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import {
   FiX,
   FiBox,
@@ -34,6 +36,35 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
   onOpenIncident
 }) => {
   useLockBodyScroll(show);
+
+  const [dbCategory, setDbCategory] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const itemId = assignment?.itemId || (assignment as any)?.inventoryItemId;
+    if (show && itemId) {
+      const fetchCategory = async () => {
+        try {
+          const docRef = doc(db, 'inventory_items', itemId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists() && active) {
+            const data = docSnap.data();
+            if (data?.category) {
+              setDbCategory(data.category);
+            }
+          }
+        } catch (error) {
+          console.error('[AssignmentDetailModal] Error fetching item category:', error);
+        }
+      };
+      fetchCategory();
+    } else {
+      setDbCategory(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [show, assignment]);
 
   if (!show || !assignment) return null;
 
@@ -113,7 +144,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
               <div>
                 <span className="text-[9px] font-bold text-slate-400 uppercase block">Categoría</span>
                 <span className="font-bold text-slate-700">
-                  {assignment.itemCategory || 'Herramientas'}
+                  {dbCategory || assignment.itemCategory || 'Herramientas'}
                 </span>
               </div>
               <div>

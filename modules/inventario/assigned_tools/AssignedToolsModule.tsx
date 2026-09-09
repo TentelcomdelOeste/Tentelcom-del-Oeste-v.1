@@ -253,8 +253,9 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
     {
       key: 'item',
       header: 'Herramienta / Equipo',
+      className: 'min-w-[200px]',
       render: (assignment) => (
-        <div className="space-y-0.5 max-w-xs">
+        <div className="space-y-0.5 w-full">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-mono text-[10px] font-black bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded border border-slate-200">
               {assignment.itemCode}
@@ -265,7 +266,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
               </span>
             )}
           </div>
-          <p className="font-bold text-xs text-slate-900 leading-tight">
+          <p className="font-bold text-xs text-slate-900 leading-tight whitespace-nowrap overflow-hidden text-ellipsis md:whitespace-normal">
             {assignment.itemDescription}
           </p>
         </div>
@@ -274,8 +275,9 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
     {
       key: 'recipient',
       header: 'Destinatario',
+      className: 'min-w-[160px]',
       render: (assignment) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full">
           <div
             className={`w-7 h-7 rounded-lg flex items-center justify-center flex-none text-xs font-bold ${
               assignment.recipientType === 'colaborador'
@@ -289,7 +291,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
               <FiTruck className="text-sm" />
             )}
           </div>
-          <span className="font-bold text-xs text-slate-800 leading-tight">
+          <span className="font-bold text-xs text-slate-800 leading-tight whitespace-nowrap overflow-hidden text-ellipsis md:whitespace-normal">
             {assignment.recipientName}
           </span>
         </div>
@@ -299,8 +301,9 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       key: 'quantity',
       header: 'Cantidad',
       align: 'center',
+      width: '90px',
       render: (assignment) => (
-        <div className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-800 border border-slate-200">
+        <div className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-800 border border-slate-200 whitespace-nowrap">
           {assignment.quantity} {assignment.itemUnit || 'unid'}
         </div>
       )
@@ -309,8 +312,9 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       key: 'assignedDate',
       header: 'Fecha Entrega',
       align: 'center',
+      width: '110px',
       render: (assignment) => (
-        <span className="text-xs font-bold text-slate-700">
+        <span className="text-xs font-bold text-slate-700 whitespace-nowrap">
           {assignment.assignedDate}
         </span>
       )
@@ -318,8 +322,9 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
     {
       key: 'condition',
       header: 'Condición',
+      width: '120px',
       render: (assignment) => (
-        <div className="text-xs space-y-0.5">
+        <div className="text-xs space-y-0.5 whitespace-nowrap">
           <span className="text-slate-600 font-medium block">
             Inicial: <strong>{assignment.initialCondition}</strong>
           </span>
@@ -335,6 +340,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       key: 'actions',
       header: 'Acciones',
       align: 'right',
+      width: '160px',
       render: (assignment) => {
         const isReturned = assignment.status === 'Devuelto';
         const isUserAdmin = currentUser ? isAdmin(currentUser.role) : false;
@@ -498,7 +504,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
           <div className="flex-1 min-w-[240px]">
             <SearchInput
               value={searchTerm}
-              onChange={setSearchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar por artículo, código, colaborador, placa, proyecto..."
             />
           </div>

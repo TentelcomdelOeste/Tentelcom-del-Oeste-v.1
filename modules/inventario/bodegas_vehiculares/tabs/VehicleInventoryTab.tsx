@@ -221,34 +221,33 @@ export const VehicleInventoryTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-2.5 sm:space-y-3">
-      {/* Controls Container Header Box */}
-      <div className="bg-white p-2.5 sm:p-3.5 rounded-xl border border-slate-200 shadow-sm space-y-2 sm:space-y-2.5">
-        
+      {/* VISTA MÓVIL: Contenedor de Controles */}
+      <div className="block md:hidden bg-white p-2.5 sm:p-3.5 rounded-xl border border-slate-200 shadow-sm space-y-2">
         {/* ROW 1: SELECTOR DE SECCIÓN + SELECTOR DE UNIDAD */}
-        <div className="grid grid-cols-2 md:flex md:justify-end gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2">
           {/* Selector de Sección (Mobile) */}
-          <div className="relative min-w-0 block md:hidden">
+          <div className="relative min-w-0 block">
             <select
               value={activeTab}
               onChange={(e) => onTabChange && onTabChange(e.target.value as any)}
-              className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 sm:pr-7 truncate"
+              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
             >
               <option value="inventory">📦 Inventario</option>
               <option value="requests">📋 Solicitudes</option>
               <option value="movements">🔄 Movimientos</option>
               <option value="reports">📊 Reportes</option>
             </select>
-            <div className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px] sm:text-xs">
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
               ▼
             </div>
           </div>
 
           {/* Selector de Unidad / Vehículo */}
-          <div className="relative min-w-0 md:w-72">
+          <div className="relative min-w-0">
             <select
               value={selectedVehicleId}
               onChange={(e) => setSelectedVehicleId(e.target.value)}
-              className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 sm:pr-7 truncate"
+              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
             >
               {vehicles.map(v => (
                 <option key={v.id} value={v.id}>
@@ -256,23 +255,23 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                 </option>
               ))}
             </select>
-            <div className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px] sm:text-xs">
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
               ▼
             </div>
           </div>
         </div>
 
         {/* ROW 2: BÚSQUEDA + BOTÓN TRANSFERIR */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2">
           {/* Buscador de Material */}
           <div className="relative flex-1 min-w-0">
-            <FiSearch className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs sm:text-sm pointer-events-none" />
+            <FiSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
             <input
               type="text"
               placeholder="Buscar material..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-7 sm:pl-9 pr-7 py-2 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full pl-7 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
             />
             {searchTerm && (
               <button 
@@ -288,12 +287,63 @@ export const VehicleInventoryTab: React.FC<Props> = ({
           {/* Botón Transferir */}
           <ActionButton
             label="TRANSFERIR"
-            icon={<FiRefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            icon={<FiRefreshCw className="w-3.5 h-3.5" />}
             variant="primary"
             onClick={() => setShowTransferModal(true)}
-            className="!w-auto flex-none shrink-0 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap text-xs sm:text-sm rounded-lg shadow-sm"
+            className="!w-auto flex-none shrink-0 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-2 whitespace-nowrap text-xs rounded-lg shadow-sm"
           />
         </div>
+      </div>
+
+      {/* VISTA ESCRITORIO: Contenedor de Controles */}
+      <div className="hidden md:flex md:items-center md:gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+        {/* Selector de Unidad / Vehículo */}
+        <div className="relative w-72 shrink-0">
+          <select
+            value={selectedVehicleId}
+            onChange={(e) => setSelectedVehicleId(e.target.value)}
+            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7 truncate"
+          >
+            {vehicles.map(v => (
+              <option key={v.id} value={v.id}>
+                {v.alias} ({v.placa})
+              </option>
+            ))}
+          </select>
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+            ▼
+          </div>
+        </div>
+
+        {/* Buscador de Material (espacio flexible restante) */}
+        <div className="relative flex-1">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar material..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-7 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+          />
+          {searchTerm && (
+            <button 
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200"
+            >
+              <FiX className="text-xs" />
+            </button>
+          )}
+        </div>
+
+        {/* Botón Transferir (ancho compacto y fijo) */}
+        <ActionButton
+          label="TRANSFERIR"
+          icon={<FiRefreshCw className="w-4 h-4" />}
+          variant="primary"
+          onClick={() => setShowTransferModal(true)}
+          className="!w-auto flex-none shrink-0 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 whitespace-nowrap text-sm rounded-lg shadow-sm"
+        />
       </div>
 
       {/* Contenido: Tabla en Escritorio + Cards en Móvil */}

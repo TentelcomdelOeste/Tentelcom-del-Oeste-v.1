@@ -50,6 +50,7 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [observations, setObservations] = useState<string>('');
   const [assignedBy, setAssignedBy] = useState<string>('');
+  const [hasInitializedAssignedBy, setHasInitializedAssignedBy] = useState<boolean>(false);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,10 +76,27 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
       setInitialCondition('Bueno');
       setSelectedProjectId('');
       setObservations('');
-      setAssignedBy(currentUser?.name || currentUser?.displayName || currentUser?.email || '');
+      setAssignedBy('');
+      setHasInitializedAssignedBy(false);
       setError(null);
     }
-  }, [show, currentUser]);
+  }, [show]);
+
+  useEffect(() => {
+    if (show && !hasInitializedAssignedBy && activeEmployees.length > 0) {
+      const defaultName = currentUser?.name || currentUser?.displayName || '';
+      const matchingEmp = activeEmployees.find(
+        (emp) => emp.name.toLowerCase() === defaultName.toLowerCase()
+      );
+      if (matchingEmp) {
+        setAssignedBy(matchingEmp.name);
+        setHasInitializedAssignedBy(true);
+      } else if (defaultName) {
+        setAssignedBy('');
+        setHasInitializedAssignedBy(true);
+      }
+    }
+  }, [show, currentUser, activeEmployees, hasInitializedAssignedBy]);
 
   // Lista de items disponibles (priorizando Herramientas, Equipos y artículos con stock > 0)
   const selectableItems = useMemo(() => {
@@ -141,6 +159,11 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
       return;
     }
 
+    if (!assignedBy || !assignedBy.trim()) {
+      setError('Por favor selecciona el responsable que entrega o registra.');
+      return;
+    }
+
     let recipientName = '';
     let recipientDetail = '';
 
@@ -181,7 +204,7 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
       projectNumber: selectedProj?.projectNumber,
       projectName: selectedProj?.name,
       observations: observations.trim(),
-      assignedBy: assignedBy.trim() || currentUser?.email || 'Sistema'
+      assignedBy: assignedBy.trim()
     };
 
     try {
@@ -432,13 +455,18 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">
                 Responsable que entrega / registra
               </label>
-              <input
-                type="text"
+              <Select
+                options={[
+                  { label: '-- Selecciona el responsable que entrega / registra --', value: '' },
+                  ...activeEmployees.map((emp) => ({
+                    label: `${emp.name}${emp.status ? ` (${emp.status})` : ''}`,
+                    value: emp.name
+                  }))
+                ]}
                 value={assignedBy}
-                onChange={(e) => setAssignedBy(e.target.value)}
-                placeholder="Nombre de quien autoriza y entrega la herramienta"
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-bold text-xs text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-                required
+                onChange={(val) => setAssignedBy(val)}
+                isSearchable={true}
+                placeholder="Buscar responsable por nombre..."
               />
             </div>
 

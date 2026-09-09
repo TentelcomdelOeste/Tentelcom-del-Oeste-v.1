@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { FiSearch, FiX } from 'react-icons/fi';
 import { InventoryItem } from '../../inventoryTypes';
+import { IconButton } from '@/design-system';
 
 interface MaterialSelectorModalProps {
   show: boolean;
@@ -46,9 +47,17 @@ export const MaterialSelectorModal: React.FC<MaterialSelectorModalProps> = ({
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder="Buscar por código o descripción..."
-              className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
               autoFocus
             />
+            {searchTerm && (
+              <IconButton 
+                icon={<FiX />}
+                onClick={() => setSearchTerm('')}
+                variant="neutral"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition-colors"
+              />
+            )}
           </div>
         </div>
 

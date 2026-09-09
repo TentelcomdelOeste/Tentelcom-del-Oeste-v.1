@@ -136,6 +136,10 @@ export const JobForm: React.FC<JobFormProps> = ({
     toISODateString(formData.fecha_fin)
   );
 
+  const isMultiday = useMemo(() => {
+    return fechaInicio !== fechaFin;
+  }, [fechaInicio, fechaFin]);
+
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [expandedDayIndex, setExpandedDayIndex] = useState<number | null>(null);
   const [dayEmployeeSearch, setDayEmployeeSearch] = useState('');
@@ -148,6 +152,8 @@ export const JobForm: React.FC<JobFormProps> = ({
     const currentDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
     
+    const isRangeMultiday = start.getFullYear() !== end.getFullYear() || start.getMonth() !== end.getMonth() || start.getDate() !== end.getDate();
+
     const defaultStart = formData?.hora_inicio || '06:00';
     const defaultEnd = formData?.hora_fin || '16:00';
 
@@ -164,13 +170,15 @@ export const JobForm: React.FC<JobFormProps> = ({
       
       const found = existing?.find(d => getNominalKey(d.fecha) === currentKey);
       
+      const recursos_ajustados = isRangeMultiday ? true : (found ? found.recursos_ajustados : false);
+
       dias.push({
         fecha: new Date(currentDate.getTime()), // Guardar medianoche local
         completado: found ? found.completado : false,
         completado_en: found?.completado_en ? found.completado_en : undefined,
-        hora_inicio: found?.recursos_ajustados ? (found?.hora_inicio || defaultStart) : defaultStart,
-        hora_fin: found?.recursos_ajustados ? (found?.hora_fin || defaultEnd) : defaultEnd,
-        recursos_ajustados: found?.recursos_ajustados || false,
+        hora_inicio: found?.hora_inicio || defaultStart,
+        hora_fin: found?.hora_fin || defaultEnd,
+        recursos_ajustados,
         cuadrilla_diaria: found?.cuadrilla_diaria || [],
         unidades_diarias: found?.unidades_diarias || [],
         estado: found?.estado || 'programado'
@@ -413,9 +421,24 @@ export const JobForm: React.FC<JobFormProps> = ({
     else if (!formData.titulo?.trim()) validationError = 'El título del trabajo es obligatorio';
     else if (!formData.descripcion?.trim()) validationError = 'La descripción es obligatoria';
     else if (!fechaInicio || !fechaFin) validationError = 'Las fechas son obligatorias';
-    else if (!formData.hora_inicio || !formData.hora_fin) validationError = 'Las horas son obligatorias';
+    else if (!isMultiday && (!formData.hora_inicio || !formData.hora_fin)) validationError = 'Las horas son obligatorias';
     else if (!formData.ubicacion?.trim()) validationError = 'La ubicación es obligatoria';
-    else if (!formData.cuadrilla || formData.cuadrilla.length === 0) validationError = "Debe asignar al menos una persona en la cuadrilla";
+    else if (!isMultiday && (!formData.cuadrilla || formData.cuadrilla.length === 0)) validationError = "Debe asignar al menos una persona en la cuadrilla";
+    else if (isMultiday) {
+      if (!formData.dias_detalle || formData.dias_detalle.length === 0) {
+        validationError = "Debe generar los detalles de los días para un trabajo de varios días";
+      } else {
+        const indexSinHora = formData.dias_detalle.findIndex(d => !d.hora_inicio || !d.hora_fin);
+        const indexSinCuadrilla = formData.dias_detalle.findIndex(d => !d.cuadrilla_diaria || d.cuadrilla_diaria.length === 0);
+        if (indexSinHora !== -1) {
+          const diaIndex = indexSinHora + 1;
+          validationError = `Debe asignar hora de inicio y fin para el día ${diaIndex} en el Seguimiento por Día`;
+        } else if (indexSinCuadrilla !== -1) {
+          const diaIndex = indexSinCuadrilla + 1;
+          validationError = `Debe asignar al menos una persona en la cuadrilla para el día ${diaIndex} en el Seguimiento por Día`;
+        }
+      }
+    }
 
     if (validationError) {
       setError(validationError);
@@ -463,8 +486,16 @@ export const JobForm: React.FC<JobFormProps> = ({
         throw new Error(`Las fechas son inválidas. Inicio: ${fechaInicio}, Fin: ${fechaFin}`);
       }
       
-      const [hStart, mStart] = (formData.hora_inicio || '06:00').split(':').map(Number);
-      const [hEnd, mEnd] = (formData.hora_fin || '16:00').split(':').map(Number);
+      const generalHoraInicio = isMultiday 
+        ? (formData.dias_detalle?.[0]?.hora_inicio || '06:00') 
+        : (formData.hora_inicio || '06:00');
+        
+      const generalHoraFin = isMultiday 
+        ? (formData.dias_detalle?.[formData.dias_detalle.length - 1]?.hora_fin || '16:00') 
+        : (formData.hora_fin || '16:00');
+
+      const [hStart, mStart] = generalHoraInicio.split(':').map(Number);
+      const [hEnd, mEnd] = generalHoraFin.split(':').map(Number);
 
       if (isNaN(hStart) || isNaN(mStart) || isNaN(hEnd) || isNaN(mEnd)) {
         throw new Error('Las horas son inválidas. Por favor verifique el formato (ej: 08:30).');
@@ -476,15 +507,34 @@ export const JobForm: React.FC<JobFormProps> = ({
       const fecha_fin = new Date(baseEndDate);
       fecha_fin.setHours(hEnd, mEnd, 0, 0);
 
+      // Union of all daily resources for consistency in multiday jobs
+      let finalCuadrilla = formData.cuadrilla || [];
+      let finalUnidades = formData.unidades || [];
+
+      if (isMultiday && formData.dias_detalle) {
+        const cuadrillaSet = new Set<string>();
+        const unidadesSet = new Set<string>();
+        formData.dias_detalle.forEach((dia: any) => {
+          if (dia.cuadrilla_diaria) {
+            dia.cuadrilla_diaria.forEach((p: string) => cuadrillaSet.add(p));
+          }
+          if (dia.unidades_diarias) {
+            dia.unidades_diarias.forEach((u: string) => unidadesSet.add(u));
+          }
+        });
+        finalCuadrilla = Array.from(cuadrillaSet);
+        finalUnidades = Array.from(unidadesSet);
+      }
+
       const finalData: any = {
         ...(latestTrabajo || {}),
         titulo: formData.titulo,
         descripcion: formData.descripcion,
         ubicacion: formData.ubicacion,
-        cuadrilla: formData.cuadrilla,
-        unidades: formData.unidades,
-        hora_inicio: formData.hora_inicio,
-        hora_fin: formData.hora_fin,
+        cuadrilla: finalCuadrilla,
+        unidades: finalUnidades,
+        hora_inicio: generalHoraInicio,
+        hora_fin: generalHoraFin,
         observaciones: formData.observaciones,
         dias_detalle: formData.dias_detalle,
         progreso: formData.progreso,
@@ -801,108 +851,110 @@ export const JobForm: React.FC<JobFormProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1.5"}>
-                Hora Inicio <span className="text-red-500">*</span>
-              </label>
-              <div className="relative group">
-                <FiClock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-                {isMobileDevice ? (
-                  <input
-                    type="time"
-                    value={formData.hora_inicio || '06:00'}
-                    onChange={(e) => {
-                      clearError();
-                      setFormData({ ...formData, hora_inicio: e.target.value });
-                    }}
-                    className={`w-full pl-10 pr-3 py-2.5 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} bg-white outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all text-sm`}
-                    required
-                  />
-                ) : (
-                  <div className={`flex items-center gap-1 pl-10 pr-3 py-1.5 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} bg-white focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300 transition-all`}>
-                    <select
-                      value={getTimeParts(formData.hora_inicio || '06:00').hour}
-                      onChange={(e) => updateTimeFromParts('hora_inicio', 'hour', e.target.value)}
-                      className="bg-transparent border-none outline-none text-sm font-bold text-slate-700 cursor-pointer"
-                    >
-                      {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
-                        <option key={h} value={h}>{h}</option>
-                      ))}
-                    </select>
-                    <span className="text-slate-400">:</span>
-                    <select
-                      value={getTimeParts(formData.hora_inicio || '06:00').minute}
-                      onChange={(e) => updateTimeFromParts('hora_inicio', 'minute', e.target.value)}
-                      className="bg-transparent border-none outline-none text-sm font-bold text-slate-700 cursor-pointer"
-                    >
-                      {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={getTimeParts(formData.hora_inicio || '06:00').period}
-                      onChange={(e) => updateTimeFromParts('hora_inicio', 'period', e.target.value)}
-                      className="bg-transparent border-none outline-none text-sm font-bold text-blue-600 cursor-pointer ml-1"
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
-                )}
+          {!isMultiday && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1.5"}>
+                  Hora Inicio <span className="text-red-500">*</span>
+                </label>
+                <div className="relative group">
+                  <FiClock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                  {isMobileDevice ? (
+                    <input
+                      type="time"
+                      value={formData.hora_inicio || '06:00'}
+                      onChange={(e) => {
+                        clearError();
+                        setFormData({ ...formData, hora_inicio: e.target.value });
+                      }}
+                      className={`w-full pl-10 pr-3 py-2.5 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} bg-white outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all text-sm`}
+                      required
+                    />
+                  ) : (
+                    <div className={`flex items-center gap-1 pl-10 pr-3 py-1.5 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} bg-white focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300 transition-all`}>
+                      <select
+                        value={getTimeParts(formData.hora_inicio || '06:00').hour}
+                        onChange={(e) => updateTimeFromParts('hora_inicio', 'hour', e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm font-bold text-slate-700 cursor-pointer"
+                      >
+                        {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                      <span className="text-slate-400">:</span>
+                      <select
+                        value={getTimeParts(formData.hora_inicio || '06:00').minute}
+                        onChange={(e) => updateTimeFromParts('hora_inicio', 'minute', e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm font-bold text-slate-700 cursor-pointer"
+                      >
+                        {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={getTimeParts(formData.hora_inicio || '06:00').period}
+                        onChange={(e) => updateTimeFromParts('hora_inicio', 'period', e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm font-bold text-blue-600 cursor-pointer ml-1"
+                      >
+                        <option value="AM">AM</option>
+                        <option value="PM">PM</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1.5"}>
+                  Hora Fin <span className="text-red-500">*</span>
+                </label>
+                <div className="relative group">
+                  <FiClock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                  {isMobileDevice ? (
+                    <input
+                      type="time"
+                      value={formData.hora_fin || '16:00'}
+                      onChange={(e) => {
+                        clearError();
+                        setFormData({ ...formData, hora_fin: e.target.value });
+                      }}
+                      className={`w-full pl-10 pr-3 py-2.5 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} bg-white outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all text-sm`}
+                      required
+                    />
+                  ) : (
+                    <div className={`flex items-center gap-1 pl-10 pr-3 py-1.5 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} bg-white focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300 transition-all`}>
+                      <select
+                        value={getTimeParts(formData.hora_fin || '16:00').hour}
+                        onChange={(e) => updateTimeFromParts('hora_fin', 'hour', e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm font-bold text-slate-700 cursor-pointer"
+                      >
+                        {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                      <span className="text-slate-400">:</span>
+                      <select
+                        value={getTimeParts(formData.hora_fin || '16:00').minute}
+                        onChange={(e) => updateTimeFromParts('hora_fin', 'minute', e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm font-bold text-slate-700 cursor-pointer"
+                      >
+                        {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={getTimeParts(formData.hora_fin || '16:00').period}
+                        onChange={(e) => updateTimeFromParts('hora_fin', 'period', e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm font-bold text-blue-600 cursor-pointer ml-1"
+                      >
+                        <option value="AM">AM</option>
+                        <option value="PM">PM</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-            <div>
-              <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1.5"}>
-                Hora Fin <span className="text-red-500">*</span>
-              </label>
-              <div className="relative group">
-                <FiClock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-                {isMobileDevice ? (
-                  <input
-                    type="time"
-                    value={formData.hora_fin || '16:00'}
-                    onChange={(e) => {
-                      clearError();
-                      setFormData({ ...formData, hora_fin: e.target.value });
-                    }}
-                    className={`w-full pl-10 pr-3 py-2.5 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} bg-white outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all text-sm`}
-                    required
-                  />
-                ) : (
-                  <div className={`flex items-center gap-1 pl-10 pr-3 py-1.5 ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} bg-white focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300 transition-all`}>
-                    <select
-                      value={getTimeParts(formData.hora_fin || '16:00').hour}
-                      onChange={(e) => updateTimeFromParts('hora_fin', 'hour', e.target.value)}
-                      className="bg-transparent border-none outline-none text-sm font-bold text-slate-700 cursor-pointer"
-                    >
-                      {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
-                        <option key={h} value={h}>{h}</option>
-                      ))}
-                    </select>
-                    <span className="text-slate-400">:</span>
-                    <select
-                      value={getTimeParts(formData.hora_fin || '16:00').minute}
-                      onChange={(e) => updateTimeFromParts('hora_fin', 'minute', e.target.value)}
-                      className="bg-transparent border-none outline-none text-sm font-bold text-slate-700 cursor-pointer"
-                    >
-                      {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={getTimeParts(formData.hora_fin || '16:00').period}
-                      onChange={(e) => updateTimeFromParts('hora_fin', 'period', e.target.value)}
-                      className="bg-transparent border-none outline-none text-sm font-bold text-blue-600 cursor-pointer ml-1"
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          )}
 
 
         </div>
@@ -913,18 +965,25 @@ export const JobForm: React.FC<JobFormProps> = ({
               <FiUsers size={14} /> Cuadrilla Asignada
             </label>
             
+            {isMultiday && (
+              <span className="text-[10px] font-bold text-amber-600 block mb-2 uppercase bg-amber-50 border border-amber-100 rounded-lg p-2 leading-snug">
+                Configuración general bloqueada para trabajos multidía. Asigne la cuadrilla individualmente para cada día en el Seguimiento por Día.
+              </span>
+            )}
+
             <div className="relative mb-2">
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
               <input
                 type="text"
-                placeholder="Buscar colaborador..."
+                placeholder={isMultiday ? "Bloqueado para trabajos multidía" : "Buscar colaborador..."}
                 value={searchTermEmployees}
                 onChange={(e) => setSearchTermEmployees(e.target.value)}
-                className={`w-full pl-8 pr-3 py-1.5 border ${UI_TOKENS.COLORS.border} rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-blue-100 transition-all`}
+                disabled={isMultiday}
+                className={`w-full pl-8 pr-3 py-1.5 border ${UI_TOKENS.COLORS.border} rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-blue-100 transition-all ${isMultiday ? 'bg-slate-100 cursor-not-allowed' : ''}`}
               />
             </div>
 
-            <div className={`border ${UI_TOKENS.COLORS.border} rounded-xl p-3 max-h-[150px] overflow-y-auto bg-slate-50 space-y-1 custom-scrollbar`}>
+            <div className={`border ${UI_TOKENS.COLORS.border} rounded-xl p-3 max-h-[150px] overflow-y-auto bg-slate-50 space-y-1 custom-scrollbar ${isMultiday ? 'opacity-60 cursor-not-allowed' : ''}`}>
               {employees
                 .filter(emp => emp.name.toLowerCase().includes(searchTermEmployees.toLowerCase()))
                 .sort((a, b) => {
@@ -936,10 +995,11 @@ export const JobForm: React.FC<JobFormProps> = ({
                     return a.name.localeCompare(b.name);
                 })
                 .map(emp => (
-                <label key={emp.id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg transition-colors cursor-pointer text-xs font-bold text-slate-600">
+                <label key={emp.id} className={`flex items-center gap-2 p-1.5 hover:bg-white rounded-lg transition-colors text-xs font-bold text-slate-600 ${isMultiday ? 'pointer-events-none' : 'cursor-pointer'}`}>
                   <input
                     type="checkbox"
                     checked={formData.cuadrilla?.includes(emp.name) || formData.cuadrilla?.includes(emp.id)}
+                    disabled={isMultiday}
                     onChange={() => {
                         let newCuadrilla = [...(formData.cuadrilla || [])];
                         const hasId = newCuadrilla.includes(emp.id);
@@ -953,7 +1013,7 @@ export const JobForm: React.FC<JobFormProps> = ({
                         setFormData({ ...formData, cuadrilla: newCuadrilla });
                         setSearchTermEmployees(''); // Clear search after selection
                     }}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-55"
                   />
                   {emp.name}
                 </label>
@@ -970,7 +1030,14 @@ export const JobForm: React.FC<JobFormProps> = ({
             <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1 flex items-center gap-2"}>
               <FiTruck size={14} /> Unidades / Vehículos
             </label>
-            <div className={`border ${UI_TOKENS.COLORS.border} rounded-xl p-3 max-h-[120px] overflow-y-auto bg-slate-50 space-y-1 custom-scrollbar`}>
+            
+            {isMultiday && (
+              <span className="text-[10px] font-bold text-amber-600 block mb-2 uppercase bg-amber-50 border border-amber-100 rounded-lg p-2 leading-snug">
+                Unidades generales bloqueadas para trabajos multidía. Asigne las unidades de transporte individualmente para cada día en el Seguimiento por Día.
+              </span>
+            )}
+
+            <div className={`border ${UI_TOKENS.COLORS.border} rounded-xl p-3 max-h-[120px] overflow-y-auto bg-slate-50 space-y-1 custom-scrollbar ${isMultiday ? 'opacity-60 cursor-not-allowed' : ''}`}>
               {[...VEHICLES].sort((a, b) => {
                 const isASelected = formData.unidades?.includes(a.value);
                 const isBSelected = formData.unidades?.includes(b.value);
@@ -979,12 +1046,13 @@ export const JobForm: React.FC<JobFormProps> = ({
                 if (!isASelected && isBSelected) return 1;
                 return a.label.localeCompare(b.label);
               }).map(v => (
-                <label key={v.value} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg transition-colors cursor-pointer text-xs font-bold text-slate-600">
+                <label key={v.value} className={`flex items-center gap-2 p-1.5 hover:bg-white rounded-lg transition-colors text-xs font-bold text-slate-600 ${isMultiday ? 'pointer-events-none' : 'cursor-pointer'}`}>
                   <input
                     type="checkbox"
                     checked={formData.unidades?.includes(v.value)}
+                    disabled={isMultiday}
                     onChange={() => setFormData({ ...formData, unidades: toggleItem(formData.unidades || [], v.value) })}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-55"
                   />
                   {v.label}
                 </label>
@@ -1133,10 +1201,10 @@ export const JobForm: React.FC<JobFormProps> = ({
             </p>
           </div>
 
-          {trabajo && trabajo.dias_detalle && trabajo.dias_detalle.length > 0 && (
+          {((trabajo && trabajo.dias_detalle && trabajo.dias_detalle.length > 0) || isMultiday) && formData.dias_detalle && formData.dias_detalle.length > 0 && (
             <div>
               <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-2"}>
-                Seguimiento por Día ({trabajo.dias_detalle.filter(d => d.completado).length} de {trabajo.dias_programados} días completados)
+                Seguimiento por Día ({(formData.dias_detalle || []).filter(d => d.completado).length} de {(formData.dias_detalle || []).length} días programados/completados)
               </label>
               <div className="space-y-2">
                 {formData.dias_detalle?.map((dia, index) => (
@@ -1257,25 +1325,32 @@ export const JobForm: React.FC<JobFormProps> = ({
                   </div>
                   {expandedDayIndex === index && (
                     <div className="p-3 bg-white border border-slate-200 rounded-lg ml-6 mt-1 mb-3 space-y-3 shadow-inner">
-                      <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg border border-slate-100 mb-2">
-                        <span className="text-[11px] font-bold text-slate-600">Habilitar recursos específicos para este día</span>
-                        <input 
-                          type="checkbox"
-                          checked={dia.recursos_ajustados || false}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            const newDiasDetalle = [...(formData.dias_detalle || [])];
-                            newDiasDetalle[index] = { 
-                              ...dia, 
-                              recursos_ajustados: checked,
-                              cuadrilla_diaria: checked ? (dia.cuadrilla_diaria || [...(formData.cuadrilla || [])]) : [],
-                              unidades_diarias: checked ? (dia.unidades_diarias || [...(formData.unidades || [])]) : [],
-                            };
-                            setFormData({ ...formData, dias_detalle: newDiasDetalle });
-                          }}
-                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
-                        />
-                      </div>
+                      {isMultiday ? (
+                        <div className="bg-amber-50/50 p-2 rounded-lg border border-amber-100 mb-2 flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Recursos obligatorios para este día (Multidía)</span>
+                          <span className="text-[9px] font-black text-amber-600 bg-amber-100 px-2 py-0.5 rounded uppercase">ACTIVO</span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg border border-slate-100 mb-2">
+                          <span className="text-[11px] font-bold text-slate-600">Habilitar recursos específicos para este día</span>
+                          <input 
+                            type="checkbox"
+                            checked={dia.recursos_ajustados || false}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              const newDiasDetalle = [...(formData.dias_detalle || [])];
+                              newDiasDetalle[index] = { 
+                                ...dia, 
+                                recursos_ajustados: checked,
+                                cuadrilla_diaria: checked ? (dia.cuadrilla_diaria || [...(formData.cuadrilla || [])]) : [],
+                                unidades_diarias: checked ? (dia.unidades_diarias || [...(formData.unidades || [])]) : [],
+                              };
+                              setFormData({ ...formData, dias_detalle: newDiasDetalle });
+                            }}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                          />
+                        </div>
+                      )}
 
                       {dia.recursos_ajustados && (() => {
                         const currentEmpList = dia.cuadrilla_diaria || [];

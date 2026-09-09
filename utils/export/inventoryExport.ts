@@ -81,6 +81,25 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     }
   }
 
+  const ivaMap = new Map<string, number>();
+  try {
+    const itemsSnapshot = await getDocs(collection(db, "inventory_items"));
+    itemsSnapshot.docs.forEach(d => {
+      const data = d.data();
+      const rate = data.ivaRate ?? d.data().iva ?? 0.13;
+      ivaMap.set(d.id, rate);
+      if (data.code) {
+        ivaMap.set(data.code, rate);
+      }
+    });
+  } catch (e) {
+    console.error("Error fetching items for IVA calculation in PDF:", e);
+  }
+
+  const getIvaForDetail = (itemId: string, itemCode: string): number => {
+    return ivaMap.get(itemId) ?? ivaMap.get(itemCode) ?? 0.13;
+  };
+
   const doc = new jsPDF('p', 'pt', 'letter');
   const margin = 40;
   const pageWidth = doc.internal.pageSize.width;
@@ -119,7 +138,7 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     const boxY = margin + 95;
     doc.setDrawColor(230, 230, 250);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(margin, boxY, pageWidth - 2 * margin, 80, 5, 5, 'FD');
+    doc.roundedRect(margin, boxY, pageWidth - 2 * margin, 90, 5, 5, 'FD');
 
     const originDisplay = movement.projectName && movement.projectName.trim() !== ''
       ? (movement.projectNumber ? `[${movement.projectNumber}] ${movement.projectName}` : movement.projectName)
@@ -136,41 +155,43 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
 
     // Fila 1: Proyecto / Origen y ID Movimiento
     doc.setFont('helvetica', 'bold');
-    doc.text(`PROYECTO / ORIGEN:`, margin + 15, boxY + 22);
+    doc.text(`PROYECTO / ORIGEN:`, margin + 15, boxY + 20);
     doc.setFont('helvetica', 'normal');
-    doc.text(originDisplay, margin + 135, boxY + 22);
+    doc.text(originDisplay, margin + 135, boxY + 20);
 
     doc.setFont('helvetica', 'bold');
-    doc.text(`ID MOVIMIENTO:`, margin + 340, boxY + 22);
+    doc.text(`ID MOVIMIENTO:`, margin + 340, boxY + 20);
     doc.setFont('helvetica', 'normal');
-    doc.text(solId, margin + 440, boxY + 22);
+    doc.text(solId, margin + 440, boxY + 20);
 
     // Fila 2: Fecha y Tipo de Movimiento
     doc.setFont('helvetica', 'bold');
-    doc.text(`FECHA:`, margin + 15, boxY + 44);
+    doc.text(`FECHA:`, margin + 15, boxY + 45);
     doc.setFont('helvetica', 'normal');
-    doc.text(movDate, margin + 135, boxY + 44);
+    doc.text(movDate, margin + 135, boxY + 45);
 
     doc.setFont('helvetica', 'bold');
-    doc.text(`TIPO MOVIMIENTO:`, margin + 340, boxY + 44);
+    doc.text(`TIPO MOVIMIENTO:`, margin + 340, boxY + 45);
     doc.setFont('helvetica', 'normal');
-    doc.text(movTypeLabel, margin + 440, boxY + 44);
+    const splitMovType = doc.splitTextToSize(movTypeLabel, 95);
+    doc.text(splitMovType, margin + 440, boxY + 45);
 
     // Fila 3: Destinatario y Condición
     doc.setFont('helvetica', 'bold');
-    doc.text(`DESTINATARIO:`, margin + 15, boxY + 66);
+    doc.text(`DESTINATARIO:`, margin + 15, boxY + 70);
     doc.setFont('helvetica', 'normal');
-    doc.text(recipientLabel, margin + 135, boxY + 66);
+    doc.text(recipientLabel, margin + 135, boxY + 70);
 
     doc.setFont('helvetica', 'bold');
-    doc.text(`CONDICIÓN:`, margin + 340, boxY + 66);
+    doc.text(`CONDICIÓN:`, margin + 340, boxY + 70);
     doc.setFont('helvetica', 'normal');
-    doc.text(conditionLabel, margin + 440, boxY + 66);
+    doc.text(conditionLabel, margin + 440, boxY + 70);
 
     // Tabla de Items
     const items = (movement.items && movement.items.length > 0)
       ? movement.items
       : [{
+          inventoryItemId: movement.inventoryItemId || '',
           inventoryItemCode: movement.inventoryItemCode || '---',
           inventoryItemName: movement.inventoryItemName || '---',
           quantity: movement.quantity || 1,
@@ -179,8 +200,10 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
         }];
 
     const tableData = items.map(item => {
-      const price = item.unitPrice ?? movement.unitPrice ?? 0;
-      const total = item.quantity * price;
+      const basePrice = item.unitPrice ?? movement.unitPrice ?? 0;
+      const rate = getIvaForDetail(item.inventoryItemId || '', item.inventoryItemCode || '');
+      const priceWithIva = basePrice * (1 + rate);
+      const totalWithIva = item.quantity * priceWithIva;
       const currency = item.currency || movement.currency || 'USD';
       const itemTypeLabel = movement.type === 'Salida' ? 'Salida (Asignación)' : movement.type;
 
@@ -190,13 +213,13 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
         itemTypeLabel,
         item.quantity.toLocaleString('es-CR'),
         currency,
-        price.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        total.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        priceWithIva.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        totalWithIva.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       ];
     });
 
     autoTable(doc, {
-      startY: boxY + 100,
+      startY: boxY + 110,
       head: [['Código', 'Descripción', 'Tipo Movimiento', 'Cant.', 'Moneda', 'Precio U.', 'Total']],
       body: tableData,
       theme: 'grid',
@@ -214,8 +237,11 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
 
     // Resumen de Totales
     const totals = items.reduce((acc, item) => {
+      const basePrice = item.unitPrice ?? movement.unitPrice ?? 0;
+      const rate = getIvaForDetail(item.inventoryItemId || '', item.inventoryItemCode || '');
+      const priceWithIva = basePrice * (1 + rate);
       const currency = item.currency || movement.currency || 'USD';
-      acc[currency] = (acc[currency] || 0) + (item.quantity * (item.unitPrice || 0));
+      acc[currency] = (acc[currency] || 0) + (item.quantity * priceWithIva);
       return acc;
     }, {} as Record<string, number>);
 
@@ -236,8 +262,27 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
       }
     });
 
-    // Observaciones y Trazabilidad
-    const obsText = movement.observations || movement.reason || '';
+    // Observaciones y Trazabilidad Dinámica
+    let obsText = '';
+    if (movement.subtype === 'Asignación de Herramienta' || isAssignment) {
+      const recipientName = movement.recipientName || movement.destination || '---';
+      const recipientTypeLabel = movement.recipientType === 'colaborador' 
+        ? 'Colaborador' 
+        : (movement.recipientType === 'unidad' ? 'Unidad Vehicular' : 'Colaborador');
+      
+      let baseText = `Asignación de herramienta a ${recipientName} (${recipientTypeLabel})`;
+      if (movement.observations && movement.observations.trim() !== '') {
+        baseText += `.\nObservaciones: ${movement.observations}`;
+      } else if (movement.reason && movement.reason.trim() !== '' && !movement.reason.includes('Responsable')) {
+        baseText = movement.reason;
+      }
+      
+      const responsibleName = movement.assignedBy || movement.userName || '---';
+      obsText = `${baseText}.\n\nResponsable que entrega/registra:\n${responsibleName}`;
+    } else {
+      obsText = movement.observations || movement.reason || '';
+    }
+
     if (obsText) {
       currentY += 5;
       doc.setFontSize(10);
@@ -404,6 +449,7 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
   const items = (movement.items && movement.items.length > 0) 
     ? movement.items 
     : [{
+        inventoryItemId: movement.inventoryItemId || '',
         inventoryItemCode: movement.inventoryItemCode,
         inventoryItemName: movement.inventoryItemName,
         quantity: movement.quantity,
@@ -412,9 +458,10 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
       }];
 
   const tableData = items.map(item => {
-    // Use item price, fallback to movement price, then 0
-    const price = item.unitPrice ?? movement.unitPrice ?? 0;
-    const total = item.quantity * price;
+    const basePrice = item.unitPrice ?? movement.unitPrice ?? 0;
+    const rate = getIvaForDetail(item.inventoryItemId || '', item.inventoryItemCode || '');
+    const priceWithIva = basePrice * (1 + rate);
+    const totalWithIva = item.quantity * priceWithIva;
     const currency = item.currency || movement.currency || 'CRC';
     
     return [
@@ -423,8 +470,8 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
       movement.type,
       item.quantity.toLocaleString('es-CR'),
       currency,
-      price.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      total.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      priceWithIva.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      totalWithIva.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     ];
   });
 
@@ -447,8 +494,11 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
   
   // Totales por moneda
   const totals = items.reduce((acc, item) => {
+    const basePrice = item.unitPrice ?? movement.unitPrice ?? 0;
+    const rate = getIvaForDetail(item.inventoryItemId || '', item.inventoryItemCode || '');
+    const priceWithIva = basePrice * (1 + rate);
     const currency = item.currency || movement.currency || 'CRC';
-    acc[currency] = (acc[currency] || 0) + (item.quantity * (item.unitPrice || 0));
+    acc[currency] = (acc[currency] || 0) + (item.quantity * priceWithIva);
     return acc;
   }, {} as Record<string, number>);
 

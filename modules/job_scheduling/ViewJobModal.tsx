@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import format from 'date-fns/format';
+import { es } from 'date-fns/locale';
 import { Modal, ActionButton } from '@/design-system';
 import { Trabajo } from './types';
 import { 
@@ -32,6 +34,26 @@ interface ViewJobModalProps {
 
 export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, trabajo, onSetActiveModule }) => {
   if (!trabajo) return null;
+
+  const isMultiday = useMemo(() => {
+    if (!trabajo.fecha_inicio || !trabajo.fecha_fin) return false;
+    
+    const getTimestamp = (date: any) => {
+      if (!date) return 0;
+      if (typeof date.toMillis === "function") return date.toMillis();
+      if (date.seconds) return date.seconds * 1000;
+      const parsed = new Date(date);
+      return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+    };
+
+    const tsStart = getTimestamp(trabajo.fecha_inicio);
+    const tsEnd = getTimestamp(trabajo.fecha_fin);
+    if (tsStart <= 0 || tsEnd <= 0) return false;
+
+    const dStart = new Date(tsStart);
+    const dEnd = new Date(tsEnd);
+    return dStart.getFullYear() !== dEnd.getFullYear() || dStart.getMonth() !== dEnd.getMonth() || dStart.getDate() !== dEnd.getDate();
+  }, [trabajo.fecha_inicio, trabajo.fecha_fin]);
 
   // Helpers
   const getTimestamp = (date: any) => {
@@ -174,7 +196,7 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
                   <div className="flex items-center">
                     <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Hora:</span>
                     <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">
-                      {trabajo.hora_inicio || 'N/D'} - {trabajo.hora_fin || 'N/D'}
+                      {isMultiday ? 'MÚLTIPLES HORARIOS POR DÍA' : `${trabajo.hora_inicio || 'N/D'} - ${trabajo.hora_fin || 'N/D'}`}
                     </span>
                   </div>
                 </div>
@@ -324,6 +346,66 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
             
           </div>
         </section>
+
+        {/* DETALLE POR DÍA (MULTIDÍA) */}
+        {isMultiday && trabajo.dias_detalle && trabajo.dias_detalle.length > 0 && (
+          <section className="animate-in fade-in duration-300">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="bg-blue-100 text-blue-700 p-1.5 rounded-lg">
+                <FiCalendar className="text-sm" />
+              </div>
+              <h4 className="font-black text-blue-950 uppercase tracking-tight text-sm">Programación Diaria ({trabajo.dias_detalle.length} Días)</h4>
+            </div>
+            <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
+              {trabajo.dias_detalle.map((dia, index) => {
+                const fDia = dia.fecha instanceof Date ? dia.fecha : (dia.fecha as any).toDate ? (dia.fecha as any).toDate() : new Date(dia.fecha);
+                return (
+                  <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/50 rounded-xl border border-slate-100/80 transition-colors gap-3">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black text-slate-800 capitalize">
+                        {format(fDia, "EEEE d 'de' MMM, yyyy", { locale: es })}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase mt-1 flex items-center gap-1.5">
+                        <FiClock size={11} /> {dia.hora_inicio || '06:00'} - {dia.hora_fin || '16:00'}
+                      </span>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-col items-end">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">Estado</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
+                          dia.estado === 'finalizado' ? 'bg-emerald-100 text-emerald-800' :
+                          dia.estado === 'en_proceso' ? 'bg-blue-100 text-blue-800' :
+                          dia.estado === 'cancelado' ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {dia.estado || 'Programado'}
+                        </span>
+                      </div>
+                      
+                      <div className="border-l border-slate-200 h-6 mx-1 hidden sm:block"></div>
+                      
+                      <div className="flex flex-col items-start sm:items-end min-w-[120px]">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">Colaboradores ({dia.cuadrilla_diaria?.length || 0})</span>
+                        <span className="text-[10px] font-bold text-slate-700 truncate max-w-[200px]" title={dia.cuadrilla_diaria?.join(', ')}>
+                          {dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0 ? dia.cuadrilla_diaria.join(', ') : 'Ninguno'}
+                        </span>
+                      </div>
+
+                      <div className="border-l border-slate-200 h-6 mx-1 hidden sm:block"></div>
+
+                      <div className="flex flex-col items-start sm:items-end min-w-[100px]">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">Vehículos ({dia.unidades_diarias?.length || 0})</span>
+                        <span className="text-[10px] font-bold text-slate-700 truncate max-w-[150px]" title={dia.unidades_diarias?.join(', ')}>
+                          {dia.unidades_diarias && dia.unidades_diarias.length > 0 ? dia.unidades_diarias.join(', ') : 'Ninguno'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* OBSERVACIONES */}
         <section>

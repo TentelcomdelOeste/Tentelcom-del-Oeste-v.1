@@ -108,6 +108,14 @@ export const toolAssignmentService = {
           throw new Error('El artículo seleccionado no existe en el inventario general.');
         }
 
+        // C. Lectura de inventario de vehículo (si aplica)
+        let vehicleItemRef: any = null;
+        let vehicleItemSnap: any = null;
+        if (dto.recipientType === 'unidad' && dto.recipientId) {
+          vehicleItemRef = doc(db, 'vehicle_warehouse_items', `${dto.recipientId}_${dto.itemId}`);
+          vehicleItemSnap = await transaction.get(vehicleItemRef);
+        }
+
         // ==========================================
         // 2. CÁLCULOS Y VALIDACIONES
         // ==========================================
@@ -145,7 +153,7 @@ export const toolAssignmentService = {
           date: nowIso,
           action: 'Asignación',
           performedBy: dto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
-          details: `Asignación inicial (${finalRequestNumber}) de ${dto.quantity} ${dto.itemUnit || 'unid'} a ${dto.recipientType === 'colaborador' ? 'Colaborador: ' : 'Unidad: '}${dto.recipientName}. Condición inicial: ${dto.initialCondition}. ${dto.observations ? `Notas: ${dto.observations}` : ''}`,
+          details: `Asignación inicial (${finalRequestNumber}) de ${dto.quantity} ${dto.itemUnit || 'unid'} a ${dto.recipientType === 'colaborador' ? 'Colaborador: ' : 'Unidad: '}${dto.recipientName}. Condición inicial: ${dto.initialCondition}. Categoría al momento de la asignación: ${dto.itemCategory || itemData.category || 'Herramientas'}. ${dto.observations ? `Notas: ${dto.observations}` : ''}`,
           newStatus: 'Asignado'
         };
 
@@ -185,6 +193,7 @@ export const toolAssignmentService = {
           observations: dto.observations || '',
           userId: currentUser.uid || '',
           userName: dto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
+          assignedBy: dto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
           createdBy: currentUser.email || currentUser.name || 'Sistema',
           createdAt: nowIso,
           // Campos planos para compatibilidad con vistas legacy
@@ -248,6 +257,38 @@ export const toolAssignmentService = {
         };
 
         transaction.set(assignmentRef, assignmentData);
+
+        // E. Crear o actualizar inventario del vehículo
+        if (dto.recipientType === 'unidad' && vehicleItemRef) {
+          if (vehicleItemSnap && vehicleItemSnap.exists()) {
+            const data = vehicleItemSnap.data();
+            const physicalStock = (data.physicalStock || 0) + dto.quantity;
+            const availableStock = (data.availableStock || 0) + dto.quantity;
+            transaction.update(vehicleItemRef, {
+              physicalStock,
+              availableStock,
+              updatedAt: nowIso,
+              updatedBy: currentUser.email || currentUser.name || 'Sistema'
+            });
+          } else {
+            transaction.set(vehicleItemRef, {
+              id: `${dto.recipientId}_${dto.itemId}`,
+              vehiculoId: dto.recipientId,
+              inventoryItemId: dto.itemId,
+              code: dto.itemCode || itemData.code || '',
+              description: dto.itemDescription || itemData.description || '',
+              category: dto.itemCategory || itemData.category || 'Herramientas',
+              unit: dto.itemUnit || itemData.unit || 'unid',
+              physicalStock: dto.quantity,
+              availableStock: dto.quantity,
+              committedStock: 0,
+              createdAt: nowIso,
+              updatedAt: nowIso,
+              createdBy: currentUser.email || currentUser.name || 'Sistema',
+              updatedBy: currentUser.email || currentUser.name || 'Sistema'
+            });
+          }
+        }
       })
     );
 
@@ -288,6 +329,24 @@ export const toolAssignmentService = {
         const itemRef = doc(db, 'inventory_items', assignmentData.itemId);
         const itemDoc = await transaction.get(itemRef);
         
+        // 2.5 Leer inventario de vehículo si es unidad
+        let vehicleItemRef: any = null;
+        let vehicleItemSnap: any = null;
+        if (assignmentData.recipientType === 'unidad' && assignmentData.recipientId) {
+          vehicleItemRef = doc(db, 'vehicle_warehouse_items', `${assignmentData.recipientId}_${assignmentData.itemId}`);
+          vehicleItemSnap = await transaction.get(vehicleItemRef);
+          
+          if (!vehicleItemSnap.exists()) {
+             throw new Error('La herramienta no existe en el inventario del vehículo.');
+          }
+          
+          const vehicleItemData = vehicleItemSnap.data();
+          const availableReal = vehicleItemData.physicalStock - vehicleItemData.committedStock;
+          if (qtyToReturn > availableReal) {
+             throw new Error(`La cantidad a devolver (${qtyToReturn}) supera el stock físico disponible en el vehículo (${availableReal}). Hay stock comprometido que no puede ser devuelto.`);
+          }
+        }
+
         const counterSnap = await transaction.get(counterRef);
         let lastNumber = 0;
         if (counterSnap.exists()) {
@@ -388,6 +447,24 @@ export const toolAssignmentService = {
         };
 
         history.push(returnHistoryEntry);
+
+        // 6. Restar stock del inventario del vehículo si aplica
+        if (assignmentData.recipientType === 'unidad' && vehicleItemRef && vehicleItemSnap) {
+          const vehicleItemData = vehicleItemSnap.data();
+          const newPhysicalStock = vehicleItemData.physicalStock - qtyToReturn;
+          const newAvailableStock = vehicleItemData.availableStock - qtyToReturn;
+          
+          if (newPhysicalStock === 0 && vehicleItemData.committedStock === 0) {
+            transaction.delete(vehicleItemRef);
+          } else {
+            transaction.update(vehicleItemRef, {
+              physicalStock: newPhysicalStock,
+              availableStock: newAvailableStock,
+              updatedAt: nowIso,
+              updatedBy: currentUser.email || currentUser.name || 'Sistema'
+            });
+          }
+        }
 
         transaction.update(assignmentRef, {
           status: 'Devuelto',

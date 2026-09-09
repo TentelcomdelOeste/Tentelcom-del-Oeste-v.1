@@ -465,11 +465,6 @@ export const MaterialRequestModal = ({
               setError("Para proyectos IBUX, los campos FDH, Torre y Lugar son obligatorios.");
               return;
           }
-      } else if (isCNFL) {
-          if (!planta.trim()) {
-              setError("Debe ingresar el LUGAR / PLANTEL.");
-              return;
-          }
       }
 
       if (addedItems.some(i => i.error)) {
@@ -665,16 +660,23 @@ export const MaterialRequestModal = ({
                                                 { label: 'PRIVADO', value: 'PRIVADO' }
                                             ]}
                                             value={origin}
-                                            onChange={val => setOrigin(val as ProjectOrigin)}
+                                            onChange={val => {
+                                                const newOrigin = val as ProjectOrigin;
+                                                if (origin !== newOrigin) {
+                                                    setOrigin(newOrigin);
+                                                    setProjectId('');
+                                                    setProjectSearch('');
+                                                }
+                                            }}
                                             required
                                         />
                                     </div>
 
                                     {/* 2. Proyecto (Searchable) */}
-                                    {origin !== 'CNFL' && (
+                                    {origin !== '' && (
                                         <div className="relative suggestions-container" onClick={e => e.stopPropagation()}>
                                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
-                                                Proyecto Asociado {!isIBUX && <span className="text-red-500">*</span>}
+                                                Proyecto Asociado <span className="text-red-500">*</span>
                                             </label>
                                             <div className="relative">
                                                 <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
@@ -692,7 +694,7 @@ export const MaterialRequestModal = ({
                                                         if (isMobile) setShowMobileProjectSelector(true);
                                                     }}
                                                     placeholder="Buscar proyecto..."
-                                                    className={`w-full pl-9 pr-10 py-3 rounded-xl bg-white border text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all ${!projectId && !isIBUX && origin !== '' ? 'border-red-200 ring-1 ring-red-50' : 'border-slate-200 shadow-sm'}`}
+                                                    className={`w-full pl-9 pr-10 py-3 rounded-xl bg-white border text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all ${!projectId && origin !== '' ? 'border-red-500 ring-1 ring-red-100' : 'border-slate-200 shadow-sm'}`}
                                                 />
                                                 {projectSearch && (
                                                     <IconButton 
@@ -708,7 +710,7 @@ export const MaterialRequestModal = ({
                                                 )}
                                             </div>
                                             
-                                            {showProjectSuggestions && (
+                                            {showProjectSuggestions && (filteredProjects.length > 0 || (!projectId && projectSearch.trim() !== '')) && (
                                                 <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-2 z-[210] max-h-60 overflow-y-auto custom-scrollbar border-t-4 border-t-blue-500">
                                                     {filteredProjects.length === 0 ? (
                                                         <p className="p-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">No se encontraron proyectos</p>
@@ -733,26 +735,6 @@ export const MaterialRequestModal = ({
                                                     )}
                                                 </div>
                                             )}
-                                        </div>
-                                    )}
-
-                                    {/* 2.1 Lugar / Plantel (CNFL) */}
-                                    {isCNFL && (
-                                        <div className="relative suggestions-container" onClick={e => e.stopPropagation()}>
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
-                                                Lugar / Plantel <span className="text-red-500">*</span>
-                                            </label>
-                                            <input 
-                                                type="text" 
-                                                list="planta-list"
-                                                value={planta}
-                                                onChange={e => setPlanta(e.target.value.toUpperCase())}
-                                                placeholder="Seleccione o escriba la planta..."
-                                                className="w-full p-3 rounded-xl bg-white border border-slate-200 text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
-                                            />
-                                            <datalist id="planta-list">
-                                                {plantaSuggestions.map(p => <option key={p} value={p} />)}
-                                            </datalist>
                                         </div>
                                     )}
                                 </>
@@ -872,8 +854,22 @@ export const MaterialRequestModal = ({
                                         if (isMobile) setShowMobileSelector(true);
                                     }}
                                     placeholder="Buscar material..."
-                                    className="w-full pl-9 pr-4 py-3 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 shadow-sm"
+                                    className="w-full pl-9 pr-10 py-3 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 shadow-sm"
                                 />
+                                {itemSearch && (
+                                    <IconButton 
+                                        icon={<FiX />}
+                                        onClick={() => {
+                                            setTempItemId('');
+                                            setItemSearch('');
+                                            setTempQty('');
+                                            setDuplicateError(false);
+                                            setShowItemSuggestions(false);
+                                        }}
+                                        variant="neutral"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition-colors"
+                                    />
+                                )}
                                 {duplicateError && (
                                     <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
                                         <FiAlertCircle className="text-amber-500 shrink-0" />
@@ -1285,8 +1281,18 @@ const MobileMaterialSelector: React.FC<{
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             placeholder="Buscar por código o descripción..."
-            className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
+            className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-50 border border-slate-200 text-base font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
           />
+          {searchTerm && (
+            <IconButton 
+              icon={<FiX />}
+              onClick={() => {
+                setSearchTerm('');
+              }}
+              variant="neutral"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition-colors"
+            />
+          )}
         </div>
       </div>
       {/* List */}

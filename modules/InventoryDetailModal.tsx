@@ -125,14 +125,16 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
               if (m.items && m.items.length > 0) {
                   const detail = m.items.find(i => i.inventoryItemId === item.id);
                   price = detail ? detail.unitPrice : undefined;
-              } else {
-                  // Legacy support or direct mapping if available in future
-                  price = undefined; 
+              } else if (m.inventoryItemId === item.id) {
+                  price = m.unitPrice;
               }
+              
+              const ivaRate = (item as any).ivaRate ?? (item as any).iva ?? 0.13;
+              const priceWithIva = price !== undefined ? price * (1 + ivaRate) : undefined;
               
               return (
                   <span className="font-mono font-bold text-slate-600 text-xs">
-                      {price !== undefined ? formatCurrency(price, item.currency || 'USD') : '-'}
+                      {priceWithIva !== undefined ? formatCurrency(priceWithIva, item.currency || 'USD') : '-'}
                   </span>
               );
           }
@@ -217,10 +219,18 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                         </div>
                         <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block mb-1">Valor Total</label>
                         <p className="text-3xl font-black text-emerald-900 tracking-tight">
-                            {formatCurrency((item.price || 0) * item.stock, item.currency || 'USD')}
+                            {(() => {
+                                const ivaRate = (item as any).ivaRate ?? (item as any).iva ?? 0.13;
+                                const priceWithIva = (item.price || 0) * (1 + ivaRate);
+                                return formatCurrency(priceWithIva * item.stock, item.currency || 'USD');
+                            })()}
                         </p>
                         <p className="text-[10px] text-emerald-600 font-bold mt-2 bg-emerald-100/50 inline-block px-2 py-1 rounded-lg">
-                            Unitario: {formatCurrency(item.price || 0, item.currency || 'USD')}
+                            Unitario: {(() => {
+                                const ivaRate = (item as any).ivaRate ?? (item as any).iva ?? 0.13;
+                                const priceWithIva = (item.price || 0) * (1 + ivaRate);
+                                return formatCurrency(priceWithIva, item.currency || 'USD');
+                            })()}
                         </p>
                     </div>
                 </div>
