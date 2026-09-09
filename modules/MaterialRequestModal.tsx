@@ -233,12 +233,12 @@ export const MaterialRequestModal = ({
   }, [projects, projectSearch]);
 
   const filteredItems = useMemo(() => {
-      if (!itemSearch) return inventoryItems.slice(0, 10);
+      if (!itemSearch) return inventoryItems;
       const term = itemSearch.toLowerCase();
       return inventoryItems.filter(i => 
           i.code.toLowerCase().includes(term) || 
           i.description.toLowerCase().includes(term)
-      ).slice(0, 20);
+      );
   }, [inventoryItems, itemSearch]);
 
   const selectedInventoryItem = useMemo(() => 
