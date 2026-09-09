@@ -28,7 +28,8 @@ export const MODULES_CONFIG = {
       movimientos: "Movimientos Stock",
       solicitudes: "Solicitudes",
       reportes: "Reporte de Materiales",
-      bodegas_vehiculares: "Bodegas Vehiculares"
+      bodegas_vehiculares: "Bodegas Vehiculares",
+      herramientas_asignadas: "Herramientas y Equipos Asignados"
     }
   },
 
