@@ -12,7 +12,7 @@ import { hasPermission, isAdmin } from '../utils/permissions';
 
 import { logger } from '../utils/logger';
 
-export const useInventory = (currentUser: User | null) => {
+export const useInventory = (currentUser: User | null, options?: { fetchAll?: boolean }) => {
   const { authReady } = useUserContext();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [materialRequests, setMaterialRequests] = useState<any[]>([]);
@@ -150,7 +150,9 @@ export const useInventory = (currentUser: User | null) => {
     // 2) Fetch from Firestore with limit using onSnapshot for real-time updates
     const inventoryCollectionName = "inventory_items";
     const baseRef = collection(db, inventoryCollectionName);
-    const q = query(baseRef, orderBy("description"), limit(currentLimit));
+    const q = options?.fetchAll 
+      ? query(baseRef, orderBy("description"))
+      : query(baseRef, orderBy("description"), limit(currentLimit));
     
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       try {
@@ -220,7 +222,7 @@ export const useInventory = (currentUser: User | null) => {
     return () => {
         unsubscribe();
     };
-  }, [authReady, currentUser?.uid, currentLimit]);
+  }, [authReady, currentUser?.uid, currentLimit, options?.fetchAll]);
 
 
   const loadMore = useCallback(() => {

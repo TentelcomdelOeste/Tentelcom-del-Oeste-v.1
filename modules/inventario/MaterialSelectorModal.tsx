@@ -17,15 +17,28 @@ export const MaterialSelectorModal: React.FC<MaterialSelectorModalProps> = ({
   inventoryItems
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [visibleCount, setVisibleCount] = useState(50);
+
+  React.useEffect(() => {
+    setVisibleCount(50);
+  }, [searchTerm, show]);
 
   const filteredItems = useMemo(() => {
-    if (!searchTerm) return inventoryItems.slice(0, 50);
-    const term = searchTerm.toLowerCase();
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return inventoryItems.slice(0, visibleCount);
     return inventoryItems.filter(i => 
       i.code.toLowerCase().includes(term) || 
       i.description.toLowerCase().includes(term)
-    ).slice(0, 50);
-  }, [inventoryItems, searchTerm]);
+    );
+  }, [inventoryItems, searchTerm, visibleCount]);
+
+  const hasMoreItemsToShow = useMemo(() => {
+    return !searchTerm.trim() && inventoryItems.length > visibleCount;
+  }, [inventoryItems.length, searchTerm, visibleCount]);
+
+  const loadMoreItems = () => {
+    setVisibleCount(prev => prev + 50);
+  };
 
   if (!show) return null;
 
@@ -61,7 +74,17 @@ export const MaterialSelectorModal: React.FC<MaterialSelectorModalProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+        <div 
+          className="flex-1 overflow-y-auto custom-scrollbar p-2"
+          onScroll={(e) => {
+            const target = e.currentTarget;
+            if (target.scrollHeight - target.scrollTop <= target.clientHeight + 40) {
+              if (hasMoreItemsToShow) {
+                loadMoreItems();
+              }
+            }
+          }}
+        >
           {filteredItems.map(item => (
             <div
               key={item.id}
@@ -83,6 +106,20 @@ export const MaterialSelectorModal: React.FC<MaterialSelectorModalProps> = ({
               </div>
             </div>
           ))}
+          {hasMoreItemsToShow && (
+            <div className="p-4 text-center">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  loadMoreItems();
+                }}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider transition-colors"
+              >
+                Cargar más materiales...
+              </button>
+            </div>
+          )}
           {filteredItems.length === 0 && (
             <p className="p-8 text-center text-sm font-bold text-slate-400">No se encontraron materiales.</p>
           )}

@@ -65,7 +65,7 @@ const MaterialRequestsModule: React.FC<MaterialRequestsModuleProps> = ({ current
     hasMore,
     loadingMore
   } = useMaterialRequests(currentUser);
-  const { items: inventoryItems } = useInventory(currentUser);
+  const { items: inventoryItems } = useInventory(currentUser, { fetchAll: true });
   const { quotes } = useQuotes(currentUser);
   const { shortages, createShortage } = useShortages(currentUser);
   const confirm = useConfirm();

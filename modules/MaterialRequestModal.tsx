@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { User, Quote } from '@/utils/types';
 import { InventoryItem } from '@/inventoryTypes';
@@ -232,14 +232,30 @@ export const MaterialRequestModal = ({
       }).slice(0, 20);
   }, [projects, projectSearch]);
 
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  useEffect(() => {
+      setVisibleCount(30);
+  }, [itemSearch, show]);
+
   const filteredItems = useMemo(() => {
-      if (!itemSearch) return inventoryItems;
-      const term = itemSearch.toLowerCase();
+      const term = itemSearch.trim().toLowerCase();
+      if (!term) {
+          return inventoryItems.slice(0, visibleCount);
+      }
       return inventoryItems.filter(i => 
           i.code.toLowerCase().includes(term) || 
           i.description.toLowerCase().includes(term)
       );
-  }, [inventoryItems, itemSearch]);
+  }, [inventoryItems, itemSearch, visibleCount]);
+
+  const hasMoreItemsToShow = useMemo(() => {
+      return !itemSearch.trim() && inventoryItems.length > visibleCount;
+  }, [inventoryItems.length, itemSearch, visibleCount]);
+
+  const loadMoreItems = useCallback(() => {
+      setVisibleCount(prev => prev + 30);
+  }, []);
 
   const selectedInventoryItem = useMemo(() => 
       inventoryItems.find(i => i.id === tempItemId), 
@@ -877,7 +893,17 @@ export const MaterialRequestModal = ({
                                     </div>
                                 )}
                                 {showItemSuggestions && !isMobile && (
-                                    <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-2 z-[210] max-h-48 overflow-y-auto custom-scrollbar border-t-4 border-t-emerald-500">
+                                    <div 
+                                        className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-2 z-[210] max-h-48 overflow-y-auto custom-scrollbar border-t-4 border-t-emerald-500"
+                                        onScroll={(e) => {
+                                            const target = e.currentTarget;
+                                            if (target.scrollHeight - target.scrollTop <= target.clientHeight + 20) {
+                                                if (hasMoreItemsToShow) {
+                                                    loadMoreItems();
+                                                }
+                                            }
+                                        }}
+                                    >
                                         {filteredItems.length === 0 ? (
                                             <div className="p-4 text-center">
                                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">
@@ -885,29 +911,45 @@ export const MaterialRequestModal = ({
                                                 </p>
                                             </div>
                                         ) : (
-                                            filteredItems.map(item => {
-                                                const available = (item.stock || 0) - (item.reserved || 0);
-                                                const isOutOfStock = available <= 0;
-                                                
-                                                return (
-                                                    <div 
-                                                        key={item.id}
-                                                        onClick={() => {
-                                                            setTempItemId(item.id);
-                                                            setItemSearch(`${item.code} - ${item.description}`);
-                                                            setShowItemSuggestions(false);
-                                                            setTimeout(() => qtyInputRef.current?.focus(), 100);
-                                                        }}
-                                                        className={`p-2.5 border-b border-slate-50 last:border-0 transition-colors ${isOutOfStock ? 'bg-amber-50/30 hover:bg-amber-50 cursor-pointer' : 'hover:bg-blue-50 cursor-pointer'}`}
-                                                    >
-                                                        <p className="text-[10px] font-black text-slate-700">{item.code}</p>
-                                                        <p className="text-[10px] text-slate-500 truncate">{item.description}</p>
-                                                        <span className={`text-[9px] font-bold ${isOutOfStock ? 'text-amber-600' : 'text-blue-600'}`}>
-                                                            {isOutOfStock ? 'Sin stock (Generará faltante)' : `Disponible: ${available} ${item.unit}`}
-                                                        </span>
+                                            <>
+                                                {filteredItems.map(item => {
+                                                    const available = (item.stock || 0) - (item.reserved || 0);
+                                                    const isOutOfStock = available <= 0;
+                                                    
+                                                    return (
+                                                        <div 
+                                                            key={item.id}
+                                                            onClick={() => {
+                                                                setTempItemId(item.id);
+                                                                setItemSearch(`${item.code} - ${item.description}`);
+                                                                setShowItemSuggestions(false);
+                                                                setTimeout(() => qtyInputRef.current?.focus(), 100);
+                                                            }}
+                                                            className={`p-2.5 border-b border-slate-50 last:border-0 transition-colors ${isOutOfStock ? 'bg-amber-50/30 hover:bg-amber-50 cursor-pointer' : 'hover:bg-blue-50 cursor-pointer'}`}
+                                                        >
+                                                            <p className="text-[10px] font-black text-slate-700">{item.code}</p>
+                                                            <p className="text-[10px] text-slate-500 truncate">{item.description}</p>
+                                                            <span className={`text-[9px] font-bold ${isOutOfStock ? 'text-amber-600' : 'text-blue-600'}`}>
+                                                                {isOutOfStock ? 'Sin stock (Generará faltante)' : `Disponible: ${available} ${item.unit}`}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {hasMoreItemsToShow && (
+                                                    <div className="p-2 text-center bg-slate-50 border-t border-slate-100">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                loadMoreItems();
+                                                            }}
+                                                            className="text-[9px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider transition-colors"
+                                                        >
+                                                            Cargar más materiales...
+                                                        </button>
                                                     </div>
-                                                );
-                                            })
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                 )}
@@ -1153,6 +1195,8 @@ export const MaterialRequestModal = ({
         }}
         searchTerm={itemSearch}
         setSearchTerm={setItemSearch}
+        hasMore={hasMoreItemsToShow}
+        onLoadMore={loadMoreItems}
       />
 
       {/* Selector Móvil de Proyectos */}
@@ -1253,7 +1297,9 @@ const MobileMaterialSelector: React.FC<{
   onSelect: (item: InventoryItem) => void;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
-}> = ({ show, onClose, items, onSelect, searchTerm, setSearchTerm }) => {
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+}> = ({ show, onClose, items, onSelect, searchTerm, setSearchTerm, hasMore, onLoadMore }) => {
   useLockBodyScroll(show);
   if (!show) return null;
 
@@ -1296,7 +1342,17 @@ const MobileMaterialSelector: React.FC<{
         </div>
       </div>
       {/* List */}
-      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+      <div 
+        className="flex-1 overflow-y-auto p-2 custom-scrollbar"
+        onScroll={(e) => {
+          const target = e.currentTarget;
+          if (target.scrollHeight - target.scrollTop <= target.clientHeight + 40) {
+            if (hasMore && onLoadMore) {
+              onLoadMore();
+            }
+          }
+        }}
+      >
         {items.length === 0 ? (
           <div className="p-10 text-center flex flex-col items-center gap-2">
             <FiAlertCircle className="text-slate-200 text-4xl" />
@@ -1327,6 +1383,20 @@ const MobileMaterialSelector: React.FC<{
                 </div>
               );
             })}
+            {hasMore && onLoadMore && (
+              <div className="p-4 text-center">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLoadMore();
+                  }}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider transition-colors"
+                >
+                  Cargar más materiales...
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
