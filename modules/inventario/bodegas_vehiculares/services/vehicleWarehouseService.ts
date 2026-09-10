@@ -624,8 +624,58 @@ export const vehicleWarehouseService = {
     if (!isVehicleDeleteAuthorized(currentUser)) {
       throw new Error('No tiene permisos para eliminar solicitudes de bodega vehicular. Acción exclusiva para jenamorado@tentelcom.com.');
     }
-    const docRef = doc(db, 'vehicle_material_requests', requestId);
-    await deleteDoc(docRef);
+    const reqRef = doc(db, 'vehicle_material_requests', requestId);
+    const now = new Date().toISOString();
+
+    await runTransaction(db, async (transaction) => {
+      const reqSnap = await transaction.get(reqRef);
+      if (!reqSnap.exists()) throw new Error('Solicitud no encontrada');
+      const request = reqSnap.data() as VehicleMaterialRequest;
+
+      // Si la solicitud estaba "Abierta", debemos liberar sus compromisos antes de borrarla
+      if (request.status === 'Abierta') {
+        for (const item of request.items) {
+          const itemRef = doc(db, 'vehicle_warehouse_items', `${request.vehiculoId}_${item.inventoryItemId}`);
+          const itemSnap = await transaction.get(itemRef);
+          if (itemSnap.exists()) {
+            const data = itemSnap.data() as VehicleWarehouseItem;
+            const newCommitted = Math.max(0, data.committedStock - item.quantityCommitted);
+            const newAvailable = data.physicalStock - newCommitted;
+            transaction.update(itemRef, {
+              committedStock: newCommitted,
+              availableStock: newAvailable,
+              updatedAt: now,
+              updatedBy: currentUser?.email || 'Usuario'
+            });
+          }
+        }
+      }
+
+      // Eliminar el documento de la solicitud
+      transaction.delete(reqRef);
+    });
+  },
+
+  // 9. Sync a specific item's commitment based on expected value (Auto-healing)
+  async syncItemCommitment(
+    itemId: string,
+    expectedCommitted: number,
+    currentUser?: { email?: string | null } | null
+  ): Promise<void> {
+    const itemRef = doc(db, 'vehicle_warehouse_items', itemId);
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(itemRef);
+      if (!snap.exists()) return;
+      const data = snap.data() as VehicleWarehouseItem;
+      const physical = Number(data.physicalStock) || 0;
+      const newAvailable = physical - expectedCommitted;
+      transaction.update(itemRef, {
+        committedStock: expectedCommitted,
+        availableStock: newAvailable,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser?.email || 'Auto-Sincronización Sistema'
+      });
+    });
   },
 
   // 7. Delete Movement record (Exclusive for authorized admin)

@@ -35,14 +35,66 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
   const [requests, setRequests] = useState<VehicleMaterialRequest[]>([]);
   const [consumptions, setConsumptions] = useState<VehicleProjectConsumption[]>([]);
 
+  const [itemsLoaded, setItemsLoaded] = useState(false);
+  const [requestsLoaded, setRequestsLoaded] = useState(false);
+
+  const auditDoneRef = React.useRef(false);
+
+  useEffect(() => {
+    if (itemsLoaded && requestsLoaded && !auditDoneRef.current) {
+      auditDoneRef.current = true;
+      console.log('Iniciando auditoría automática de stock comprometido...');
+
+      // Filtrar solicitudes abiertas
+      const openRequests = requests.filter(r => r.status === 'Abierta');
+
+      // Calcular stock comprometido esperado por cada item ({vehiculoId}_{inventoryItemId})
+      const expectedCommitted = new Map<string, number>();
+      openRequests.forEach(req => {
+        const vehId = req.vehiculoId;
+        if (!vehId) return;
+        const reqItems = req.items || [];
+        reqItems.forEach((reqItem: any) => {
+          const itemId = reqItem.inventoryItemId;
+          if (!itemId) return;
+          const key = `${vehId}_${itemId}`;
+          const qty = Number(reqItem.quantityCommitted || 0);
+          expectedCommitted.set(key, (expectedCommitted.get(key) || 0) + qty);
+        });
+      });
+
+      // Comparar con el estado actual de cada ítem de inventario
+      items.forEach(async (item) => {
+        const key = item.id || `${item.vehiculoId}_${item.inventoryItemId}`;
+        const expected = expectedCommitted.get(key) || 0;
+        const currentCommitted = Number(item.committedStock) || 0;
+        const currentPhysical = Number(item.physicalStock) || 0;
+        const correctAvailable = currentPhysical - expected;
+
+        if (currentCommitted !== expected || Number(item.availableStock) !== correctAvailable) {
+          console.log(`[AUDITORÍA] Discrepancia encontrada para el material ${item.code} (${item.description}) en vehículo ${item.vehiculoAlias || item.vehiculoId}:`);
+          console.log(`  Cometido actual: ${currentCommitted} (Esperado: ${expected})`);
+          console.log(`  Disponible actual: ${item.availableStock} (Correcto: ${correctAvailable})`);
+          try {
+            await vehicleWarehouseService.syncItemCommitment(key, expected, currentUser);
+            console.log(`[AUDITORÍA] Material ${item.code} corregido exitosamente.`);
+          } catch (error) {
+            console.error(`[AUDITORÍA] Error al corregir el material ${item.code}:`, error);
+          }
+        }
+      });
+    }
+  }, [itemsLoaded, requestsLoaded, items, requests, currentUser]);
+
   useEffect(() => {
     // 1. Suscripción en tiempo real al inventario
     const unsubItems = onSnapshot(collection(db, 'vehicle_warehouse_items'), (snapshot) => {
       const firestoreItems: VehicleWarehouseItem[] = [];
       snapshot.forEach((docSnap) => {
-        firestoreItems.push(docSnap.data() as VehicleWarehouseItem);
+        firestoreItems.push({ id: docSnap.id, ...docSnap.data() } as VehicleWarehouseItem);
       });
       setItems(firestoreItems);
+      setItemsLoaded(true);
     }, (err) => {
       console.warn('Error suscribiendo a vehicle_warehouse_items:', err);
     });
@@ -67,6 +119,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
         firestoreRequests.push({ id: docSnap.id, ...docSnap.data() } as VehicleMaterialRequest);
       });
       setRequests(firestoreRequests);
+      setRequestsLoaded(true);
     }, (err) => {
       console.warn('Error suscribiendo a vehicle_material_requests:', err);
     });
