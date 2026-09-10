@@ -43,6 +43,20 @@ import { VehicleLogCard } from "./components/VehicleLogCard";
 import { InspectionAlertsModal } from "./components/InspectionAlertsModal";
 import { localDocStore } from "../../core/offline/localDocStore";
 import { deleteVersionedDocOffline } from "../../core/versionControl";
+import { ControlVehicularModule } from "./components/ControlVehicularModule";
+import {
+  getVehiclesCatalog,
+  subscribeVehicleDocuments,
+  subscribeVehicleMaintenances,
+  calculateControlAlerts
+} from "./controlVehicularService";
+import { VehicleDocument, VehicleMaintenance, VehicleControlAlert, Vehicle } from "../../types/vehicle.types";
+import { FiAlertTriangle } from "react-icons/fi";
+
+const SECTION_OPTIONS = [
+  { value: "registros", label: "REGISTROS DE BITÁCORA" },
+  { value: "control_vehicular", label: "CONTROL VEHICULAR" }
+];
 
 const MONTH_NAMES = [
   { value: "1", label: "Enero" },
@@ -70,6 +84,10 @@ interface VehicleLogsProps {
 export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActiveModule, selectedId, onClearSelectedId }) => {
   const { authReady } = useAuth();
   const localDocuments = useLocalCollection("bitacora_vehiculos");
+  const [activeSection, setActiveSection] = useState<"registros" | "control_vehicular">("registros");
+  const [controlDocs, setControlDocs] = useState<VehicleDocument[]>([]);
+  const [controlMaints, setControlMaints] = useState<VehicleMaintenance[]>([]);
+  const [catalogVehicles, setCatalogVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterYear, setFilterYear] = useState<number>(() => new Date().getFullYear());
@@ -90,6 +108,29 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
     { id: string; name: string }[]
   >([]);
   const confirm = useConfirm();
+
+  useEffect(() => {
+    if (!authReady || !currentUser) return;
+    getVehiclesCatalog().then((vList) => setCatalogVehicles(vList));
+    const unsubDocs = subscribeVehicleDocuments((docs) => setControlDocs(docs));
+    const unsubMaints = subscribeVehicleMaintenances((maint) => setControlMaints(maint));
+    return () => {
+      unsubDocs();
+      unsubMaints();
+    };
+  }, [authReady, currentUser]);
+
+  const controlAlerts = useMemo(() => {
+    const latestKmMap: Record<string, number> = {};
+    localDocuments.forEach((doc: any) => {
+      const maxKm = Math.max(doc.kmLlegada || 0, doc.kmSalida || 0, doc.kmActual || 0);
+      if (maxKm > 0) {
+        if (doc.unidadId) latestKmMap[doc.unidadId] = Math.max(latestKmMap[doc.unidadId] || 0, maxKm);
+        if (doc.unidad) latestKmMap[doc.unidad] = Math.max(latestKmMap[doc.unidad] || 0, maxKm);
+      }
+    });
+    return calculateControlAlerts(catalogVehicles, controlDocs, controlMaints, latestKmMap);
+  }, [catalogVehicles, controlDocs, controlMaints, localDocuments]);
 
   useEffect(() => {
     if (!authReady || !currentUser) return;
@@ -726,138 +767,218 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
     return (
       <div className="-mx-2 md:-mx-4 -mt-4">
         <ModulePage
-          title="Registros de Bitácora"
-          subtitle="Control operativo de salidas, consumo y trazabilidad de vehículos."
+          title={activeSection === "control_vehicular" ? "Control Vehicular" : "Registros de Bitácora"}
+          subtitle={
+            activeSection === "control_vehicular"
+              ? "Administración de documentación, mantenimientos, kilometraje y alertas por unidad vehicular."
+              : "Control operativo de salidas, consumo y trazabilidad de vehículos."
+          }
         >
+          {/* Navegación de Vistas / Sección (Desktop) */}
+          <div className="hidden md:flex gap-4 mb-4 border-b border-slate-200">
+            <button
+              type="button"
+              onClick={() => setActiveSection("registros")}
+              className={`pb-2 text-xs font-black uppercase tracking-widest transition-all ${
+                activeSection === "registros"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              Registros de Bitácora
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection("control_vehicular")}
+              className={`pb-2 text-xs font-black uppercase tracking-widest transition-all ${
+                activeSection === "control_vehicular"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              Control Vehicular
+            </button>
+          </div>
 
-          <ModuleToolbar>
-            <div className="flex flex-col md:flex-row items-center gap-3 w-full">
-              {/* Search + Action Button on Mobile Row */}
-              <div className="flex flex-row items-center gap-2 w-full md:flex-1">
-                <div className="flex-1">
-                  <SearchInput
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Buscar unidad..."
-                    className="w-full"
-                  />
-                </div>
-                <div className="md:hidden">
-                  {hasPermission(
-                    currentUser,
-                    "bitacoraVehiculos",
-                    "registros",
-                  ) && (
-                    <ActionButton
-                      variant="primary"
-                      label="NUEVO"
-                      className="whitespace-nowrap px-3 h-10 min-w-fit"
-                      onClick={() => {
-                        setSelectedLog(null);
-                        setIsModalOpen(true);
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
+          {/* Selector de Sección (Mobile) */}
+          <div className="block md:hidden mb-3 px-1">
+            <Select
+              options={SECTION_OPTIONS}
+              value={activeSection}
+              onChange={(val) => setActiveSection(val as "registros" | "control_vehicular")}
+              className="w-full text-xs font-bold"
+              isSearchable={false}
+            />
+          </div>
 
-              {/* Filters and Desktop Action Button */}
-              <div className="flex flex-row items-center gap-2 w-full md:w-auto">
-                <div className="flex-1 md:w-36">
-                  <Select
-                    value={filterYear}
-                    onChange={(val) => {
-                      setFilterYear(val);
-                      if (
-                        filterMonth &&
-                        String(filterMonth).startsWith("week:")
-                      )
-                        setFilterMonth("all");
-                    }}
-                    options={yearOptions}
-                    isSearchable={false}
-                  />
-                </div>
-
-                <div className="flex-1 md:w-56">
-                  <Select
-                    value={filterMonth}
-                    onChange={(val) => setFilterMonth(val)}
-                    options={weekOptions}
-                    isSearchable={false}
-                  />
-                </div>
-
-                <div className="hidden md:block">
-                  {hasPermission(
-                    currentUser,
-                    "bitacoraVehiculos",
-                    "registros",
-                  ) && (
-                    <ActionButton
-                      variant="primary"
-                      label="NUEVO"
-                      className="whitespace-nowrap px-6"
-                      onClick={() => {
-                        setSelectedLog(null);
-                        setIsModalOpen(true);
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          </ModuleToolbar>
-
-          {isLoading ? (
-            <div className="text-center py-20 text-slate-500">
-              <FiRefreshCcw className="inline-block animate-spin mr-2" />
-              Cargando registros...
-            </div>
+          {activeSection === "control_vehicular" ? (
+            <ControlVehicularModule
+              currentUser={currentUser}
+              onSetActiveModule={onSetActiveModule}
+            />
           ) : (
             <>
-              <div className="md:hidden space-y-3 pb-10">
-                {sortedLogs.map((log) => (
-                  <VehicleLogCard
-                    key={log.id}
-                    log={log}
-                    expenses={expenses.filter(e => e.bitacoraId === log.id)}
-                    onEdit={() => {
-                      setSelectedLog(log);
-                      setIsModalOpen(true);
-                    }}
-                    onDelete={() => handleDelete(log)}
-                    onPdf={() => generateVehicleLogPDF(log)}
-                    onTimeline={
-                      (isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog)
-                        ? () => {
-                            setSelectedLog(log);
-                            setIsTimelineOpen(true);
-                          }
-                        : undefined
-                    }
-                    onCostAnalysis={() => {
-                      const unidad = log.unidad || extraerUnidad(log.unidadId);
-                      onSetActiveModule?.({ module: 'analisis_costos', selectedId: unidad });
-                    }}
-                  />
-                ))}
-              </div>
-
-              <div className="hidden md:block">
-                <DataTable<VehicleLog>
-                  data={sortedLogs}
-                  columns={columns}
-                  keyExtractor={(l) => l.id}
-                  getRowClassName={getRowClassName}
-                  emptyMessage="No hay registros de bitácora que coincidan con la búsqueda."
-                />
-              </div>
-
-              {sortedLogs?.length === 0 && (
-                <div className="col-span-full text-center py-10 text-slate-500">
-                  No hay registros de bitácora que coincidan con la búsqueda.
+              {/* Alertas de Control Vehicular Integradas en Bitácora Diaria */}
+              {controlAlerts.length > 0 && (
+                <div className="mb-4 bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 shadow-sm">
+                  <div className="flex items-center justify-between font-black text-amber-900 text-xs">
+                    <span className="flex items-center gap-2">
+                      <FiAlertTriangle className="text-amber-600 text-base shrink-0" />
+                      Alertas de Control Vehicular Activas ({controlAlerts.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection("control_vehicular")}
+                      className="text-[11px] text-blue-700 hover:underline font-bold bg-white border border-amber-200 px-2.5 py-1 rounded-lg"
+                    >
+                      Ver Control Vehicular →
+                    </button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-amber-900">
+                    {controlAlerts.slice(0, 4).map((alt) => (
+                      <div key={alt.id} className="p-2 bg-white/80 border border-amber-200 rounded-lg">
+                        <span className="font-bold">{alt.unidadLabel}:</span> {alt.detalle}
+                      </div>
+                    ))}
+                    {controlAlerts.length > 4 && (
+                      <p className="text-[10px] text-amber-700 italic col-span-full">
+                        + {controlAlerts.length - 4} alertas más en Control Vehicular.
+                      </p>
+                    )}
+                  </div>
                 </div>
+              )}
+
+              <ModuleToolbar>
+                <div className="flex flex-col md:flex-row items-center gap-3 w-full">
+                  {/* Search + Action Button on Mobile Row */}
+                  <div className="flex flex-row items-center gap-2 w-full md:flex-1">
+                    <div className="flex-1">
+                      <SearchInput
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Buscar unidad..."
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="md:hidden">
+                      {hasPermission(
+                        currentUser,
+                        "bitacoraVehiculos",
+                        "registros",
+                      ) && (
+                        <ActionButton
+                          variant="primary"
+                          label="NUEVO"
+                          className="whitespace-nowrap px-3 h-10 min-w-fit"
+                          onClick={() => {
+                            setSelectedLog(null);
+                            setIsModalOpen(true);
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Filters and Desktop Action Button */}
+                  <div className="flex flex-row items-center gap-2 w-full md:w-auto">
+                    <div className="flex-1 md:w-36">
+                      <Select
+                        value={filterYear}
+                        onChange={(val) => {
+                          setFilterYear(val);
+                          if (
+                            filterMonth &&
+                            String(filterMonth).startsWith("week:")
+                          )
+                            setFilterMonth("all");
+                        }}
+                        options={yearOptions}
+                        isSearchable={false}
+                      />
+                    </div>
+
+                    <div className="flex-1 md:w-56">
+                      <Select
+                        value={filterMonth}
+                        onChange={(val) => setFilterMonth(val)}
+                        options={weekOptions}
+                        isSearchable={false}
+                      />
+                    </div>
+
+                    <div className="hidden md:block">
+                      {hasPermission(
+                        currentUser,
+                        "bitacoraVehiculos",
+                        "registros",
+                      ) && (
+                        <ActionButton
+                          variant="primary"
+                          label="NUEVO"
+                          className="whitespace-nowrap px-6"
+                          onClick={() => {
+                            setSelectedLog(null);
+                            setIsModalOpen(true);
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </ModuleToolbar>
+
+              {isLoading ? (
+                <div className="text-center py-20 text-slate-500">
+                  <FiRefreshCcw className="inline-block animate-spin mr-2" />
+                  Cargando registros...
+                </div>
+              ) : (
+                <>
+                  <div className="md:hidden space-y-3 pb-10">
+                    {sortedLogs.map((log) => (
+                      <VehicleLogCard
+                        key={log.id}
+                        log={log}
+                        expenses={expenses.filter(e => e.bitacoraId === log.id)}
+                        onEdit={() => {
+                          setSelectedLog(log);
+                          setIsModalOpen(true);
+                        }}
+                        onDelete={() => handleDelete(log)}
+                        onPdf={() => generateVehicleLogPDF(log)}
+                        onTimeline={
+                          (isAdmin(currentUser?.role) || currentUser?.canUseOperationalLog)
+                            ? () => {
+                                setSelectedLog(log);
+                                setIsTimelineOpen(true);
+                              }
+                            : undefined
+                        }
+                        onCostAnalysis={() => {
+                          const unidad = log.unidad || extraerUnidad(log.unidadId);
+                          onSetActiveModule?.({ module: 'analisis_costos', selectedId: unidad });
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="hidden md:block">
+                    <DataTable<VehicleLog>
+                      data={sortedLogs}
+                      columns={columns}
+                      keyExtractor={(l) => l.id}
+                      getRowClassName={getRowClassName}
+                      emptyMessage="No hay registros de bitácora que coincidan con la búsqueda."
+                    />
+                  </div>
+
+                  {sortedLogs?.length === 0 && (
+                    <div className="col-span-full text-center py-10 text-slate-500">
+                      No hay registros de bitácora que coincidan con la búsqueda.
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

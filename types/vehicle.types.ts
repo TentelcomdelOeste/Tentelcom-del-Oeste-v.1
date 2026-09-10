@@ -389,3 +389,71 @@ export interface VehicleExpense {
     version?: number;
     isDeleted?: boolean;
 }
+
+export interface VehicleAttachment {
+    name: string;
+    url: string; // base64 or storage url
+    type?: string;
+}
+
+export interface VehicleDocument {
+    id: string;
+    vehiculoId: string; // Document ID of vehicle or alias (e.g. U6)
+    unidad: string; // e.g. "U6"
+    unidadLabel?: string; // e.g. "U6 — HYUNDAI HD — CL 255409"
+    tipoDocumento: string; // 'DEKRA' | 'Marchamo' | 'Permiso de pesos y dimensiones' | 'Seguro / póliza' | 'Título de propiedad' | 'Revisión técnica' | 'Permisos especiales' | string
+    fechaEmision: string; // YYYY-MM-DD
+    fechaVencimiento: string; // YYYY-MM-DD
+    numeroReferencia?: string;
+    costo?: number;
+    diasAnticipacionAlerta?: number; // default 30
+    observaciones?: string;
+    archivos?: VehicleAttachment[];
+    createdBy: string;
+    createdById?: string;
+    createdAt: string;
+    updatedAt?: string;
+    isDeleted?: boolean;
+}
+
+export interface VehicleMaintenance {
+    id: string;
+    vehiculoId: string;
+    unidad: string;
+    unidadLabel?: string;
+    tipoMantenimiento: string; // 'Cambio de aceite' | 'Cambio de filtros' | 'Frenos' | 'Llantas' | 'Batería' | 'Alineación y balanceo' | 'Mantenimiento preventivo' | 'Reparación' | 'Servicio mecánico' | string
+    fecha: string; // YYYY-MM-DD
+    kilometrajeActual: number;
+    proximoKilometraje: number;
+    intervaloMantenimiento?: number;
+    kilometrajeAlerta?: number; // default 1000 km
+    tallerProveedor?: string;
+    costo?: number;
+    observaciones?: string;
+    archivos?: VehicleAttachment[];
+    responsable: string;
+    responsableId?: string;
+    createdBy: string;
+    createdAt: string;
+    updatedAt?: string;
+    isDeleted?: boolean;
+}
+
+export interface VehicleControlAlert {
+    id: string;
+    vehiculoId: string;
+    unidad: string;
+    unidadLabel: string;
+    tipoAlerta: 'documento_vencimiento' | 'mantenimiento_kilometraje';
+    titulo: string;
+    nivel: 'warning' | 'danger'; // warning: threshold reached; danger: expired/exceeded
+    targetNombre: string;
+    detalle: string;
+    fechaOVencimiento?: string;
+    kilometrajeActual?: number;
+    proximoKilometraje?: number;
+    restanDias?: number;
+    restanKm?: number;
+    recordId: string;
+}
+

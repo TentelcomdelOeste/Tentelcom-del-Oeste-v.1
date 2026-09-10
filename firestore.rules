@@ -273,6 +273,20 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+
+    match /vehicles/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // CONTROL VEHICULAR
+    match /control_vehicular_documentos/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /control_vehicular_mantenimientos/{id} {
+      allow read, write: if isAuthenticated();
+    }
     
     // NOTIFICATIONS
     match /notifications/{id} {

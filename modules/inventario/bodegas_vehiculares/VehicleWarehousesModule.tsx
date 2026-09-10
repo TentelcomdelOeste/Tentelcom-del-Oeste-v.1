@@ -227,6 +227,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
             <VehicleInventoryTab
               currentUser={currentUser}
               items={items}
+              movements={movements}
               onTransfer={handleTransfer}
               onMultipleTransfer={handleMultipleTransfer}
               onDeleteInventoryItem={handleDeleteInventoryItem}

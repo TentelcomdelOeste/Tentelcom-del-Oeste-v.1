@@ -5,11 +5,13 @@ import { ActionButton, IconButton, ACTION_ICONS, useConfirm, DataTable, TableCol
 import { FiRefreshCw, FiSearch, FiX, FiBox, FiChevronRight } from 'react-icons/fi';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
+import { VehicleInventoryDetailModal } from '../modals/VehicleInventoryDetailModal';
 import { format } from 'date-fns';
 
 interface Props {
   currentUser?: User | null;
   items?: VehicleWarehouseItem[];
+  movements?: VehicleMovement[];
   setItems?: React.Dispatch<React.SetStateAction<VehicleWarehouseItem[]>>;
   onRegisterMovement?: (movement: VehicleMovement) => void;
   onTransfer?: (data: {
@@ -33,6 +35,7 @@ interface Props {
 export const VehicleInventoryTab: React.FC<Props> = ({
   currentUser,
   items: externalItems,
+  movements = [],
   onTransfer,
   onMultipleTransfer,
   onDeleteInventoryItem,
@@ -50,6 +53,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   const setSelectedVehicleId = onSelectVehicleId || (() => {});
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [detailItem, setDetailItem] = useState<VehicleWarehouseItem | null>(null);
   
   const selectedVehicle = useMemo(() => {
     return vehicles.find(v => v.id === selectedVehicleId) || vehicles[0];
@@ -198,25 +202,37 @@ export const VehicleInventoryTab: React.FC<Props> = ({
         </div>
       )
     },
-    ...(canDelete ? [{
+    {
       header: 'Acciones',
       align: 'center' as const,
-      width: '80px',
+      width: '100px',
       render: (item: VehicleWarehouseItem) => (
-        <div className="flex justify-center items-center">
+        <div className="flex justify-center items-center gap-1.5">
           <IconButton
-            icon={<ACTION_ICONS.delete />}
+            icon={<ACTION_ICONS.view />}
             onClick={(e) => {
               e.stopPropagation();
-              handleDeleteItem(item);
+              setDetailItem(item);
             }}
-            variant="danger"
-            title="Eliminar de esta bodega vehicular"
-            className="!p-1 !h-7 !w-7"
+            variant="primary"
+            title="Ver detalle e historial"
+            className="!p-1 !h-7 !w-7 text-blue-600 hover:bg-blue-50"
           />
+          {canDelete && (
+            <IconButton
+              icon={<ACTION_ICONS.delete />}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteItem(item);
+              }}
+              variant="danger"
+              title="Eliminar de esta bodega vehicular"
+              className="!p-1 !h-7 !w-7"
+            />
+          )}
         </div>
       )
-    }] : [])
+    }
   ];
 
   return (
@@ -465,7 +481,14 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                   </div>
 
                   {/* Icono de Navegación discreto */}
-                  <div className="text-slate-300 hover:text-slate-400 ml-2 shrink-0">
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDetailItem(item);
+                    }}
+                    className="text-slate-300 hover:text-slate-400 ml-2 shrink-0 cursor-pointer p-1 -mr-1 rounded-md active:bg-slate-50 transition-colors"
+                    title="Ver detalle"
+                  >
                     <FiChevronRight className="w-5 h-5" />
                   </div>
                 </div>
@@ -504,6 +527,17 @@ export const VehicleInventoryTab: React.FC<Props> = ({
             }
             setShowTransferModal(false);
           }}
+        />
+      )}
+
+      {/* Detail & History Modal */}
+      {detailItem && (
+        <VehicleInventoryDetailModal
+          show={detailItem !== null}
+          onClose={() => setDetailItem(null)}
+          item={detailItem}
+          selectedVehicleId={selectedVehicleId}
+          movements={movements}
         />
       )}
     </div>
