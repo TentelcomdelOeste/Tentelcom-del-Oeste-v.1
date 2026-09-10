@@ -430,8 +430,10 @@ export const vehicleWarehouseService = {
         const itemSnap = await transaction.get(itemRef);
         if (itemSnap.exists()) {
           const data = itemSnap.data() as VehicleWarehouseItem;
-          const newCommitted = Math.max(0, data.committedStock - item.quantityCommitted);
-          const newAvailable = data.physicalStock - newCommitted;
+          const qtyCommitted = Number(item.quantityCommitted ?? item.quantity ?? 0);
+          const currentCommitted = Number(data.committedStock || 0);
+          const newCommitted = Math.max(0, currentCommitted - qtyCommitted);
+          const newAvailable = Number(data.physicalStock || 0) - newCommitted;
           transaction.update(itemRef, {
             committedStock: newCommitted,
             availableStock: newAvailable,
@@ -490,7 +492,7 @@ export const vehicleWarehouseService = {
 
       for (const reqItem of request.items) {
         const used = usedItems.find(u => u.inventoryItemId === reqItem.inventoryItemId)?.usedQuantity ?? 0;
-        const committed = reqItem.quantityCommitted;
+        const committed = Number(reqItem.quantityCommitted ?? reqItem.quantity ?? 0);
         const surplus = committed - used;
 
         const docInfo = itemDocs.get(reqItem.inventoryItemId);
@@ -639,8 +641,10 @@ export const vehicleWarehouseService = {
           const itemSnap = await transaction.get(itemRef);
           if (itemSnap.exists()) {
             const data = itemSnap.data() as VehicleWarehouseItem;
-            const newCommitted = Math.max(0, data.committedStock - item.quantityCommitted);
-            const newAvailable = data.physicalStock - newCommitted;
+            const qtyCommitted = Number(item.quantityCommitted ?? item.quantity ?? 0);
+            const currentCommitted = Number(data.committedStock || 0);
+            const newCommitted = Math.max(0, currentCommitted - qtyCommitted);
+            const newAvailable = Number(data.physicalStock || 0) - newCommitted;
             transaction.update(itemRef, {
               committedStock: newCommitted,
               availableStock: newAvailable,

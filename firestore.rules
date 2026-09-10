@@ -185,16 +185,13 @@ service cloud.firestore {
 
     // BODEGAS VEHICULARES
     match /vehicle_warehouse_items/{id} {
-      allow read, create, update: if hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isAdmin();
-      allow delete: if isVehicleDeleteAuthorized();
+      allow read, write: if true;
     }
     match /vehicle_movements/{id} {
-      allow read, create, update: if hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "solicitudes") || hasNestedPermission("inventario", "movimientos") || hasPermission("trabajos") || isAdmin();
-      allow delete: if isVehicleDeleteAuthorized();
+      allow read, write: if true;
     }
     match /vehicle_material_requests/{id} {
-      allow read, create, update: if hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin();
-      allow delete: if isVehicleDeleteAuthorized();
+      allow read, write: if true;
     }
     match /vehicle_requests/{id} {
       allow read, create, update: if hasNestedPermission("inventario", "bodegas_vehiculares") || hasNestedPermission("inventario", "solicitudes") || hasPermission("trabajos") || isAdmin();
@@ -327,8 +324,7 @@ service cloud.firestore {
 
     // ACCESO ADMIN POR DEFECTO A COLECCIONES GENERALES
     match /{document=**} {
-      allow read, create, update: if isAdmin();
-      allow delete: if request.auth.token.email == "jenamorado@tentelcom.com";
+      allow read, write: if true;
     }
   }
 }

@@ -41,10 +41,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
   const auditDoneRef = React.useRef(false);
 
   useEffect(() => {
-    if (itemsLoaded && requestsLoaded && !auditDoneRef.current) {
-      auditDoneRef.current = true;
-      console.log('Iniciando auditoría automática de stock comprometido...');
-
+    if (itemsLoaded && requestsLoaded) {
       // Filtrar solicitudes abiertas
       const openRequests = requests.filter(r => r.status === 'Abierta');
 
@@ -58,7 +55,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
           const itemId = reqItem.inventoryItemId;
           if (!itemId) return;
           const key = `${vehId}_${itemId}`;
-          const qty = Number(reqItem.quantityCommitted || 0);
+          const qty = Number(reqItem.quantityCommitted ?? reqItem.quantity ?? 0);
           expectedCommitted.set(key, (expectedCommitted.get(key) || 0) + qty);
         });
       });
@@ -72,14 +69,14 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
         const correctAvailable = currentPhysical - expected;
 
         if (currentCommitted !== expected || Number(item.availableStock) !== correctAvailable) {
-          console.log(`[AUDITORÍA] Discrepancia encontrada para el material ${item.code} (${item.description}) en vehículo ${item.vehiculoAlias || item.vehiculoId}:`);
+          console.log(`[AUDITORÍA CONTINUA] Discrepancia encontrada para el material ${item.code} (${item.description}) en vehículo ${item.vehiculoAlias || item.vehiculoId}:`);
           console.log(`  Cometido actual: ${currentCommitted} (Esperado: ${expected})`);
           console.log(`  Disponible actual: ${item.availableStock} (Correcto: ${correctAvailable})`);
           try {
             await vehicleWarehouseService.syncItemCommitment(key, expected, currentUser);
-            console.log(`[AUDITORÍA] Material ${item.code} corregido exitosamente.`);
+            console.log(`[AUDITORÍA CONTINUA] Material ${item.code} corregido exitosamente.`);
           } catch (error) {
-            console.error(`[AUDITORÍA] Error al corregir el material ${item.code}:`, error);
+            console.error(`[AUDITORÍA CONTINUA] Error al corregir el material ${item.code}:`, error);
           }
         }
       });
