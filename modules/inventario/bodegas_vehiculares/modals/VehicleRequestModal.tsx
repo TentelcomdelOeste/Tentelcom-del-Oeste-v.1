@@ -17,6 +17,173 @@ interface Props {
   currentUser?: any;
 }
 
+interface MobileRequestItemRowProps {
+  item: {
+    id: string;
+    inventoryItemId: string;
+    quantity: number;
+  };
+  availableMaterials: VehicleWarehouseItem[];
+  alreadyCommittedInThisEdit: number;
+  onQuantityChange: (id: string, newQty: number) => void;
+  onRemove: (id: string) => void;
+}
+
+const MobileRequestItemRow: React.FC<MobileRequestItemRowProps> = ({
+  item,
+  availableMaterials,
+  alreadyCommittedInThisEdit,
+  onQuantityChange,
+  onRemove
+}) => {
+  const currentMat = availableMaterials.find(m => m.inventoryItemId === item.inventoryItemId);
+  const maxAvail = currentMat 
+    ? currentMat.availableStock + alreadyCommittedInThisEdit
+    : item.quantity;
+
+  const [action, setAction] = useState<'AGREGAR' | 'QUITAR'>('AGREGAR');
+  const [diffValue, setDiffValue] = useState<number>(0);
+
+  useEffect(() => {
+    const diff = item.quantity - alreadyCommittedInThisEdit;
+    if (diff >= 0) {
+      setAction('AGREGAR');
+      setDiffValue(diff);
+    } else {
+      setAction('QUITAR');
+      setDiffValue(Math.abs(diff));
+    }
+  }, [item.quantity, alreadyCommittedInThisEdit]);
+
+  const handleActionChange = (newAction: 'AGREGAR' | 'QUITAR') => {
+    setAction(newAction);
+    let boundedDiff = diffValue;
+    if (newAction === 'AGREGAR') {
+      const maxAdd = Math.max(0, maxAvail - alreadyCommittedInThisEdit);
+      boundedDiff = Math.min(diffValue, maxAdd);
+    } else {
+      const maxSub = alreadyCommittedInThisEdit;
+      boundedDiff = Math.min(diffValue, maxSub);
+    }
+    setDiffValue(boundedDiff);
+
+    const newQty = newAction === 'AGREGAR'
+      ? alreadyCommittedInThisEdit + boundedDiff
+      : Math.max(0, alreadyCommittedInThisEdit - boundedDiff);
+    
+    onQuantityChange(item.id, newQty);
+  };
+
+  const handleDiffChange = (val: number) => {
+    let boundedVal = val;
+    if (action === 'AGREGAR') {
+      const maxAdd = Math.max(0, maxAvail - alreadyCommittedInThisEdit);
+      boundedVal = Math.max(0, Math.min(val, maxAdd));
+    } else {
+      const maxSub = alreadyCommittedInThisEdit;
+      boundedVal = Math.max(0, Math.min(val, maxSub));
+    }
+    setDiffValue(boundedVal);
+
+    const newQty = action === 'AGREGAR'
+      ? alreadyCommittedInThisEdit + boundedVal
+      : Math.max(0, alreadyCommittedInThisEdit - boundedVal);
+
+    onQuantityChange(item.id, newQty);
+  };
+
+  return (
+    <div className="bg-white border border-slate-200/90 rounded-xl p-3 shadow-xs space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-mono text-[10px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
+            {currentMat?.code || 'MATERIAL'}
+          </span>
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">
+            {currentMat?.category || 'GENERAL'}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onRemove(item.id)}
+          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+          title="Eliminar material"
+        >
+          <FiTrash2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      <p className="text-xs font-black text-slate-900 tracking-tight leading-snug">
+        {currentMat?.description || 'Material asignado'}
+      </p>
+
+      <div className="grid grid-cols-4 gap-2 items-end pt-1">
+        <div className="col-span-1 min-w-0">
+          <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
+            Acción
+          </span>
+          <div className="inline-flex bg-slate-100 p-0.5 rounded-lg text-[10px] font-black w-full border border-slate-200">
+            <button
+              type="button"
+              onClick={() => handleActionChange('AGREGAR')}
+              className={`flex-1 py-1 text-center rounded-md transition-all select-none text-[9px] font-black leading-none ${
+                action === 'AGREGAR'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              AGREGAR
+            </button>
+            <button
+              type="button"
+              onClick={() => handleActionChange('QUITAR')}
+              className={`flex-1 py-1 text-center rounded-md transition-all select-none text-[9px] font-black leading-none ${
+                action === 'QUITAR'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              QUITAR
+            </button>
+          </div>
+        </div>
+
+        <div className="col-span-1 min-w-0">
+          <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
+            Nueva cant.
+          </span>
+          <input
+            type="number"
+            min="0"
+            value={diffValue === 0 ? '' : diffValue}
+            onChange={(e) => handleDiffChange(parseInt(e.target.value) || 0)}
+            className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 h-7"
+            placeholder="0"
+          />
+        </div>
+
+        <div className="col-span-1 min-w-0">
+          <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
+            Ya ingresado
+          </span>
+          <div className="w-full p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-600 h-7 flex items-center justify-center">
+            {alreadyCommittedInThisEdit}
+          </div>
+        </div>
+
+        <div className="col-span-1 min-w-0">
+          <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
+            Máx. disp.
+          </span>
+          <div className="w-full p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-600 h-7 flex items-center justify-center">
+            {maxAvail}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const VehicleRequestModal: React.FC<Props> = ({
   show,
   onClose,
@@ -651,60 +818,19 @@ export const VehicleRequestModal: React.FC<Props> = ({
               ) : (
                 <div className="space-y-2">
                   {items.map((item) => {
-                    const currentMat = availableMaterials.find(m => m.inventoryItemId === item.inventoryItemId);
                     const alreadyCommittedInThisEdit = initialData?.items.find(
                       x => x.inventoryItemId === item.inventoryItemId
                     )?.quantityCommitted || 0;
-                    const maxAvail = currentMat 
-                      ? currentMat.availableStock + alreadyCommittedInThisEdit
-                      : item.quantity;
 
                     return (
-                      <div 
-                        key={item.id} 
-                        className="bg-white border border-slate-200/90 rounded-xl p-3 shadow-xs space-y-1.5"
-                      >
-                        {/* Header: Code + Category + Trash Button */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-mono text-[10px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
-                              {currentMat?.code || 'MATERIAL'}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">
-                              {currentMat?.category || 'GENERAL'}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors shrink-0"
-                            title="Eliminar material"
-                          >
-                            <FiTrash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* Description */}
-                        <p className="text-xs font-black text-slate-900 tracking-tight leading-snug">
-                          {currentMat?.description || 'Material asignado'}
-                        </p>
-
-                        {/* Quantity Input & Max Unit */}
-                        <div className="flex items-center gap-2 pt-0.5">
-                          <span className="text-[10px] font-semibold text-slate-500 shrink-0">Cantidad</span>
-                          <input
-                            type="number"
-                            min="1"
-                            max={maxAvail}
-                            value={item.quantity || ''}
-                            onChange={(e) => handleItemQuantityChange(item.id, parseInt(e.target.value) || 1)}
-                            className="w-16 h-7 bg-white border border-slate-200 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-500 shadow-xs"
-                          />
-                          <span className="text-[10px] text-slate-500 font-medium">
-                            {currentMat?.unit || 'und'} (Máx: {maxAvail})
-                          </span>
-                        </div>
-                      </div>
+                      <MobileRequestItemRow
+                        key={item.id}
+                        item={item}
+                        availableMaterials={availableMaterials}
+                        alreadyCommittedInThisEdit={alreadyCommittedInThisEdit}
+                        onQuantityChange={handleItemQuantityChange}
+                        onRemove={handleRemoveItem}
+                      />
                     );
                   })}
                 </div>
