@@ -91,8 +91,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   const emitImagesUpdate = (newImages: string[]) => {
     if (onImagesUpdate) {
       onImagesUpdate(newImages);
-    }
-    if (onImageUpdate) {
+    } else if (onImageUpdate) {
       onImageUpdate(newImages.length > 0 ? newImages[0] : '');
     }
   };

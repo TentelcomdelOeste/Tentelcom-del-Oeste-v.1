@@ -168,7 +168,27 @@ export const updateVersionedDocOffline = async (
     if (base.version) {
       nextVersion = (base.version || 1) + 1;
     }
-    const mergedData = { ...base, ...data };
+
+    // Limpiar campos undefined del objeto base y del payload entrante para evitar corrupción de datos
+    const cleanBase: any = {};
+    if (base && typeof base === 'object') {
+      Object.keys(base).forEach(key => {
+        if (base[key] !== undefined) {
+          cleanBase[key] = base[key];
+        }
+      });
+    }
+
+    const cleanDataInput: any = {};
+    if (data && typeof data === 'object') {
+      Object.keys(data).forEach(key => {
+        if (data[key] !== undefined) {
+          cleanDataInput[key] = data[key];
+        }
+      });
+    }
+
+    const mergedData = { ...cleanBase, ...cleanDataInput };
 
     const enrichedData = {
       ...mergedData,

@@ -120,15 +120,28 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
       const itemsMap = new Map<string, InventoryItem>();
       
       // 1. Priorizar remotos base
-      serverItems.forEach(item => itemsMap.set(item.id, item));
+      serverItems.forEach(item => {
+        if (item && item.id) {
+          itemsMap.set(item.id, item);
+        }
+      });
       
       // 2. Sobrescribir con locales si son sucios o nuevos
       localItems.forEach(item => {
+        if (!item || !item.id) return;
         const remote = itemsMap.get(item.id);
         if (!remote || item.isDirty) {
+          // Filtrar propiedades con valor undefined para evitar sobrescribir datos válidos del remoto
+          const cleanLocal: any = {};
+          Object.keys(item).forEach(key => {
+            if ((item as any)[key] !== undefined) {
+              cleanLocal[key] = (item as any)[key];
+            }
+          });
+
           itemsMap.set(item.id, {
             ...remote,
-            ...item
+            ...cleanLocal
           });
         }
       });
@@ -333,12 +346,19 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
     return result.status === 'ACTIVE_EXISTS';
   }, [checkCodeStatus]);
 
-  const normalizeItem = (item: any) => ({
-    ...item,
-    category: item.category ? item.category.toUpperCase() : item.category,
-    description: item.description ? item.description.toUpperCase() : item.description,
-    location: item.location ? item.location.toUpperCase() : item.location,
-  });
+  const normalizeItem = <T extends Record<string, any>>(item: T): T => {
+    const result: any = { ...item };
+    if (typeof result.category === 'string') {
+      result.category = result.category.toUpperCase();
+    }
+    if (typeof result.description === 'string') {
+      result.description = result.description.toUpperCase();
+    }
+    if (typeof result.location === 'string') {
+      result.location = result.location.toUpperCase();
+    }
+    return result;
+  };
 
   const addInventoryItem = useCallback(async (item: Omit<InventoryItem, 'id' | 'updatedAt' | 'updatedBy'>) => {
     if (!authReady || !currentUser) {
@@ -378,7 +398,16 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
       throw new Error("No autenticado");
     }
 
-    const normalizedItem = normalizeItem(item);
+    // Depurar propiedades con valor undefined
+    const cleanInput: any = {};
+    Object.keys(item || {}).forEach(key => {
+      const val = (item as any)[key];
+      if (val !== undefined) {
+        cleanInput[key] = val;
+      }
+    });
+
+    const normalizedItem = normalizeItem(cleanInput);
     const currentItem = items.find(i => i.id === id);
     
     if (normalizedItem.code && currentItem && normalizedItem.code.trim().toUpperCase() !== currentItem.code.trim().toUpperCase()) {
@@ -394,10 +423,19 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
         updatedBy: currentUser?.email || 'dev-user@tentelcom.com'
     };
 
-    await updateVersionedDocOffline("inventory_items", id, itemData);
+    // Pasar currentItem como fallbackBaseData para que localDocStore tenga el documento completo si aún no existía en SQLite
+    await updateVersionedDocOffline("inventory_items", id, itemData, currentItem);
 
-    // Actualizar estado local
-    setItems(prev => prev.map(i => i.id === id ? { ...i, ...itemData } : i));
+    // Actualizar estado local preservando todos los campos previos
+    setItems(prev => prev.map(i => {
+      if (i.id === id) {
+        return {
+          ...i,
+          ...itemData
+        };
+      }
+      return i;
+    }));
   }, [currentUser, items, checkCodeStatus, authReady]);
 
   const deleteInventoryItem = useCallback(async (id: string) => {
