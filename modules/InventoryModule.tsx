@@ -634,6 +634,13 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               onClose={() => { setViewingItem(null); onClearSelectedId?.(); }}
               item={viewingItem}
               currentUser={currentUser}
+              onImagesUpdate={(imageUrls) => {
+                if (viewingItem) {
+                  const primaryImage = imageUrls.length > 0 ? imageUrls[0] : '';
+                  updateInventoryItem(viewingItem.id, { imageUrls, imageUrl: primaryImage });
+                  setViewingItem(prev => prev ? { ...prev, imageUrls, imageUrl: primaryImage } : null);
+                }
+              }}
               onImageUpdate={(imageUrl) => {
                 if (viewingItem) {
                   updateInventoryItem(viewingItem.id, { imageUrl });

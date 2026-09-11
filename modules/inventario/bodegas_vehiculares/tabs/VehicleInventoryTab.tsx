@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { User } from '../../../../types';
 import { useInventory } from '../../../../hooks/useInventory';
 import { getVehicleCatalog, vehicleWarehouseService, isVehicleDeleteAuthorized } from '../services/vehicleWarehouseService';
 import { ActionButton, IconButton, ACTION_ICONS, useConfirm, DataTable, TableColumn } from '../../../../design-system';
-import { FiRefreshCw, FiSearch, FiX, FiBox, FiChevronRight } from 'react-icons/fi';
+import { FiRefreshCw, FiSearch, FiX, FiBox, FiChevronRight, FiChevronLeft } from 'react-icons/fi';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
 import { VehicleInventoryDetailModal } from '../modals/VehicleInventoryDetailModal';
@@ -52,11 +53,16 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   const { items: generalInventoryItems } = useInventory(currentUser || null, { fetchAll: true });
 
   const itemImagesMap = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, string[]>();
     if (Array.isArray(generalInventoryItems)) {
       generalInventoryItems.forEach(item => {
-        if (item && item.id && item.imageUrl) {
-          map.set(item.id, item.imageUrl);
+        if (item && item.id) {
+          const imgs: string[] = item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0
+            ? item.imageUrls.filter(Boolean)
+            : (item.imageUrl ? [item.imageUrl] : []);
+          if (imgs.length > 0) {
+            map.set(item.id, imgs);
+          }
         }
       });
     }
@@ -71,6 +77,81 @@ export const VehicleInventoryTab: React.FC<Props> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [detailItem, setDetailItem] = useState<VehicleWarehouseItem | null>(null);
+  const [previewGallery, setPreviewGallery] = useState<{
+    images: string[];
+    currentIndex: number;
+    title: string;
+    code: string;
+  } | null>(null);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [lastTap, setLastTap] = useState<{ id: string; time: number }>({ id: '', time: 0 });
+
+  const handleImageDoubleClick = (item: VehicleWarehouseItem, images: string[], e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    if (images && images.length > 0) {
+      setPreviewGallery({
+        images,
+        currentIndex: 0,
+        title: item.description,
+        code: item.code
+      });
+    }
+  };
+
+  const handleImageClick = (item: VehicleWarehouseItem, images: string[], e: React.MouseEvent | React.TouchEvent) => {
+    if (!images || images.length === 0) return;
+    const now = Date.now();
+    if (lastTap.id === item.id && now - lastTap.time < 350) {
+      e.stopPropagation();
+      setPreviewGallery({
+        images,
+        currentIndex: 0,
+        title: item.description,
+        code: item.code
+      });
+      setLastTap({ id: '', time: 0 });
+    } else {
+      setLastTap({ id: item.id, time: now });
+    }
+  };
+
+  const handlePrevImage = (e?: React.SyntheticEvent) => {
+    if (e) e.stopPropagation();
+    if (!previewGallery || previewGallery.images.length <= 1) return;
+    setPreviewGallery(prev => {
+      if (!prev) return null;
+      const nextIdx = prev.currentIndex > 0 ? prev.currentIndex - 1 : prev.images.length - 1;
+      return { ...prev, currentIndex: nextIdx };
+    });
+  };
+
+  const handleNextImage = (e?: React.SyntheticEvent) => {
+    if (e) e.stopPropagation();
+    if (!previewGallery || previewGallery.images.length <= 1) return;
+    setPreviewGallery(prev => {
+      if (!prev) return null;
+      const nextIdx = prev.currentIndex < prev.images.length - 1 ? prev.currentIndex + 1 : 0;
+      return { ...prev, currentIndex: nextIdx };
+    });
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches && e.touches.length > 0) {
+      setTouchStartX(e.touches[0].clientX);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null || !e.changedTouches || e.changedTouches.length === 0) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const deltaX = touchEndX - touchStartX;
+    if (deltaX > 40) {
+      handlePrevImage();
+    } else if (deltaX < -40) {
+      handleNextImage();
+    }
+    setTouchStartX(null);
+  };
   
   const selectedVehicle = useMemo(() => {
     return vehicles.find(v => v.id === selectedVehicleId) || vehicles[0];
@@ -406,18 +487,39 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                 {/* AREA SUPERIOR: Imagen + Detalles del Material */}
                 <div className="flex gap-3 items-start">
                   {/* Espacio reservado para la imagen (limpio/neutral) */}
-                  <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                    {itemImagesMap.get(item.inventoryItemId) ? (
-                      <img 
-                        src={itemImagesMap.get(item.inventoryItemId)} 
-                        alt={item.description} 
-                        className="w-full h-full object-contain p-1"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <FiBox className="w-6 h-6 text-slate-300" />
-                    )}
-                  </div>
+                  {(() => {
+                    const images = itemImagesMap.get(item.inventoryItemId) || [];
+                    const primaryImage = images.length > 0 ? images[0] : '';
+                    const hasImages = images.length > 0;
+                    return (
+                      <div 
+                        className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center shrink-0 overflow-hidden ${
+                          hasImages ? 'cursor-pointer select-none active:scale-95 transition-transform' : ''
+                        }`}
+                        onDoubleClick={(e) => handleImageDoubleClick(item, images, e)}
+                        onClick={(e) => handleImageClick(item, images, e)}
+                        title={hasImages ? "Doble clic para ampliar imágenes" : undefined}
+                      >
+                        {hasImages ? (
+                          <>
+                            <img 
+                              src={primaryImage} 
+                              alt={item.description} 
+                              className="w-full h-full object-contain p-1 pointer-events-none"
+                              referrerPolicy="no-referrer"
+                            />
+                            {images.length > 1 && (
+                              <span className="absolute bottom-0.5 right-0.5 bg-slate-900/80 text-white text-[8px] font-black px-1 py-0.2 rounded leading-none backdrop-blur-xs">
+                                1/{images.length}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <FiBox className="w-6 h-6 text-slate-300" />
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Detalles textuales */}
                   <div className="flex-1 min-w-0">
@@ -565,6 +667,105 @@ export const VehicleInventoryTab: React.FC<Props> = ({
           selectedVehicleId={selectedVehicleId}
           movements={movements}
         />
+      )}
+
+      {/* Modal de Vista de Imagen de Referencia (Exclusivamente de Lectura) */}
+      {previewGallery && createPortal(
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+          onClick={() => setPreviewGallery(null)}
+        >
+          <div 
+            className="relative bg-white rounded-2xl shadow-2xl overflow-hidden max-w-md w-full max-h-[85vh] flex flex-col items-center p-4 border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header del Modal */}
+            <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+              <div className="min-w-0 pr-2">
+                <h3 className="font-bold text-sm text-slate-900 truncate leading-tight">
+                  {previewGallery.title}
+                </h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="inline-block text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                    {previewGallery.code}
+                  </span>
+                  {previewGallery.images.length > 1 && (
+                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                      {previewGallery.currentIndex + 1} / {previewGallery.images.length}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewGallery(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors shrink-0"
+                title="Cerrar vista de imagen"
+                aria-label="Cerrar"
+              >
+                <FiX className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Area de Imagen centrada y proporcional con soporte Swipe y Flechas */}
+            <div 
+              className="relative w-full flex-1 flex items-center justify-center overflow-hidden bg-slate-50 rounded-xl p-3 min-h-[240px] max-h-[60vh] select-none touch-pan-y"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
+              {/* Flecha Izquierda (Anterior) */}
+              {previewGallery.images.length > 1 && (
+                <button
+                  type="button"
+                  onClick={handlePrevImage}
+                  className="absolute left-2 z-10 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95"
+                  title="Imagen anterior"
+                >
+                  <FiChevronLeft className="w-5 h-5" />
+                </button>
+              )}
+
+              {/* Imagen actual */}
+              <img
+                src={previewGallery.images[previewGallery.currentIndex]}
+                alt={`${previewGallery.title} ${previewGallery.currentIndex + 1}`}
+                className="max-w-full max-h-full object-contain rounded-md transition-all duration-200"
+                referrerPolicy="no-referrer"
+              />
+
+              {/* Flecha Derecha (Siguiente) */}
+              {previewGallery.images.length > 1 && (
+                <button
+                  type="button"
+                  onClick={handleNextImage}
+                  className="absolute right-2 z-10 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95"
+                  title="Siguiente imagen"
+                >
+                  <FiChevronRight className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Indicador inferior de navegación si hay múltiples imágenes */}
+            {previewGallery.images.length > 1 && (
+              <div className="flex items-center justify-center gap-1.5 mt-3 pt-1">
+                {previewGallery.images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setPreviewGallery(prev => prev ? { ...prev, currentIndex: idx } : null)}
+                    className={`h-2 rounded-full transition-all ${
+                      idx === previewGallery.currentIndex 
+                        ? 'w-6 bg-blue-600' 
+                        : 'w-2 bg-slate-200 hover:bg-slate-300'
+                    }`}
+                    title={`Ir a imagen ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

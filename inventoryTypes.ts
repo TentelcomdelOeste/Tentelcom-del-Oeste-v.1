@@ -16,7 +16,8 @@ export interface InventoryItem {
   location: string; // Ubicación física
   price: number; // Precio unitario (visible solo para admin)
   currency: 'USD' | 'CRC';
-  imageUrl?: string; // URL o base64 de la imagen de referencia del material
+  imageUrl?: string; // URL o base64 de la imagen de referencia del material (legacy/retrocompatibilidad)
+  imageUrls?: string[]; // Lista de URLs o base64 de imágenes de referencia (hasta 4)
   providers?: ProductProvider[]; // Lista de precios por proveedor
   deleted?: boolean; // Marca de eliminación lógica
   updatedAt: string;

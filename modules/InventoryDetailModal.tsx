@@ -1,13 +1,13 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { InventoryItem } from '../inventoryTypes';
 import { User } from '../utils/types';
 import { useInventoryMovements } from '../hooks/useInventoryMovements';
 import useLockBodyScroll from '../hooks/useLockBodyScroll';
-import { DataTable, TableColumn, IconButton } from '../design-system';
+import { useConfirm, DataTable, TableColumn, IconButton } from '../design-system';
 import { formatCurrency } from '../utils/formatCurrency';
 import { InventoryMovement } from '../inventoryMovementTypes';
-import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2 } from "react-icons/fi";
+import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2, FiChevronLeft, FiChevronRight, FiUpload, FiRefreshCw } from "react-icons/fi";
 
 interface InventoryDetailModalProps {
   show: boolean;
@@ -15,12 +15,42 @@ interface InventoryDetailModalProps {
   item: InventoryItem | null;
   currentUser: User;
   onImageUpdate?: (imageUrl: string) => void;
+  onImagesUpdate?: (imageUrls: string[]) => void;
 }
 
-export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show, onClose, item, currentUser, onImageUpdate }) => {
+export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show, onClose, item, currentUser, onImageUpdate, onImagesUpdate }) => {
   useLockBodyScroll(show);
   const { movements, isLoading } = useInventoryMovements(currentUser);
+  const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
+  const replacingIndexRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    replacingIndexRef.current = replacingIndex;
+  }, [replacingIndex]);
+
+  const currentImages = useMemo(() => {
+    if (!item) return [];
+    if (item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
+      return item.imageUrls.filter(Boolean);
+    }
+    if (item.imageUrl) {
+      return [item.imageUrl];
+    }
+    return [];
+  }, [item]);
+
+  // Keep selectedIndex in bounds if currentImages length changes
+  useEffect(() => {
+    if (selectedIndex >= currentImages.length && currentImages.length > 0) {
+      setSelectedIndex(currentImages.length - 1);
+    } else if (currentImages.length === 0) {
+      setSelectedIndex(0);
+    }
+  }, [currentImages, selectedIndex]);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -30,6 +60,43 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     return () => window.removeEventListener('keydown', handleEsc);
   }, [show, onClose]);
 
+  const handlePrevImage = () => {
+    if (currentImages.length <= 1) return;
+    setSelectedIndex(prev => (prev > 0 ? prev - 1 : currentImages.length - 1));
+  };
+
+  const handleNextImage = () => {
+    if (currentImages.length <= 1) return;
+    setSelectedIndex(prev => (prev < currentImages.length - 1 ? prev + 1 : 0));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches && e.touches.length > 0) {
+      setTouchStartX(e.touches[0].clientX);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null || !e.changedTouches || e.changedTouches.length === 0) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const deltaX = touchEndX - touchStartX;
+    if (deltaX > 40) {
+      handlePrevImage();
+    } else if (deltaX < -40) {
+      handleNextImage();
+    }
+    setTouchStartX(null);
+  };
+
+  const emitImagesUpdate = (newImages: string[]) => {
+    if (onImagesUpdate) {
+      onImagesUpdate(newImages);
+    }
+    if (onImageUpdate) {
+      onImageUpdate(newImages.length > 0 ? newImages[0] : '');
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -38,7 +105,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        const maxDim = 500;
+        const maxDim = 480;
         let width = img.width;
         let height = img.height;
 
@@ -58,10 +125,20 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
-          if (onImageUpdate) {
-            onImageUpdate(compressedDataUrl);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.70);
+          
+          let nextImages = [...currentImages];
+          if (replacingIndexRef.current !== null && replacingIndexRef.current < nextImages.length) {
+            nextImages[replacingIndexRef.current] = compressedDataUrl;
+            setSelectedIndex(replacingIndexRef.current);
+          } else if (nextImages.length < 4) {
+            nextImages.push(compressedDataUrl);
+            setSelectedIndex(nextImages.length - 1);
           }
+          
+          emitImagesUpdate(nextImages);
+          setReplacingIndex(null);
+          if (fileInputRef.current) fileInputRef.current.value = '';
         }
       };
       img.src = event.target?.result as string;
@@ -69,9 +146,26 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveImage = () => {
-    if (onImageUpdate) {
-      onImageUpdate('');
+  const handleDeleteImage = async () => {
+    if (currentImages.length === 0 || selectedIndex < 0 || selectedIndex >= currentImages.length) return;
+    const indexToDelete = selectedIndex;
+
+    const shouldDelete = await confirm({
+      title: "¿Eliminar imagen de referencia?",
+      description: `¿Está seguro de eliminar la imagen #${indexToDelete + 1} del material "${item?.description || ''}"? Esta acción no se puede deshacer.`,
+      confirmLabel: "ELIMINAR",
+      variant: "danger"
+    });
+
+    if (!shouldDelete) return;
+
+    const nextImages = currentImages.filter((_, idx) => idx !== indexToDelete);
+    emitImagesUpdate(nextImages);
+
+    if (nextImages.length === 0) {
+      setSelectedIndex(0);
+    } else if (indexToDelete >= nextImages.length) {
+      setSelectedIndex(nextImages.length - 1);
     }
   };
 
@@ -281,61 +375,134 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                         </p>
                     </div>
 
-                    {/* Reference Image Card */}
-                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm sm:col-span-2 flex flex-col md:flex-row items-center gap-6">
-                        <div className="w-full md:w-1/3">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Imagen de Referencia</label>
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                                Carga una imagen de referencia para este material. Se utilizará en el inventario general y en las tarjetas móviles de bodegas vehiculares.
-                            </p>
+                    {/* Reference Images Card (Visor + Botones Exteriores) */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm sm:col-span-2 flex flex-col gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Imágenes de Referencia</label>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Visor de imágenes del material. Utiliza los botones inferiores para subir, reemplazar o eliminar imágenes.
+                                </p>
+                            </div>
+                            <div className="shrink-0">
+                                <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                                    currentImages.length >= 4 
+                                        ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}>
+                                    {currentImages.length} de 4 imágenes
+                                </span>
+                            </div>
                         </div>
-                        <div className="w-full md:w-2/3 flex flex-col items-center justify-center">
-                            {item.imageUrl ? (
-                                <div className="relative group w-full max-w-xs aspect-square border border-slate-200 rounded-xl overflow-hidden bg-slate-50 flex items-center justify-center">
+
+                        {/* VISOR DE IMÁGENES (Exclusivo para visualización y navegación) */}
+                        <div 
+                            className="relative w-full aspect-video sm:aspect-[21/9] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-4 border border-slate-800 shadow-inner select-none touch-pan-y"
+                            onTouchStart={handleTouchStart}
+                            onTouchEnd={handleTouchEnd}
+                        >
+                            {currentImages.length > 0 ? (
+                                <>
+                                    {/* Flecha Izquierda (Anterior) */}
+                                    {currentImages.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={handlePrevImage}
+                                            className="absolute left-3 z-10 p-2.5 bg-slate-900/70 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95 border border-slate-700/50 backdrop-blur-xs cursor-pointer"
+                                            title="Imagen anterior"
+                                        >
+                                            <FiChevronLeft className="w-5 h-5" />
+                                        </button>
+                                    )}
+
+                                    {/* Imagen activa centrada sin deformar */}
                                     <img 
-                                        src={item.imageUrl} 
-                                        alt={item.description} 
-                                        className="w-full h-full object-contain p-2"
+                                        src={currentImages[selectedIndex] || currentImages[0]} 
+                                        alt={`${item.description} - Imagen ${selectedIndex + 1}`} 
+                                        className="max-w-full max-h-full object-contain rounded-lg transition-all duration-200 pointer-events-none"
                                         referrerPolicy="no-referrer"
                                     />
-                                    <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
-                                        <button 
-                                            onClick={() => fileInputRef.current?.click()} 
-                                            className="px-3 py-1.5 bg-white text-slate-800 text-xs font-bold rounded-lg hover:bg-slate-100 transition-colors shadow-md"
+
+                                    {/* Flecha Derecha (Siguiente) */}
+                                    {currentImages.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={handleNextImage}
+                                            className="absolute right-3 z-10 p-2.5 bg-slate-900/70 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95 border border-slate-700/50 backdrop-blur-xs cursor-pointer"
+                                            title="Siguiente imagen"
                                         >
-                                            Reemplazar
+                                            <FiChevronRight className="w-5 h-5" />
                                         </button>
-                                        <button 
-                                            onClick={handleRemoveImage} 
-                                            className="p-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors shadow-md"
-                                            title="Eliminar"
-                                        >
-                                            <FiTrash2 className="text-sm" />
-                                        </button>
+                                    )}
+
+                                    {/* Indicador de posición (ej. "2 / 4") */}
+                                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-slate-950/80 text-white text-xs font-bold px-3 py-1 rounded-full backdrop-blur-md border border-slate-800 tracking-wider shadow-sm">
+                                        {selectedIndex + 1} / {currentImages.length}
                                     </div>
-                                </div>
+                                </>
                             ) : (
-                                <div 
-                                    onClick={() => fileInputRef.current?.click()} 
-                                    className="w-full max-w-xs aspect-video border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50/50 cursor-pointer transition-colors p-4 text-center group"
-                                >
-                                    <div className="w-10 h-10 bg-slate-100 group-hover:bg-blue-50 text-slate-400 group-hover:text-blue-500 rounded-full flex items-center justify-center transition-colors">
-                                        <FiCamera className="text-lg" />
+                                /* Estado Sin Imágenes */
+                                <div className="flex flex-col items-center justify-center gap-2 text-slate-400 p-6 text-center">
+                                    <div className="w-12 h-12 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400">
+                                        <FiCamera className="text-xl" />
                                     </div>
                                     <div>
-                                        <span className="text-xs font-bold text-slate-700 block group-hover:text-blue-600 transition-colors">Cargar Imagen</span>
-                                        <span className="text-[10px] text-slate-400 mt-1 block">Click para seleccionar archivo</span>
+                                        <span className="text-xs font-bold text-slate-300 block">Sin imagen de referencia</span>
+                                        <span className="text-[10px] text-slate-500 mt-0.5 block">Utiliza el botón "SUBIR IMAGEN" para agregar fotos</span>
                                     </div>
                                 </div>
                             )}
-                            <input 
-                                ref={fileInputRef} 
-                                type="file" 
-                                accept="image/*" 
-                                onChange={handleFileChange} 
-                                className="hidden" 
-                            />
                         </div>
+
+                        {/* BOTONES ACCIONES FUERA DEL VISOR */}
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
+                            {/* SUBIR IMAGEN (Visible cuando hay menos de 4 imágenes) */}
+                            {currentImages.length < 4 && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setReplacingIndex(null);
+                                        fileInputRef.current?.click();
+                                    }}
+                                    className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                    <FiUpload className="text-sm" /> SUBIR IMAGEN
+                                </button>
+                            )}
+
+                            {/* REEMPLAZAR Y ELIMINAR (Solo cuando hay al menos 1 imagen) */}
+                            {currentImages.length > 0 && (
+                                <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setReplacingIndex(selectedIndex);
+                                            fileInputRef.current?.click();
+                                        }}
+                                        className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 border border-slate-200 cursor-pointer"
+                                        title="Reemplazar la imagen actualmente seleccionada"
+                                    >
+                                        <FiRefreshCw className="text-xs" /> REEMPLAZAR
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleDeleteImage}
+                                        className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 border border-rose-200 cursor-pointer"
+                                        title="Eliminar la imagen actualmente seleccionada"
+                                    >
+                                        <FiTrash2 className="text-xs" /> ELIMINAR
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <input 
+                            ref={fileInputRef} 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleFileChange} 
+                            className="hidden" 
+                        />
                     </div>
                 </div>
 

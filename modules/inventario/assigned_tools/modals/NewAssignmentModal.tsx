@@ -86,7 +86,7 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
     if (show && !hasInitializedAssignedBy && activeEmployees.length > 0) {
       const defaultName = currentUser?.name || currentUser?.displayName || '';
       const matchingEmp = activeEmployees.find(
-        (emp) => emp.name.toLowerCase() === defaultName.toLowerCase()
+        (emp) => (emp?.name || '').toLowerCase() === defaultName.toLowerCase()
       );
       if (matchingEmp) {
         setAssignedBy(matchingEmp.name);
@@ -107,7 +107,7 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
         return {
           ...item,
           availableStock,
-          label: `[${item.code}] ${item.description} (Stock: ${availableStock} ${item.unit || 'unid'})`
+          label: `[${item.code}] ${item.description || ''} (Stock: ${availableStock} ${item.unit || 'unid'})`
         };
       })
       .sort((a, b) => {
@@ -116,7 +116,7 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
         const bIsTool = (b.category || '').toLowerCase().includes('herramienta');
         if (aIsTool && !bIsTool) return -1;
         if (!aIsTool && bIsTool) return 1;
-        return a.description.localeCompare(b.description);
+        return (a.description || '').localeCompare(b.description || '');
       });
   }, [inventoryItems]);
 

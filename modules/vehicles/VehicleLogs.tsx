@@ -50,7 +50,7 @@ import {
   subscribeVehicleMaintenances,
   calculateControlAlerts
 } from "./controlVehicularService";
-import { VehicleDocument, VehicleMaintenance, VehicleControlAlert, Vehicle } from "../../types/vehicle.types";
+import { VehicleDocument, VehicleMaintenance, Vehicle } from "../../types/vehicle.types";
 import { FiAlertTriangle } from "react-icons/fi";
 
 const SECTION_OPTIONS = [
@@ -151,7 +151,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
           }
         });
         setEmployeeMap(mapEmp);
-        setEmployeesList(listEmp.sort((a, b) => a.name.localeCompare(b.name)));
+        setEmployeesList(listEmp.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
 
         // Vehicles
         const snapVeh = await getDocs(collection(db, "vehicles"));
