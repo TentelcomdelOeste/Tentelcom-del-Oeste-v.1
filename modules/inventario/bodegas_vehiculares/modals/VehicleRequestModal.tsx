@@ -25,7 +25,7 @@ interface MobileRequestItemRowProps {
   };
   availableMaterials: VehicleWarehouseItem[];
   alreadyCommittedInThisEdit: number;
-  onQuantityChange: (id: string, newQty: number) => void;
+  onQuantityChange: (id: string, newQty: number, isMobile?: boolean) => void;
   onRemove: (id: string) => void;
 }
 
@@ -41,55 +41,50 @@ const MobileRequestItemRow: React.FC<MobileRequestItemRowProps> = ({
     ? currentMat.availableStock + alreadyCommittedInThisEdit
     : item.quantity;
 
-  const [action, setAction] = useState<'AGREGAR' | 'QUITAR'>('AGREGAR');
+  const [action, setAction] = useState<'+' | '-'>('+');
   const [diffValue, setDiffValue] = useState<number>(0);
 
-  useEffect(() => {
-    const diff = item.quantity - alreadyCommittedInThisEdit;
-    if (diff >= 0) {
-      setAction('AGREGAR');
-      setDiffValue(diff);
-    } else {
-      setAction('QUITAR');
-      setDiffValue(Math.abs(diff));
-    }
-  }, [item.quantity, alreadyCommittedInThisEdit]);
-
-  const handleActionChange = (newAction: 'AGREGAR' | 'QUITAR') => {
+  const handleActionChange = (newAction: '+' | '-') => {
     setAction(newAction);
-    let boundedDiff = diffValue;
-    if (newAction === 'AGREGAR') {
-      const maxAdd = Math.max(0, maxAvail - alreadyCommittedInThisEdit);
-      boundedDiff = Math.min(diffValue, maxAdd);
+    let val = diffValue;
+    if (newAction === '+') {
+      const maxAdd = Math.max(0, maxAvail - item.quantity);
+      val = Math.min(val, maxAdd);
     } else {
-      const maxSub = alreadyCommittedInThisEdit;
-      boundedDiff = Math.min(diffValue, maxSub);
+      const maxSub = item.quantity;
+      val = Math.min(val, maxSub);
     }
-    setDiffValue(boundedDiff);
-
-    const newQty = newAction === 'AGREGAR'
-      ? alreadyCommittedInThisEdit + boundedDiff
-      : Math.max(0, alreadyCommittedInThisEdit - boundedDiff);
-    
-    onQuantityChange(item.id, newQty);
+    setDiffValue(val);
   };
 
   const handleDiffChange = (val: number) => {
-    let boundedVal = val;
-    if (action === 'AGREGAR') {
-      const maxAdd = Math.max(0, maxAvail - alreadyCommittedInThisEdit);
-      boundedVal = Math.max(0, Math.min(val, maxAdd));
+    if (val < 0) val = 0;
+    if (action === '+') {
+      const maxAdd = Math.max(0, maxAvail - item.quantity);
+      val = Math.min(val, maxAdd);
     } else {
-      const maxSub = alreadyCommittedInThisEdit;
-      boundedVal = Math.max(0, Math.min(val, maxSub));
+      const maxSub = item.quantity;
+      val = Math.min(val, maxSub);
     }
-    setDiffValue(boundedVal);
+    setDiffValue(val);
+  };
 
-    const newQty = action === 'AGREGAR'
-      ? alreadyCommittedInThisEdit + boundedVal
-      : Math.max(0, alreadyCommittedInThisEdit - boundedVal);
-
-    onQuantityChange(item.id, newQty);
+  const handleApply = () => {
+    if (diffValue <= 0) return;
+    let newQty = item.quantity;
+    if (action === '+') {
+      newQty = item.quantity + diffValue;
+      if (newQty > maxAvail) {
+        newQty = maxAvail;
+      }
+    } else {
+      newQty = item.quantity - diffValue;
+      if (newQty < 0) {
+        newQty = 0;
+      }
+    }
+    onQuantityChange(item.id, newQty, true);
+    setDiffValue(0);
   };
 
   return (
@@ -117,66 +112,84 @@ const MobileRequestItemRow: React.FC<MobileRequestItemRowProps> = ({
         {currentMat?.description || 'Material asignado'}
       </p>
 
-      <div className="grid grid-cols-4 gap-2 items-end pt-1">
-        <div className="col-span-1 min-w-0">
+      <div className="grid grid-cols-12 gap-2 items-end pt-1">
+        {/* ACCIÓN (+/-) */}
+        <div className="col-span-3 min-w-0">
           <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
             Acción
           </span>
-          <div className="inline-flex bg-slate-100 p-0.5 rounded-lg text-[10px] font-black w-full border border-slate-200">
+          <div className="inline-flex bg-slate-100 p-0.5 rounded-lg text-[11px] font-black w-full border border-slate-200">
             <button
               type="button"
-              onClick={() => handleActionChange('AGREGAR')}
-              className={`flex-1 py-1 text-center rounded-md transition-all select-none text-[9px] font-black leading-none ${
-                action === 'AGREGAR'
+              onClick={() => handleActionChange('+')}
+              className={`flex-1 py-1 text-center rounded-md transition-all select-none text-[11px] font-black leading-none ${
+                action === '+'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              AGREGAR
+              +
             </button>
             <button
               type="button"
-              onClick={() => handleActionChange('QUITAR')}
-              className={`flex-1 py-1 text-center rounded-md transition-all select-none text-[9px] font-black leading-none ${
-                action === 'QUITAR'
+              onClick={() => handleActionChange('-')}
+              className={`flex-1 py-1 text-center rounded-md transition-all select-none text-[11px] font-black leading-none ${
+                action === '-'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              QUITAR
+              −
             </button>
           </div>
         </div>
 
-        <div className="col-span-1 min-w-0">
+        {/* NUEVA CANT. + BOTÓN APLICAR */}
+        <div className="col-span-5 min-w-0">
           <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
             Nueva cant.
           </span>
-          <input
-            type="number"
-            min="0"
-            value={diffValue === 0 ? '' : diffValue}
-            onChange={(e) => handleDiffChange(parseInt(e.target.value) || 0)}
-            className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 h-7"
-            placeholder="0"
-          />
-        </div>
-
-        <div className="col-span-1 min-w-0">
-          <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
-            Ya ingresado
-          </span>
-          <div className="w-full p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-600 h-7 flex items-center justify-center">
-            {alreadyCommittedInThisEdit}
+          <div className="flex gap-1 h-8">
+            <input
+              type="number"
+              min="0"
+              value={diffValue === 0 ? '' : diffValue}
+              onChange={(e) => handleDiffChange(parseInt(e.target.value) || 0)}
+              className="w-12 p-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 h-full"
+              placeholder="0"
+            />
+            <button
+              type="button"
+              onClick={handleApply}
+              disabled={diffValue <= 0}
+              className={`flex-1 text-[9px] font-black uppercase rounded-lg transition-all h-full flex items-center justify-center tracking-tight leading-none px-1 text-white ${
+                diffValue > 0
+                  ? 'bg-blue-600 hover:bg-blue-700 shadow-xs'
+                  : 'bg-slate-300 cursor-not-allowed opacity-50'
+              }`}
+            >
+              APLICAR
+            </button>
           </div>
         </div>
 
-        <div className="col-span-1 min-w-0">
+        {/* YA INGRESADO (item.quantity, locked) */}
+        <div className="col-span-2 min-w-0">
+          <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
+            Ya ingresado
+          </span>
+          <div className="w-full bg-slate-100 border border-slate-200 rounded-lg text-xs font-black text-center text-slate-700 h-8 flex items-center justify-center select-none">
+            {item.quantity} 🔒
+          </div>
+        </div>
+
+        {/* MÁX. DISP. (maxAvail, locked) */}
+        <div className="col-span-2 min-w-0">
           <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1 truncate">
             Máx. disp.
           </span>
-          <div className="w-full p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-600 h-7 flex items-center justify-center">
-            {maxAvail}
+          <div className="w-full bg-slate-100 border border-slate-200 rounded-lg text-xs font-black text-center text-slate-700 h-8 flex items-center justify-center select-none">
+            {maxAvail} 🔒
           </div>
         </div>
       </div>
@@ -406,7 +419,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
   };
 
   // Update item quantity in list
-  const handleItemQuantityChange = (id: string, newQty: number) => {
+  const handleItemQuantityChange = (id: string, newQty: number, isMobile: boolean = false) => {
     setItems(prev => prev.map(item => {
       if (item.id === id) {
         const mat = availableMaterials.find(m => m.inventoryItemId === item.inventoryItemId);
@@ -415,7 +428,8 @@ export const VehicleRequestModal: React.FC<Props> = ({
           x => x.inventoryItemId === mat.inventoryItemId
         )?.quantityCommitted || 0;
         const maxAvail = mat.availableStock + alreadyCommittedInThisEdit;
-        const boundedQty = Math.max(1, Math.min(newQty || 1, maxAvail));
+        const minVal = isMobile ? 0 : 1;
+        const boundedQty = Math.max(minVal, Math.min(newQty, maxAvail));
         return { ...item, quantity: boundedQty };
       }
       return item;
