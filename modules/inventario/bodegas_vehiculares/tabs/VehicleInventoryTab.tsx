@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { User } from '../../../../types';
+import { useInventory } from '../../../../hooks/useInventory';
 import { getVehicleCatalog, vehicleWarehouseService, isVehicleDeleteAuthorized } from '../services/vehicleWarehouseService';
 import { ActionButton, IconButton, ACTION_ICONS, useConfirm, DataTable, TableColumn } from '../../../../design-system';
 import { FiRefreshCw, FiSearch, FiX, FiBox, FiChevronRight } from 'react-icons/fi';
@@ -46,6 +47,22 @@ export const VehicleInventoryTab: React.FC<Props> = ({
 }) => {
   const confirm = useConfirm();
   const canDelete = isVehicleDeleteAuthorized(currentUser);
+
+  // Fetch general inventory items for visual mapping
+  const { items: generalInventoryItems } = useInventory(currentUser || null, { fetchAll: true });
+
+  const itemImagesMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (Array.isArray(generalInventoryItems)) {
+      generalInventoryItems.forEach(item => {
+        if (item && item.id && item.imageUrl) {
+          map.set(item.id, item.imageUrl);
+        }
+      });
+    }
+    return map;
+  }, [generalInventoryItems]);
+
   const items = externalItems || [];
   const vehicles = getVehicleCatalog();
   const selectedVehicleId = externalSelectedVehicleId || (vehicles.length > 0 ? vehicles[0].id : '');
@@ -389,8 +406,17 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                 {/* AREA SUPERIOR: Imagen + Detalles del Material */}
                 <div className="flex gap-3 items-start">
                   {/* Espacio reservado para la imagen (limpio/neutral) */}
-                  <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center shrink-0">
-                    <FiBox className="w-6 h-6 text-slate-300" />
+                  <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                    {itemImagesMap.get(item.inventoryItemId) ? (
+                      <img 
+                        src={itemImagesMap.get(item.inventoryItemId)} 
+                        alt={item.description} 
+                        className="w-full h-full object-contain p-1"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <FiBox className="w-6 h-6 text-slate-300" />
+                    )}
                   </div>
 
                   {/* Detalles textuales */}

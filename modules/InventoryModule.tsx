@@ -634,6 +634,12 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               onClose={() => { setViewingItem(null); onClearSelectedId?.(); }}
               item={viewingItem}
               currentUser={currentUser}
+              onImageUpdate={(imageUrl) => {
+                if (viewingItem) {
+                  updateInventoryItem(viewingItem.id, { imageUrl });
+                  setViewingItem(prev => prev ? { ...prev, imageUrl } : null);
+                }
+              }}
           />
       </ModulePage>
     </div>

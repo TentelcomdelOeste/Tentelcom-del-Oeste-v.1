@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { InventoryItem } from '../inventoryTypes';
 import { User } from '../utils/types';
@@ -7,18 +7,20 @@ import useLockBodyScroll from '../hooks/useLockBodyScroll';
 import { DataTable, TableColumn, IconButton } from '../design-system';
 import { formatCurrency } from '../utils/formatCurrency';
 import { InventoryMovement } from '../inventoryMovementTypes';
-import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock } from "react-icons/fi";
+import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2 } from "react-icons/fi";
 
 interface InventoryDetailModalProps {
   show: boolean;
   onClose: () => void;
   item: InventoryItem | null;
   currentUser: User;
+  onImageUpdate?: (imageUrl: string) => void;
 }
 
-export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show, onClose, item, currentUser }) => {
+export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show, onClose, item, currentUser, onImageUpdate }) => {
   useLockBodyScroll(show);
   const { movements, isLoading } = useInventoryMovements(currentUser);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -27,6 +29,51 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     if (show) window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [show, onClose]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 500;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+          if (onImageUpdate) {
+            onImageUpdate(compressedDataUrl);
+          }
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    if (onImageUpdate) {
+      onImageUpdate('');
+    }
+  };
 
   const itemMovements = useMemo(() => {
     if (!item) return [];
@@ -232,6 +279,63 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                 return formatCurrency(priceWithIva, item.currency || 'USD');
                             })()}
                         </p>
+                    </div>
+
+                    {/* Reference Image Card */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm sm:col-span-2 flex flex-col md:flex-row items-center gap-6">
+                        <div className="w-full md:w-1/3">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Imagen de Referencia</label>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                                Carga una imagen de referencia para este material. Se utilizará en el inventario general y en las tarjetas móviles de bodegas vehiculares.
+                            </p>
+                        </div>
+                        <div className="w-full md:w-2/3 flex flex-col items-center justify-center">
+                            {item.imageUrl ? (
+                                <div className="relative group w-full max-w-xs aspect-square border border-slate-200 rounded-xl overflow-hidden bg-slate-50 flex items-center justify-center">
+                                    <img 
+                                        src={item.imageUrl} 
+                                        alt={item.description} 
+                                        className="w-full h-full object-contain p-2"
+                                        referrerPolicy="no-referrer"
+                                    />
+                                    <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
+                                        <button 
+                                            onClick={() => fileInputRef.current?.click()} 
+                                            className="px-3 py-1.5 bg-white text-slate-800 text-xs font-bold rounded-lg hover:bg-slate-100 transition-colors shadow-md"
+                                        >
+                                            Reemplazar
+                                        </button>
+                                        <button 
+                                            onClick={handleRemoveImage} 
+                                            className="p-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors shadow-md"
+                                            title="Eliminar"
+                                        >
+                                            <FiTrash2 className="text-sm" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div 
+                                    onClick={() => fileInputRef.current?.click()} 
+                                    className="w-full max-w-xs aspect-video border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50/50 cursor-pointer transition-colors p-4 text-center group"
+                                >
+                                    <div className="w-10 h-10 bg-slate-100 group-hover:bg-blue-50 text-slate-400 group-hover:text-blue-500 rounded-full flex items-center justify-center transition-colors">
+                                        <FiCamera className="text-lg" />
+                                    </div>
+                                    <div>
+                                        <span className="text-xs font-bold text-slate-700 block group-hover:text-blue-600 transition-colors">Cargar Imagen</span>
+                                        <span className="text-[10px] text-slate-400 mt-1 block">Click para seleccionar archivo</span>
+                                    </div>
+                                </div>
+                            )}
+                            <input 
+                                ref={fileInputRef} 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handleFileChange} 
+                                className="hidden" 
+                            />
+                        </div>
                     </div>
                 </div>
 
