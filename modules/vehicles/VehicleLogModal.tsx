@@ -122,7 +122,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         if (initialData?.revisionUnidad) {
             return normalizeVehicleInspection(initialData.revisionUnidad, unit);
         }
-        return getDefaultVehicleInspection(unit);
+        return {};
     });
 
     const selectedUnitCode = formData.unidadName || formData.unidadId || formData.unidad;
@@ -132,7 +132,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         if (!isEditing && selectedUnitCode) {
             if (selectedUnitCode !== prevUnitRef.current) {
                 prevUnitRef.current = selectedUnitCode;
-                setRevisionUnidad(getDefaultVehicleInspection(selectedUnitCode));
+                setRevisionUnidad({});
             }
         }
     }, [selectedUnitCode, isEditing]);
@@ -189,7 +189,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const renderInspectionItem = (item: InspectionItemDef) => {
         const isFinalLabores = item.category === 'FINAL DE LABORES';
         const isItemDisabled = isFinalLabores && !hasValidKmLlegada;
-        const val = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
+        const val = revisionUnidad[item.id];
         const isSpecialThreeState = SPECIAL_THREE_STATE_ITEM_IDS.includes(item.id);
         const options: readonly InspectionOption[] = isSpecialThreeState 
             ? (['SI', 'NO', 'N/A'] as const)
@@ -200,32 +200,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         const handleOptionClick = (clickedOpt: InspectionOption) => {
             if (isItemDisabled) return;
 
-            let nextVal: InspectionOption;
-            const currentVal = revisionUnidad[item.id] !== undefined ? revisionUnidad[item.id] : item.defaultValue;
-
-            if (isSpecialThreeState) {
-                if (currentVal === clickedOpt) {
-                    // Ciclo de 3 estados si se vuelve a tocar la opción seleccionada: SI -> NO -> N/A -> SI
-                    if (currentVal === 'SI') {
-                        nextVal = 'NO';
-                    } else if (currentVal === 'NO') {
-                        nextVal = 'N/A';
-                    } else {
-                        nextVal = 'SI';
-                    }
-                } else {
-                    // Selección directa de la opción tocada
-                    nextVal = clickedOpt;
-                }
-            } else {
-                if (currentVal === clickedOpt) {
-                    // Toggle de 2 estados si se vuelve a tocar la opción seleccionada: SI <-> NO
-                    nextVal = currentVal === 'SI' ? 'NO' : 'SI';
-                } else {
-                    // Selección directa de la opción tocada
-                    nextVal = clickedOpt;
-                }
-            }
+            const nextVal: InspectionOption = clickedOpt;
 
             // IMPORTANTE: Haptic SOLO en INICIO y FINAL de labores (patrones basados en Samsung EFFECT_SWITCH)
             const isLaborSection = item.category === 'INICIO DE LABORES' || item.category === 'FINAL DE LABORES';
@@ -813,7 +788,11 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             initialData.revisionUnidad.enciendeCorreBien !== undefined ||
             initialData.revisionUnidad.aireAcondicionado !== undefined
         );
-        const shouldValidateInspection = isInspectionRequired || hasHistoricalInspection || manualInspectionRequested;
+        const hasAnyInspectionAnswer = Object.keys(revisionUnidad || {}).some(key => 
+            key !== 'llenadoBoletaRecorrido' && key !== 'inspeccionVisualParqueo' && key !== 'cerradoBoletaRecorrido' &&
+            ['SI', 'NO', 'N/A'].includes(revisionUnidad[key])
+        );
+        const shouldValidateInspection = isInspectionRequired || hasHistoricalInspection || manualInspectionRequested || hasAnyInspectionAnswer;
 
         if (shouldValidateInspection) {
             // Verificar primer punto de revisión que pudiera estar pendiente

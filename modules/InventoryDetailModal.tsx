@@ -671,7 +671,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
         {/* Modal de Vista de Imagen de Referencia (Exclusivamente de Lectura - Reutilizando Bodegas Vehiculares) */}
         {previewGallery && createPortal(
           <div 
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+            className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
             onClick={handleClosePreviewGallery}
           >
             <div 
