@@ -81,18 +81,18 @@ export function getWeekDayLabel(day: WeekDay | null): string {
 }
 
 /**
- * Default fallback policy: Photos on Mon & Fri, Inspection on Mon & Fri.
+ * Default fallback policy: Safe default where policy is disabled (no mandatory photos/inspection by assumption).
  */
 export function getDefaultPolicyConfig(): VehicleWeeklyPolicyConfig {
   return {
-    enabled: true,
+    enabled: false,
     photos: {
-      enabled: true,
-      days: ['monday', 'friday'],
+      enabled: false,
+      days: [],
     },
     inspection: {
-      enabled: true,
-      days: ['monday', 'friday'],
+      enabled: false,
+      days: [],
     },
     intervalDays: 15,
   };
@@ -120,7 +120,7 @@ export async function getGlobalPolicyConfig(forceRefresh = false): Promise<Vehic
     const configSnap = await getDoc(doc(db, "config", "photo_policy"));
     if (configSnap.exists()) {
       const data = configSnap.data();
-      const masterEnabled = typeof data.enabled === "boolean" ? data.enabled : true;
+      const masterEnabled = typeof data.enabled === "boolean" ? data.enabled : false;
 
       // Parse photos policy
       const photosData = data.photos || {};
@@ -129,7 +129,7 @@ export async function getGlobalPolicyConfig(forceRefresh = false): Promise<Vehic
         : masterEnabled;
       const photosDays: WeekDay[] = Array.isArray(photosData.days) 
         ? (photosData.days.filter((d: string) => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d)) as WeekDay[])
-        : ['monday', 'friday'];
+        : [];
 
       // Parse inspection policy
       const inspectionData = data.inspection || {};
@@ -138,7 +138,7 @@ export async function getGlobalPolicyConfig(forceRefresh = false): Promise<Vehic
         : masterEnabled;
       const inspectionDays: WeekDay[] = Array.isArray(inspectionData.days) 
         ? (inspectionData.days.filter((d: string) => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(d)) as WeekDay[])
-        : ['monday', 'friday'];
+        : [];
 
       cachedGlobalConfig = {
         enabled: masterEnabled,
@@ -158,6 +158,8 @@ export async function getGlobalPolicyConfig(forceRefresh = false): Promise<Vehic
     }
   } catch (e) {
     console.warn("[photoPolicy] Error reading config/photo_policy from Firestore:", e);
+    // On error, return safe fallback without caching so subsequent attempts can retry
+    return getDefaultPolicyConfig();
   }
 
   cachedGlobalConfig = getDefaultPolicyConfig();
@@ -223,38 +225,24 @@ export function evaluateVehiclePolicy(
     };
   }
 
-  // 1. Photos policy resolution
-  const effectivePhotosEnabled = typeof pol?.photosEnabled === "boolean"
-    ? pol.photosEnabled
-    : globalConfig.photos.enabled;
+  // 1. Photos policy resolution (Administración del Sistema is the SINGLE source of truth)
+  const photosEnabled = Boolean(globalConfig?.photos?.enabled);
+  const isPhotoDay = todayDay !== null && Array.isArray(globalConfig?.photos?.days) && globalConfig.photos.days.includes(todayDay);
+  const requiresPhotos = photosEnabled && isPhotoDay;
 
-  const effectivePhotosDays: WeekDay[] = Array.isArray(pol?.photosDays) && pol.photosDays.length > 0
-    ? pol.photosDays
-    : globalConfig.photos.days;
-
-  const isPhotoDay = todayDay !== null && effectivePhotosDays.includes(todayDay);
-  const requiresPhotos = effectivePhotosEnabled && isPhotoDay;
-
-  // 2. Inspection policy resolution
-  const effectiveInspectionEnabled = typeof pol?.inspectionEnabled === "boolean"
-    ? pol.inspectionEnabled
-    : globalConfig.inspection.enabled;
-
-  const effectiveInspectionDays: WeekDay[] = Array.isArray(pol?.inspectionDays) && pol.inspectionDays.length > 0
-    ? pol.inspectionDays
-    : globalConfig.inspection.days;
-
-  const isInspectionDay = todayDay !== null && effectiveInspectionDays.includes(todayDay);
-  const requiresInspection = effectiveInspectionEnabled && isInspectionDay;
+  // 2. Inspection policy resolution (Administración del Sistema is the SINGLE source of truth)
+  const inspectionEnabled = Boolean(globalConfig?.inspection?.enabled);
+  const isInspectionDay = todayDay !== null && Array.isArray(globalConfig?.inspection?.days) && globalConfig.inspection.days.includes(todayDay);
+  const requiresInspection = inspectionEnabled && isInspectionDay;
 
   const vencida = requiresPhotos || requiresInspection;
 
   return {
     requiresPhotos,
     requiresInspection,
-    disabled: !effectivePhotosEnabled && !effectiveInspectionEnabled,
-    photosEnabled: effectivePhotosEnabled,
-    inspectionEnabled: effectiveInspectionEnabled,
+    disabled: !photosEnabled && !inspectionEnabled,
+    photosEnabled,
+    inspectionEnabled,
     todayDay,
     todayLabel,
     isPhotoDay,
@@ -263,7 +251,7 @@ export function evaluateVehiclePolicy(
     intervalDays: 15,
     ultimaFotoDate: null,
     fechaLimite: null,
-    policyEnabled: globalConfig.enabled,
+    policyEnabled: Boolean(globalConfig.enabled),
     policyActivatedAt: null,
   };
 }

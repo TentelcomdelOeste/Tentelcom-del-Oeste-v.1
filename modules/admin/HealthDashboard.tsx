@@ -9,6 +9,7 @@ import { FiServer, FiShield, FiCamera, FiCheck } from 'react-icons/fi';
 import { 
     getGlobalPolicyConfig, 
     saveGlobalPolicyConfig, 
+    evaluateVehiclePolicy,
     WEEK_DAYS, 
     WeekDay, 
     getTodayWeekDay, 
@@ -193,6 +194,7 @@ function PhotoPolicySettings() {
 
     const todayWeekDay = getTodayWeekDay();
     const todayName = getWeekDayLabel(todayWeekDay);
+    const globalEval = evaluateVehiclePolicy(policyConfig);
 
     const activeCount = vehicles.filter(v => !v.photoPolicy?.disabled).length;
     const excludedCount = vehicles.filter(v => v.photoPolicy?.disabled).length;
@@ -221,18 +223,18 @@ function PhotoPolicySettings() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                     <span className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${
-                        policyConfig.photos.enabled && todayWeekDay && policyConfig.photos.days.includes(todayWeekDay)
+                        globalEval.requiresPhotos
                             ? 'bg-emerald-600 text-white'
                             : 'bg-slate-200 text-slate-600'
                     }`}>
-                        Fotos Hoy: {policyConfig.photos.enabled && todayWeekDay && policyConfig.photos.days.includes(todayWeekDay) ? 'SÍ' : 'NO'}
+                        Fotos Hoy: {globalEval.requiresPhotos ? 'SÍ' : 'NO'}
                     </span>
                     <span className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${
-                        policyConfig.inspection.enabled && todayWeekDay && policyConfig.inspection.days.includes(todayWeekDay)
+                        globalEval.requiresInspection
                             ? 'bg-blue-600 text-white'
                             : 'bg-slate-200 text-slate-600'
                     }`}>
-                        Revisión Hoy: {policyConfig.inspection.enabled && todayWeekDay && policyConfig.inspection.days.includes(todayWeekDay) ? 'SÍ' : 'NO'}
+                        Revisión Hoy: {globalEval.requiresInspection ? 'SÍ' : 'NO'}
                     </span>
                 </div>
             </div>
