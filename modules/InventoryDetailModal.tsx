@@ -32,6 +32,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   const [showExpandedMobileViewer, setShowExpandedMobileViewer] = useState<boolean>(false);
   const [expandedIndex, setExpandedIndex] = useState<number>(0);
   const [expandedTouchStartX, setExpandedTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
   useEffect(() => {
     replacingIndexRef.current = replacingIndex;
@@ -82,12 +83,17 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     setSelectedIndex(prev => (prev < currentImages.length - 1 ? prev + 1 : 0));
   };
 
-  // Apertura exclusiva en móvil
-  const handleImageContainerClick = () => {
-    if (typeof window !== 'undefined' && window.innerWidth < 640 && currentImages.length > 0) {
+  // Apertura exclusiva en móvil (reutilizando el patrón de Bodegas Vehiculares)
+  const openMobileViewerIfAllowed = () => {
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024));
+    if (isMobile && currentImages.length > 0) {
       setExpandedIndex(selectedIndex);
       setShowExpandedMobileViewer(true);
     }
+  };
+
+  const handleImageContainerClick = () => {
+    openMobileViewerIfAllowed();
   };
 
   const handleCloseExpandedViewer = () => {
@@ -128,19 +134,27 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches && e.touches.length > 0) {
       setTouchStartX(e.touches[0].clientX);
+      setTouchStartY(e.touches[0].clientY);
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStartX === null || !e.changedTouches || e.changedTouches.length === 0) return;
     const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
     const deltaX = touchEndX - touchStartX;
-    if (deltaX > 40) {
+    const deltaY = touchEndY - (touchStartY !== null ? touchStartY : touchEndY);
+
+    if (deltaX > 40 && Math.abs(deltaY) < 40) {
       handlePrevImage();
-    } else if (deltaX < -40) {
+    } else if (deltaX < -40 && Math.abs(deltaY) < 40) {
       handleNextImage();
+    } else if (Math.abs(deltaX) < 15 && Math.abs(deltaY) < 15) {
+      // Tap detected on mobile image area
+      openMobileViewerIfAllowed();
     }
     setTouchStartX(null);
+    setTouchStartY(null);
   };
 
   const emitImagesUpdate = (newImages: string[]) => {
