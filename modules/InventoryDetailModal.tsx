@@ -28,6 +28,11 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const replacingIndexRef = useRef<number | null>(null);
 
+  // Estado exclusivo para el visor ampliado móvil (Bodegas Vehiculares style)
+  const [showExpandedMobileViewer, setShowExpandedMobileViewer] = useState<boolean>(false);
+  const [expandedIndex, setExpandedIndex] = useState<number>(0);
+  const [expandedTouchStartX, setExpandedTouchStartX] = useState<number | null>(null);
+
   useEffect(() => {
     replacingIndexRef.current = replacingIndex;
   }, [replacingIndex]);
@@ -54,11 +59,18 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (showExpandedMobileViewer) {
+          setSelectedIndex(expandedIndex);
+          setShowExpandedMobileViewer(false);
+        } else if (show) {
+          onClose();
+        }
+      }
     };
-    if (show) window.addEventListener('keydown', handleEsc);
+    if (show || showExpandedMobileViewer) window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [show, onClose]);
+  }, [show, onClose, showExpandedMobileViewer, expandedIndex]);
 
   const handlePrevImage = () => {
     if (currentImages.length <= 1) return;
@@ -68,6 +80,49 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   const handleNextImage = () => {
     if (currentImages.length <= 1) return;
     setSelectedIndex(prev => (prev < currentImages.length - 1 ? prev + 1 : 0));
+  };
+
+  // Apertura exclusiva en móvil
+  const handleImageContainerClick = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640 && currentImages.length > 0) {
+      setExpandedIndex(selectedIndex);
+      setShowExpandedMobileViewer(true);
+    }
+  };
+
+  const handleCloseExpandedViewer = () => {
+    setSelectedIndex(expandedIndex);
+    setShowExpandedMobileViewer(false);
+  };
+
+  const handleExpandedPrevImage = (e?: React.SyntheticEvent) => {
+    if (e) e.stopPropagation();
+    if (currentImages.length <= 1) return;
+    setExpandedIndex(prev => (prev > 0 ? prev - 1 : currentImages.length - 1));
+  };
+
+  const handleExpandedNextImage = (e?: React.SyntheticEvent) => {
+    if (e) e.stopPropagation();
+    if (currentImages.length <= 1) return;
+    setExpandedIndex(prev => (prev < currentImages.length - 1 ? prev + 1 : 0));
+  };
+
+  const handleExpandedTouchStart = (e: React.TouchEvent) => {
+    if (e.touches && e.touches.length > 0) {
+      setExpandedTouchStartX(e.touches[0].clientX);
+    }
+  };
+
+  const handleExpandedTouchEnd = (e: React.TouchEvent) => {
+    if (expandedTouchStartX === null || !e.changedTouches || e.changedTouches.length === 0) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const deltaX = touchEndX - expandedTouchStartX;
+    if (deltaX > 40) {
+      handleExpandedPrevImage();
+    } else if (deltaX < -40) {
+      handleExpandedNextImage();
+    }
+    setExpandedTouchStartX(null);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -396,9 +451,10 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
 
                         {/* VISOR DE IMÁGENES (Exclusivo para visualización y navegación) */}
                         <div 
-                            className="relative w-full aspect-video sm:aspect-[21/9] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-4 border border-slate-800 shadow-inner select-none touch-pan-y"
+                            className="relative w-full aspect-video sm:aspect-[21/9] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-4 border border-slate-800 shadow-inner select-none touch-pan-y cursor-pointer sm:cursor-default"
                             onTouchStart={handleTouchStart}
                             onTouchEnd={handleTouchEnd}
+                            onClick={handleImageContainerClick}
                         >
                             {currentImages.length > 0 ? (
                                 <>
@@ -406,7 +462,10 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                     {currentImages.length > 1 && (
                                         <button
                                             type="button"
-                                            onClick={handlePrevImage}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handlePrevImage();
+                                            }}
                                             className="absolute left-3 z-10 p-2.5 bg-slate-900/70 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95 border border-slate-700/50 backdrop-blur-xs cursor-pointer"
                                             title="Imagen anterior"
                                         >
@@ -426,7 +485,10 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                     {currentImages.length > 1 && (
                                         <button
                                             type="button"
-                                            onClick={handleNextImage}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleNextImage();
+                                            }}
                                             className="absolute right-3 z-10 p-2.5 bg-slate-900/70 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95 border border-slate-700/50 backdrop-blur-xs cursor-pointer"
                                             title="Siguiente imagen"
                                         >
@@ -546,6 +608,108 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                 </div>
             </div>
         </div>
+
+        {/* Modal de Visor Ampliado Exclusivo para Móvil */}
+        {showExpandedMobileViewer && currentImages.length > 0 && createPortal(
+            <div 
+                className="fixed inset-0 z-[100] flex items-center justify-center p-3 bg-slate-950/90 backdrop-blur-sm animate-fade-in"
+                onClick={handleCloseExpandedViewer}
+            >
+                <div 
+                    className="bg-white rounded-2xl shadow-2xl p-4 w-full max-w-lg border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {/* Header del Modal */}
+                    <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100 shrink-0">
+                        <div className="min-w-0 pr-2">
+                            <h3 className="font-bold text-sm text-slate-900 truncate leading-tight">
+                                {item?.description || 'Imagen de referencia'}
+                            </h3>
+                            <div className="flex items-center gap-2 mt-1">
+                                {item?.code && (
+                                    <span className="inline-block text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                        {item.code}
+                                    </span>
+                                )}
+                                {currentImages.length > 1 && (
+                                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                                        {expandedIndex + 1} / {currentImages.length}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleCloseExpandedViewer}
+                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors shrink-0 cursor-pointer"
+                            title="Cerrar vista de imagen"
+                            aria-label="Cerrar"
+                        >
+                            <FiX className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    {/* Área de Imagen centrada y proporcional con soporte Swipe y Flechas */}
+                    <div 
+                        className="relative w-full flex-1 flex items-center justify-center overflow-hidden bg-slate-900 rounded-xl p-2 min-h-[280px] max-h-[70vh] select-none touch-pan-y"
+                        onTouchStart={handleExpandedTouchStart}
+                        onTouchEnd={handleExpandedTouchEnd}
+                    >
+                        {/* Flecha Izquierda (Anterior) */}
+                        {currentImages.length > 1 && (
+                            <button
+                                type="button"
+                                onClick={handleExpandedPrevImage}
+                                className="absolute left-2 z-10 p-2 bg-slate-900/70 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95 border border-slate-700/50 cursor-pointer"
+                                title="Imagen anterior"
+                            >
+                                <FiChevronLeft className="w-5 h-5" />
+                            </button>
+                        )}
+
+                        {/* Imagen actual */}
+                        <img
+                            src={currentImages[expandedIndex] || currentImages[0]}
+                            alt={`${item?.description || 'Imagen'} ${expandedIndex + 1}`}
+                            className="max-w-full max-h-full object-contain rounded-lg transition-all duration-200"
+                            referrerPolicy="no-referrer"
+                        />
+
+                        {/* Flecha Derecha (Siguiente) */}
+                        {currentImages.length > 1 && (
+                            <button
+                                type="button"
+                                onClick={handleExpandedNextImage}
+                                className="absolute right-2 z-10 p-2 bg-slate-900/70 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95 border border-slate-700/50 cursor-pointer"
+                                title="Siguiente imagen"
+                            >
+                                <FiChevronRight className="w-5 h-5" />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Indicador inferior de navegación si hay múltiples imágenes */}
+                    {currentImages.length > 1 && (
+                        <div className="flex items-center justify-center gap-1.5 mt-3 pt-1 shrink-0">
+                            {currentImages.map((_, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setExpandedIndex(idx)}
+                                    className={`h-2 rounded-full transition-all cursor-pointer ${
+                                        idx === expandedIndex 
+                                            ? 'w-6 bg-blue-600' 
+                                            : 'w-2 bg-slate-200 hover:bg-slate-300'
+                                    }`}
+                                    title={`Ir a imagen ${idx + 1}`}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>,
+            document.body
+        )}
     </div>,
     document.body
   );
