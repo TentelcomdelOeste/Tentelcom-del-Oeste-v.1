@@ -1,6 +1,5 @@
 import { db } from "../firebase";
-import { doc, getDoc, collection, query, where, limit, getDocs, setDoc } from "firebase/firestore";
-import { getUnitCode } from "../types/vehicle.types";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export type WeekDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
 
@@ -191,46 +190,22 @@ export async function saveGlobalPolicyConfig(config: Partial<VehicleWeeklyPolicy
 }
 
 /**
- * Synchronous, fast evaluation of vehicle policy based on weekly days and vehicle exceptions.
+ * Synchronous, fast evaluation of vehicle policy based exclusively on global policy config.
  */
 export function evaluateVehiclePolicy(
   globalConfig: VehicleWeeklyPolicyConfig,
-  vehicleData?: any,
+  _vehicleData?: any,
   targetDate: Date = new Date()
 ): VehiclePolicyEvaluation {
   const todayDay = getTodayWeekDay(targetDate);
   const todayLabel = getWeekDayLabel(todayDay);
 
-  const pol = vehicleData?.photoPolicy as VehiclePhotoPolicyOverride | undefined;
-  const isVehicleExcluded = Boolean(pol?.disabled);
-
-  // If vehicle is explicitly excluded, never require photos or inspection
-  if (isVehicleExcluded) {
-    return {
-      requiresPhotos: false,
-      requiresInspection: false,
-      disabled: true,
-      photosEnabled: false,
-      inspectionEnabled: false,
-      todayDay,
-      todayLabel,
-      isPhotoDay: false,
-      isInspectionDay: false,
-      vencida: false,
-      intervalDays: 15,
-      ultimaFotoDate: null,
-      fechaLimite: null,
-      policyEnabled: globalConfig.enabled,
-      policyActivatedAt: null,
-    };
-  }
-
-  // 1. Photos policy resolution (Administración del Sistema is the SINGLE source of truth)
+  // 1. Photos policy resolution (Administración del Sistema is the EXCLUSIVE source of truth)
   const photosEnabled = Boolean(globalConfig?.photos?.enabled);
   const isPhotoDay = todayDay !== null && Array.isArray(globalConfig?.photos?.days) && globalConfig.photos.days.includes(todayDay);
   const requiresPhotos = photosEnabled && isPhotoDay;
 
-  // 2. Inspection policy resolution (Administración del Sistema is the SINGLE source of truth)
+  // 2. Inspection policy resolution (Administración del Sistema is the EXCLUSIVE source of truth)
   const inspectionEnabled = Boolean(globalConfig?.inspection?.enabled);
   const isInspectionDay = todayDay !== null && Array.isArray(globalConfig?.inspection?.days) && globalConfig.inspection.days.includes(todayDay);
   const requiresInspection = inspectionEnabled && isInspectionDay;
@@ -257,65 +232,15 @@ export function evaluateVehiclePolicy(
 }
 
 /**
- * Fast check for a vehicle's policy status for today.
- * Does NOT perform heavy history queries, resulting in instant response.
+ * Fast check for vehicle policy status based exclusively on global system administration config.
  */
 export async function checkVehiclePhotoPolicy(
-  unidadIdOrCode: string,
-  providedVehicleData?: any
+  _unidadIdOrCode?: string,
+  _providedVehicleData?: any
 ): Promise<VehiclePolicyEvaluation> {
   try {
     const globalConfig = await getGlobalPolicyConfig();
-    const unitCode = getUnitCode(unidadIdOrCode) || unidadIdOrCode;
-
-    let vehicleData = providedVehicleData;
-    const hasExplicitPhotoPolicy = vehicleData && typeof vehicleData === 'object' && vehicleData.photoPolicy !== undefined;
-
-    if (!hasExplicitPhotoPolicy && (unitCode || unidadIdOrCode)) {
-      try {
-        // 1. Direct lookup by canonical unit code (e.g. "U1")
-        if (unitCode) {
-          const vehDocRef = doc(db, "vehiculos", unitCode);
-          const vehSnap = await getDoc(vehDocRef);
-          if (vehSnap.exists() && vehSnap.data()?.photoPolicy !== undefined) {
-            vehicleData = vehSnap.data();
-          }
-        }
-
-        // 2. Direct lookup by raw string if different
-        if (!vehicleData?.photoPolicy && unidadIdOrCode && unidadIdOrCode !== unitCode) {
-          const vehDocRefRaw = doc(db, "vehiculos", unidadIdOrCode);
-          const vehSnapRaw = await getDoc(vehDocRefRaw);
-          if (vehSnapRaw.exists() && vehSnapRaw.data()?.photoPolicy !== undefined) {
-            vehicleData = vehSnapRaw.data();
-          }
-        }
-
-        // 3. Query collection by 'unidad' field matching unitCode
-        if (!vehicleData?.photoPolicy && unitCode) {
-          const qVeh = query(collection(db, "vehiculos"), where("unidad", "==", unitCode), limit(5));
-          const qSnap = await getDocs(qVeh);
-          if (!qSnap.empty) {
-            const disabledDoc = qSnap.docs.find(d => d.data()?.photoPolicy?.disabled === true);
-            vehicleData = (disabledDoc || qSnap.docs[0]).data();
-          }
-        }
-
-        // 4. Query collection by raw string matching
-        if (!vehicleData?.photoPolicy && unidadIdOrCode && unidadIdOrCode !== unitCode) {
-          const qVehRaw = query(collection(db, "vehiculos"), where("unidad", "==", unidadIdOrCode), limit(5));
-          const qSnapRaw = await getDocs(qVehRaw);
-          if (!qSnapRaw.empty) {
-            const disabledDoc = qSnapRaw.docs.find(d => d.data()?.photoPolicy?.disabled === true);
-            vehicleData = (disabledDoc || qSnapRaw.docs[0]).data();
-          }
-        }
-      } catch (err) {
-        console.warn("[photoPolicy] Could not fetch vehicle document:", unidadIdOrCode, err);
-      }
-    }
-
-    return evaluateVehiclePolicy(globalConfig, vehicleData, new Date());
+    return evaluateVehiclePolicy(globalConfig, null, new Date());
   } catch (e) {
     console.error("[photoPolicy] Error checking vehicle policy:", e);
     return evaluateVehiclePolicy(getDefaultPolicyConfig(), null, new Date());

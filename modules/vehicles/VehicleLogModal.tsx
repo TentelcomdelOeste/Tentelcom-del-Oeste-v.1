@@ -775,8 +775,8 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
 
         // 1.3 Validación de Revisión de Unidad (si aplica política semanal, registro histórico o solicitud manual)
-        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos && !policyStatus?.disabled);
-        const isInspectionRequired = Boolean(policyStatus?.requiresInspection && !policyStatus?.disabled);
+        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos);
+        const isInspectionRequired = Boolean(policyStatus?.requiresInspection);
         const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
             initialData.revisionUnidad.estadoLlantas !== undefined ||
             initialData.revisionUnidad.llantas !== undefined ||
@@ -1143,7 +1143,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
                     {/* 3A. FOTOGRAFÍA DE BITÁCORA */}
                     {(() => {
-                        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos && !policyStatus?.disabled);
+                        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos);
                         const hasHistoricalPhotos = isEditing && (
                             existingPhotos.length > 0 ||
                             !!initialData?.photoStoragePath ||
@@ -1158,7 +1158,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-bold text-slate-700">📷 Fotografía de Bitácora</span>
                                         <span className="text-[10px] text-slate-500">
-                                            {policyStatus?.disabled ? '(No requerida - Unidad excluida)' : '(No requerida hoy)'}
+                                            (No requerida hoy)
                                         </span>
                                     </div>
                                     <ActionButton
@@ -1292,7 +1292,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
 
                     {/* 3B. REVISIÓN DE UNIDAD (INSPECCIÓN TÉCNICA) */}
                     {(() => {
-                        const isInspectionRequired = Boolean(policyStatus?.requiresInspection && !policyStatus?.disabled);
+                        const isInspectionRequired = Boolean(policyStatus?.requiresInspection);
                         const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
                             initialData.revisionUnidad.estadoLlantas !== undefined ||
                             initialData.revisionUnidad.llantas !== undefined ||
@@ -1312,7 +1312,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-bold text-slate-700">🔍 Revisión de Unidad</span>
                                         <span className="text-[10px] text-slate-500">
-                                            {policyStatus?.disabled ? '(No requerida - Unidad excluida)' : '(No requerida hoy)'}
+                                            (No requerida hoy)
                                         </span>
                                     </div>
                                     <ActionButton
@@ -1732,7 +1732,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         className="flex-1 !py-3 !text-[10px] !font-bold !uppercase !rounded-xl disabled:opacity-50"
                     />
                     {(() => {
-                        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos && !policyStatus?.disabled);
+                        const isPhotoRequired = Boolean(policyStatus?.requiresPhotos);
                         const hasExistingPhoto = (existingPhotos.length > 0) || !!initialData?.oneDriveUrl || !!initialData?.photoTimestamp || !!initialData?.photoStoragePath;
                         const isPhotoMissing = isPhotoRequired && selectedPhotoFiles.length === 0 && !hasExistingPhoto;
                         const isDisabled = isLoading || (activeLogWarning !== null && !isEditing) || isPhotoMissing;
