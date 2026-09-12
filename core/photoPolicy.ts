@@ -239,7 +239,7 @@ export async function checkVehiclePhotoPolicy(
   _providedVehicleData?: any
 ): Promise<VehiclePolicyEvaluation> {
   try {
-    const globalConfig = await getGlobalPolicyConfig();
+    const globalConfig = await getGlobalPolicyConfig(true);
     return evaluateVehiclePolicy(globalConfig, null, new Date());
   } catch (e) {
     console.error("[photoPolicy] Error checking vehicle policy:", e);

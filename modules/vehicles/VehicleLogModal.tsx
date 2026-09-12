@@ -379,13 +379,8 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     useEffect(() => {
         let isMounted = true;
         const checkPolicy = async () => {
-            const unidad = formData.unidadName || formData.unidad || initialData?.unidad;
-            if (!unidad) {
-                setPolicyStatus(null);
-                return;
-            }
             try {
-                const res = await checkVehiclePhotoPolicy(unidad);
+                const res = await checkVehiclePhotoPolicy();
                 if (isMounted) {
                     setPolicyStatus(res);
                 }
@@ -399,7 +394,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         return () => {
             isMounted = false;
         };
-    }, [show, formData.unidadName, formData.unidad, initialData?.unidad]);
+    }, [show]);
     
     
     const [recargas, setRecargas] = useState<VehicleRecharge[]>(() => {

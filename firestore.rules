@@ -233,7 +233,7 @@ service cloud.firestore {
     }
 
     match /bitacora_vehiculos/{id} {
-      allow read: if hasNestedPermission("bitacoraVehiculos", "registros") || hasNestedPermission("bitacoraVehiculos", "analisis") || hasPermission("trabajos") || (resource != null && resource.data.createdBy == request.auth.uid);
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (
         hasNestedPermission("bitacoraVehiculos", "registros") || 
@@ -250,7 +250,7 @@ service cloud.firestore {
     }
 
     match /vehicle_expenses/{id} {
-      allow read: if hasNestedPermission("bitacoraVehiculos", "analisis") || isAdmin();
+      allow read: if isAuthenticated();
       allow write: if hasNestedPermission("bitacoraVehiculos", "analisis") || isAdmin();
     }
 
