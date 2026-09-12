@@ -156,7 +156,7 @@ export async function getGlobalPolicyConfig(forceRefresh = false): Promise<Vehic
       return cachedGlobalConfig;
     }
   } catch (e) {
-    console.warn("[photoPolicy] Error reading config/photo_policy from Firestore:", e);
+    console.error("❌ [photoPolicy] Error crítico leyendo 'config/photo_policy' desde Firestore:", e);
     // On error, return safe fallback without caching so subsequent attempts can retry
     return getDefaultPolicyConfig();
   }
