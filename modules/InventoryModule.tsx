@@ -39,11 +39,8 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
     updateInventoryItem, 
     deleteInventoryItem, 
     checkCodeStatus,
-    isLoading,
-    loadMore,
-    hasMore,
-    loadingMore
-  } = useInventory(currentUser);
+    isLoading
+  } = useInventory(currentUser, { fetchAll: true });
   
   const { movements } = useInventoryMovements(currentUser);
   const confirm = useConfirm();
@@ -607,9 +604,6 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                 keyExtractor={(item: InvItemType) => item.id}
                 isLoading={isLoading}
                 emptyMessage="No se encontraron materiales que coincidan con la búsqueda."
-                hasMore={hasMore}
-                onLoadMore={loadMore}
-                isLoadingMore={loadingMore}
                 enableVirtualization={true}
                 virtualHeight={600}
                 highlightedId={selectedId}

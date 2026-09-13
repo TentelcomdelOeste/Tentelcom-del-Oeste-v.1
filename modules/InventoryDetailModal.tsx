@@ -9,6 +9,7 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { InventoryMovement } from '../inventoryMovementTypes';
 import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2, FiChevronLeft, FiChevronRight, FiUpload, FiRefreshCw, FiLoader } from "react-icons/fi";
 import { uploadImageToStorage, deleteImageFromStorage } from '../utils/storageUtils';
+import { ZoomViewer } from '../components/ZoomViewer';
 
 interface InventoryDetailModalProps {
   show: boolean;
@@ -707,7 +708,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
             onClick={handleClosePreviewGallery}
           >
             <div 
-              className="relative bg-white rounded-2xl shadow-2xl overflow-hidden max-w-md w-full max-h-[85vh] flex flex-col items-center p-4 border border-slate-200"
+              className="relative bg-white rounded-2xl shadow-2xl overflow-hidden w-[95vw] md:w-[90vw] lg:w-[85vw] max-w-6xl h-[85vh] md:h-[90vh] flex flex-col p-4 md:p-6 border border-slate-200"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header del Modal */}
@@ -742,9 +743,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
 
               {/* Area de Imagen centrada y proporcional con soporte Swipe y Flechas */}
               <div 
-                className="relative w-full flex-1 flex items-center justify-center overflow-hidden bg-slate-50 rounded-xl p-3 min-h-[240px] max-h-[60vh] select-none touch-pan-y"
-                onTouchStart={handlePreviewTouchStart}
-                onTouchEnd={handlePreviewTouchEnd}
+                className="relative w-full flex-1 flex items-center justify-center overflow-hidden bg-slate-50/50 rounded-xl select-none border border-slate-100"
               >
                 {/* Flecha Izquierda (Anterior) */}
                 {previewGallery.images.length > 1 && (
@@ -758,13 +757,15 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                   </button>
                 )}
 
-                {/* Imagen actual */}
-                <img
-                  src={previewGallery.images[previewGallery.currentIndex]}
-                  alt={`${previewGallery.title} ${previewGallery.currentIndex + 1}`}
-                  className="max-w-full max-h-full object-contain rounded-md transition-all duration-200"
-                  referrerPolicy="no-referrer"
-                />
+                {/* Imagen actual con Zoom */}
+                <div className="absolute inset-0">
+                  <ZoomViewer
+                    src={previewGallery.images[previewGallery.currentIndex]}
+                    alt={`${previewGallery.title} ${previewGallery.currentIndex + 1}`}
+                    onSwipeLeft={handlePreviewNextImage}
+                    onSwipeRight={handlePreviewPrevImage}
+                  />
+                </div>
 
                 {/* Flecha Derecha (Siguiente) */}
                 {previewGallery.images.length > 1 && (
