@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { User } from '../../../../types';
 import { useInventory } from '../../../../hooks/useInventory';
 import { getVehicleCatalog, vehicleWarehouseService, isVehicleDeleteAuthorized } from '../services/vehicleWarehouseService';
 import { ActionButton, IconButton, ACTION_ICONS, useConfirm, DataTable, TableColumn } from '../../../../design-system';
-import { FiRefreshCw, FiSearch, FiX, FiBox, FiChevronRight, FiChevronLeft } from 'react-icons/fi';
+import { FiRefreshCw, FiSearch, FiX, FiBox, FiChevronRight } from 'react-icons/fi';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
 import { VehicleInventoryDetailModal } from '../modals/VehicleInventoryDetailModal';
+import { ImageViewerModal } from '../../../../components/ImageViewerModal';
 import { format } from 'date-fns';
 
 interface Props {
@@ -83,7 +83,6 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     title: string;
     code: string;
   } | null>(null);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [lastTap, setLastTap] = useState<{ id: string; time: number }>({ id: '', time: 0 });
 
   const handleImageDoubleClick = (item: VehicleWarehouseItem, images: string[], e: React.SyntheticEvent) => {
@@ -115,43 +114,6 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     }
   };
 
-  const handlePrevImage = (e?: React.SyntheticEvent) => {
-    if (e) e.stopPropagation();
-    if (!previewGallery || previewGallery.images.length <= 1) return;
-    setPreviewGallery(prev => {
-      if (!prev) return null;
-      const nextIdx = prev.currentIndex > 0 ? prev.currentIndex - 1 : prev.images.length - 1;
-      return { ...prev, currentIndex: nextIdx };
-    });
-  };
-
-  const handleNextImage = (e?: React.SyntheticEvent) => {
-    if (e) e.stopPropagation();
-    if (!previewGallery || previewGallery.images.length <= 1) return;
-    setPreviewGallery(prev => {
-      if (!prev) return null;
-      const nextIdx = prev.currentIndex < prev.images.length - 1 ? prev.currentIndex + 1 : 0;
-      return { ...prev, currentIndex: nextIdx };
-    });
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches && e.touches.length > 0) {
-      setTouchStartX(e.touches[0].clientX);
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX === null || !e.changedTouches || e.changedTouches.length === 0) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const deltaX = touchEndX - touchStartX;
-    if (deltaX > 40) {
-      handlePrevImage();
-    } else if (deltaX < -40) {
-      handleNextImage();
-    }
-    setTouchStartX(null);
-  };
   
   const selectedVehicle = useMemo(() => {
     return vehicles.find(v => v.id === selectedVehicleId) || vehicles[0];
@@ -670,102 +632,14 @@ export const VehicleInventoryTab: React.FC<Props> = ({
       )}
 
       {/* Modal de Vista de Imagen de Referencia (Exclusivamente de Lectura) */}
-      {previewGallery && createPortal(
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
-          onClick={() => setPreviewGallery(null)}
-        >
-          <div 
-            className="relative bg-white rounded-2xl shadow-2xl overflow-hidden max-w-md w-full max-h-[85vh] flex flex-col items-center p-4 border border-slate-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header del Modal */}
-            <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
-              <div className="min-w-0 pr-2">
-                <h3 className="font-bold text-sm text-slate-900 truncate leading-tight">
-                  {previewGallery.title}
-                </h3>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="inline-block text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                    {previewGallery.code}
-                  </span>
-                  {previewGallery.images.length > 1 && (
-                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-                      {previewGallery.currentIndex + 1} / {previewGallery.images.length}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => setPreviewGallery(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors shrink-0"
-                title="Cerrar vista de imagen"
-                aria-label="Cerrar"
-              >
-                <FiX className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Area de Imagen centrada y proporcional con soporte Swipe y Flechas */}
-            <div 
-              className="relative w-full flex-1 flex items-center justify-center overflow-hidden bg-slate-50 rounded-xl p-3 min-h-[240px] max-h-[60vh] select-none touch-pan-y"
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-            >
-              {/* Flecha Izquierda (Anterior) */}
-              {previewGallery.images.length > 1 && (
-                <button
-                  type="button"
-                  onClick={handlePrevImage}
-                  className="absolute left-2 z-10 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95"
-                  title="Imagen anterior"
-                >
-                  <FiChevronLeft className="w-5 h-5" />
-                </button>
-              )}
-
-              {/* Imagen actual */}
-              <img
-                src={previewGallery.images[previewGallery.currentIndex]}
-                alt={`${previewGallery.title} ${previewGallery.currentIndex + 1}`}
-                className="max-w-full max-h-full object-contain rounded-md transition-all duration-200"
-                referrerPolicy="no-referrer"
-              />
-
-              {/* Flecha Derecha (Siguiente) */}
-              {previewGallery.images.length > 1 && (
-                <button
-                  type="button"
-                  onClick={handleNextImage}
-                  className="absolute right-2 z-10 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95"
-                  title="Siguiente imagen"
-                >
-                  <FiChevronRight className="w-5 h-5" />
-                </button>
-              )}
-            </div>
-
-            {/* Indicador inferior de navegación si hay múltiples imágenes */}
-            {previewGallery.images.length > 1 && (
-              <div className="flex items-center justify-center gap-1.5 mt-3 pt-1">
-                {previewGallery.images.map((_, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setPreviewGallery(prev => prev ? { ...prev, currentIndex: idx } : null)}
-                    className={`h-2 rounded-full transition-all ${
-                      idx === previewGallery.currentIndex 
-                        ? 'w-6 bg-blue-600' 
-                        : 'w-2 bg-slate-200 hover:bg-slate-300'
-                    }`}
-                    title={`Ir a imagen ${idx + 1}`}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>,
-        document.body
+      {previewGallery && (
+        <ImageViewerModal
+          images={previewGallery.images}
+          initialIndex={previewGallery.currentIndex}
+          title={previewGallery.title}
+          code={previewGallery.code}
+          onClose={() => setPreviewGallery(null)}
+        />
       )}
     </div>
   );

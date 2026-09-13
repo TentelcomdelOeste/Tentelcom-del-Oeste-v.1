@@ -9,7 +9,7 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { InventoryMovement } from '../inventoryMovementTypes';
 import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2, FiChevronLeft, FiChevronRight, FiUpload, FiRefreshCw, FiLoader } from "react-icons/fi";
 import { uploadImageToStorage, deleteImageFromStorage } from '../utils/storageUtils';
-import { ZoomViewer } from '../components/ZoomViewer';
+import { ImageViewerModal } from '../components/ImageViewerModal';
 
 interface InventoryDetailModalProps {
   show: boolean;
@@ -40,7 +40,6 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   } | null>(null);
 
   const [lastTap, setLastTap] = useState<{ id: string; time: number }>({ id: '', time: 0 });
-  const [previewTouchStartX, setPreviewTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
   useEffect(() => {
@@ -141,43 +140,6 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   };
 
   // Handlers para la galería de vista previa (previewGallery) de Bodegas Vehiculares
-  const handlePreviewPrevImage = (e?: React.SyntheticEvent) => {
-    if (e) e.stopPropagation();
-    if (!previewGallery || previewGallery.images.length <= 1) return;
-    setPreviewGallery(prev => {
-      if (!prev) return null;
-      const nextIdx = prev.currentIndex > 0 ? prev.currentIndex - 1 : prev.images.length - 1;
-      return { ...prev, currentIndex: nextIdx };
-    });
-  };
-
-  const handlePreviewNextImage = (e?: React.SyntheticEvent) => {
-    if (e) e.stopPropagation();
-    if (!previewGallery || previewGallery.images.length <= 1) return;
-    setPreviewGallery(prev => {
-      if (!prev) return null;
-      const nextIdx = prev.currentIndex < prev.images.length - 1 ? prev.currentIndex + 1 : 0;
-      return { ...prev, currentIndex: nextIdx };
-    });
-  };
-
-  const handlePreviewTouchStart = (e: React.TouchEvent) => {
-    if (e.touches && e.touches.length > 0) {
-      setPreviewTouchStartX(e.touches[0].clientX);
-    }
-  };
-
-  const handlePreviewTouchEnd = (e: React.TouchEvent) => {
-    if (previewTouchStartX === null || !e.changedTouches || e.changedTouches.length === 0) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const deltaX = touchEndX - previewTouchStartX;
-    if (deltaX > 40) {
-      handlePreviewPrevImage();
-    } else if (deltaX < -40) {
-      handlePreviewNextImage();
-    }
-    setPreviewTouchStartX(null);
-  };
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches && e.touches.length > 0) {
@@ -701,106 +663,18 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
             </div>
         </div>
 
-        {/* Modal de Vista de Imagen de Referencia (Exclusivamente de Lectura - Reutilizando Bodegas Vehiculares) */}
-        {previewGallery && createPortal(
-          <div 
-            className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
-            onClick={handleClosePreviewGallery}
-          >
-            <div 
-              className="relative bg-white rounded-2xl shadow-2xl overflow-hidden w-[95vw] md:w-[90vw] lg:w-[85vw] max-w-6xl h-[85vh] md:h-[90vh] flex flex-col p-4 md:p-6 border border-slate-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header del Modal */}
-              <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100 shrink-0">
-                <div className="min-w-0 pr-2">
-                  <h3 className="font-bold text-sm text-slate-900 truncate leading-tight">
-                    {previewGallery.title}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    {previewGallery.code && (
-                      <span className="inline-block text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                        {previewGallery.code}
-                      </span>
-                    )}
-                    {previewGallery.images.length > 1 && (
-                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-                        {previewGallery.currentIndex + 1} / {previewGallery.images.length}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleClosePreviewGallery}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors shrink-0 cursor-pointer"
-                  title="Cerrar vista de imagen"
-                  aria-label="Cerrar"
-                >
-                  <FiX className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Area de Imagen centrada y proporcional con soporte Swipe y Flechas */}
-              <div 
-                className="relative w-full flex-1 flex items-center justify-center overflow-hidden bg-slate-50/50 rounded-xl select-none border border-slate-100"
-              >
-                {/* Flecha Izquierda (Anterior) */}
-                {previewGallery.images.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={handlePreviewPrevImage}
-                    className="absolute left-2 z-10 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95 cursor-pointer"
-                    title="Imagen anterior"
-                  >
-                    <FiChevronLeft className="w-5 h-5" />
-                  </button>
-                )}
-
-                {/* Imagen actual con Zoom */}
-                <div className="absolute inset-0">
-                  <ZoomViewer
-                    src={previewGallery.images[previewGallery.currentIndex]}
-                    alt={`${previewGallery.title} ${previewGallery.currentIndex + 1}`}
-                    onSwipeLeft={handlePreviewNextImage}
-                    onSwipeRight={handlePreviewPrevImage}
-                  />
-                </div>
-
-                {/* Flecha Derecha (Siguiente) */}
-                {previewGallery.images.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={handlePreviewNextImage}
-                    className="absolute right-2 z-10 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-full transition-all shadow-md active:scale-95 cursor-pointer"
-                    title="Siguiente imagen"
-                  >
-                    <FiChevronRight className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-
-              {/* Indicador inferior de navegación si hay múltiples imágenes */}
-              {previewGallery.images.length > 1 && (
-                <div className="flex items-center justify-center gap-1.5 mt-3 pt-1 shrink-0">
-                  {previewGallery.images.map((_, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setPreviewGallery(prev => prev ? { ...prev, currentIndex: idx } : null)}
-                      className={`h-2 rounded-full transition-all cursor-pointer ${
-                        idx === previewGallery.currentIndex 
-                          ? 'w-6 bg-blue-600' 
-                          : 'w-2 bg-slate-200 hover:bg-slate-300'
-                      }`}
-                      title={`Ir a imagen ${idx + 1}`}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>,
-          document.body
+        {/* Modal de Vista de Imagen de Referencia (Reutilizando componente común) */}
+        {previewGallery && (
+          <ImageViewerModal
+            images={previewGallery.images}
+            initialIndex={previewGallery.currentIndex}
+            title={previewGallery.title}
+            code={previewGallery.code}
+            onClose={(lastIndex) => {
+              setSelectedIndex(lastIndex);
+              setPreviewGallery(null);
+            }}
+          />
         )}
     </div>,
     document.body
