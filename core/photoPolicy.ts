@@ -153,13 +153,30 @@ export async function getGlobalPolicyConfig(forceRefresh = false): Promise<Vehic
         policyActivatedAt: data.policyActivatedAt,
       };
       lastCacheFetchTime = now;
+      
+      console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[PHOTO POLICY DEBUG] - CONFIGURACIÓN REAL RECIBIDA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log("globalConfig completo:", cachedGlobalConfig);
+      console.log("- globalConfig.enabled:", cachedGlobalConfig.enabled);
+      console.log("- globalConfig.photos.enabled:", cachedGlobalConfig.photos.enabled);
+      console.log("- globalConfig.photos.days:", cachedGlobalConfig.photos.days);
+      console.log("- globalConfig.inspection.enabled:", cachedGlobalConfig.inspection.enabled);
+      console.log("- globalConfig.inspection.days:", cachedGlobalConfig.inspection.days);
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+      
       return cachedGlobalConfig;
     }
   } catch (e) {
-    console.error("❌ [photoPolicy] Error crítico leyendo 'config/photo_policy' desde Firestore:", e);
+    console.error(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[PHOTO POLICY DEBUG] ERROR LEYENDO CONFIG/PHOTO_POLICY\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.error(e);
+    console.log("- ¿permission-denied? ¿error de red? -> FALLBACK APLICADO");
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
     // On error, return safe fallback without caching so subsequent attempts can retry
     return getDefaultPolicyConfig();
   }
+
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[PHOTO POLICY DEBUG] DOCUMENTO INEXISTENTE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log("- Documento config/photo_policy no existe -> FALLBACK APLICADO");
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
   cachedGlobalConfig = getDefaultPolicyConfig();
   lastCacheFetchTime = now;
@@ -211,6 +228,20 @@ export function evaluateVehiclePolicy(
   const requiresInspection = inspectionEnabled && isInspectionDay;
 
   const vencida = requiresPhotos || requiresInspection;
+
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[PHOTO POLICY DEBUG] - EVALUACIÓN REAL\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log("- fecha/hora utilizada:", targetDate.toISOString());
+  console.log("- día actual calculado:", todayDay);
+  console.log("- todayDay:", todayDay);
+  console.log("- todayLabel:", todayLabel);
+  console.log("- isPhotoDay:", isPhotoDay);
+  console.log("- isInspectionDay:", isInspectionDay);
+  console.log("- photosEnabled:", photosEnabled);
+  console.log("- inspectionEnabled:", inspectionEnabled);
+  console.log("- requiresPhotos:", requiresPhotos);
+  console.log("- requiresInspection:", requiresInspection);
+  console.log("- policyEnabled:", Boolean(globalConfig.enabled));
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
   return {
     requiresPhotos,

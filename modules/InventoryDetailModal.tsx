@@ -7,7 +7,8 @@ import useLockBodyScroll from '../hooks/useLockBodyScroll';
 import { useConfirm, DataTable, TableColumn, IconButton } from '../design-system';
 import { formatCurrency } from '../utils/formatCurrency';
 import { InventoryMovement } from '../inventoryMovementTypes';
-import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2, FiChevronLeft, FiChevronRight, FiUpload, FiRefreshCw } from "react-icons/fi";
+import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2, FiChevronLeft, FiChevronRight, FiUpload, FiRefreshCw, FiLoader } from "react-icons/fi";
+import { uploadImageToStorage, deleteImageFromStorage } from '../utils/storageUtils';
 
 interface InventoryDetailModalProps {
   show: boolean;
@@ -26,6 +27,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
   const replacingIndexRef = useRef<number | null>(null);
 
   // Estado previewGallery igual al de Bodegas Vehiculares (VehicleInventoryTab.tsx)
@@ -209,53 +211,58 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !item) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const maxDim = 480;
-        let width = img.width;
-        let height = img.height;
+    // Optional: add basic validation for image types here if needed
+    if (!file.type.startsWith('image/')) {
+      alert("Por favor seleccione un archivo de imagen válido.");
+      return;
+    }
 
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
+    try {
+      setIsUploading(true);
+      const isReplacing = replacingIndexRef.current !== null && replacingIndexRef.current < currentImages.length;
+      
+      // Target folder based on item ID (or code as fallback)
+      const folderPath = `inventory/${item.id || item.code || 'unknown'}`;
+      
+      // Desired filename: e.g., image-1, image-2
+      const targetIndex = isReplacing ? replacingIndexRef.current! : currentImages.length;
+      const baseFileName = `image-${targetIndex + 1}`;
+      
+      // Upload the new image to Firebase Storage
+      const newImageUrl = await uploadImageToStorage(file, folderPath, baseFileName);
+      
+      let nextImages = [...currentImages];
+      let oldImageUrlToClean: string | null = null;
+      
+      if (isReplacing) {
+        oldImageUrlToClean = nextImages[replacingIndexRef.current!];
+        nextImages[replacingIndexRef.current!] = newImageUrl;
+        setSelectedIndex(replacingIndexRef.current!);
+      } else if (nextImages.length < 4) {
+        nextImages.push(newImageUrl);
+        setSelectedIndex(nextImages.length - 1);
+      }
+      
+      // Update Firestore references
+      emitImagesUpdate(nextImages);
+      
+      // If replacing and the old image was stored in Firebase Storage, clean it up
+      if (oldImageUrlToClean) {
+        await deleteImageFromStorage(oldImageUrlToClean).catch(console.error);
+      }
 
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.70);
-          
-          let nextImages = [...currentImages];
-          if (replacingIndexRef.current !== null && replacingIndexRef.current < nextImages.length) {
-            nextImages[replacingIndexRef.current] = compressedDataUrl;
-            setSelectedIndex(replacingIndexRef.current);
-          } else if (nextImages.length < 4) {
-            nextImages.push(compressedDataUrl);
-            setSelectedIndex(nextImages.length - 1);
-          }
-          
-          emitImagesUpdate(nextImages);
-          setReplacingIndex(null);
-          if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("Hubo un error al subir la imagen. Por favor intente nuevamente.");
+    } finally {
+      setReplacingIndex(null);
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleDeleteImage = async () => {
@@ -270,14 +277,27 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     });
 
     if (!shouldDelete) return;
+    
+    setIsUploading(true);
+    
+    try {
+      const urlToDelete = currentImages[indexToDelete];
+      
+      const nextImages = currentImages.filter((_, idx) => idx !== indexToDelete);
+      emitImagesUpdate(nextImages);
+      
+      // Intentar eliminarla físicamente (no falla si es base64 gracias a storageUtils)
+      await deleteImageFromStorage(urlToDelete).catch(console.error);
 
-    const nextImages = currentImages.filter((_, idx) => idx !== indexToDelete);
-    emitImagesUpdate(nextImages);
-
-    if (nextImages.length === 0) {
-      setSelectedIndex(0);
-    } else if (indexToDelete >= nextImages.length) {
-      setSelectedIndex(nextImages.length - 1);
+      if (nextImages.length === 0) {
+        setSelectedIndex(0);
+      } else if (indexToDelete >= nextImages.length) {
+        setSelectedIndex(nextImages.length - 1);
+      }
+    } catch (error) {
+      console.error("Error al eliminar imagen:", error);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -580,13 +600,18 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                             {currentImages.length < 4 && (
                                 <button
                                     type="button"
+                                    disabled={isUploading}
                                     onClick={() => {
                                         setReplacingIndex(null);
                                         fileInputRef.current?.click();
                                     }}
-                                    className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                                    className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <FiUpload className="text-sm" /> SUBIR IMAGEN
+                                    {isUploading && replacingIndex === null ? (
+                                        <><FiLoader className="text-sm animate-spin" /> SUBIENDO...</>
+                                    ) : (
+                                        <><FiUpload className="text-sm" /> SUBIR IMAGEN</>
+                                    )}
                                 </button>
                             )}
 
@@ -595,19 +620,25 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                 <div className="flex items-center gap-2.5 w-full sm:w-auto">
                                     <button
                                         type="button"
+                                        disabled={isUploading}
                                         onClick={() => {
                                             setReplacingIndex(selectedIndex);
                                             fileInputRef.current?.click();
                                         }}
-                                        className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 border border-slate-200 cursor-pointer"
+                                        className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 border border-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                         title="Reemplazar la imagen actualmente seleccionada"
                                     >
-                                        <FiRefreshCw className="text-xs" /> REEMPLAZAR
+                                        {isUploading && replacingIndex === selectedIndex ? (
+                                            <><FiLoader className="text-xs animate-spin" /> CARGANDO</>
+                                        ) : (
+                                            <><FiRefreshCw className="text-xs" /> REEMPLAZAR</>
+                                        )}
                                     </button>
                                     <button
                                         type="button"
+                                        disabled={isUploading}
                                         onClick={handleDeleteImage}
-                                        className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 border border-rose-200 cursor-pointer"
+                                        className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 border border-rose-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                         title="Eliminar la imagen actualmente seleccionada"
                                     >
                                         <FiTrash2 className="text-xs" /> ELIMINAR
@@ -622,6 +653,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                             accept="image/*" 
                             onChange={handleFileChange} 
                             className="hidden" 
+                            disabled={isUploading}
                         />
                     </div>
                 </div>

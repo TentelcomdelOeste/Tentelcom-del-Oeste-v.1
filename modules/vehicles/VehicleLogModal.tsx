@@ -383,12 +383,28 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                 const res = await checkVehiclePhotoPolicy();
                 if (isMounted) {
                     setPolicyStatus(res);
+                    
+                    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[VEHICLE LOG POLICY RESULT] - RESULTADO QUE RECIBE LA INTERFAZ\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+                    console.log("- role:", currentUser?.role);
+                    console.log("- requiresPhotos:", res.requiresPhotos);
+                    console.log("- requiresInspection:", res.requiresInspection);
+                    console.log("- photosEnabled:", res.photosEnabled);
+                    console.log("- inspectionEnabled:", res.inspectionEnabled);
+                    console.log("- isPhotoDay:", res.isPhotoDay);
+                    console.log("- isInspectionDay:", res.isInspectionDay);
+                    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
                 }
             } catch (e) {
                 console.error("Error checking vehicle policy:", e);
             }
         };
         if (show) {
+            console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[VEHICLE LOG POLICY RESULT] - DATOS DEL USUARIO\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            console.log("- UID:", currentUser?.id || currentUser?.uid);
+            console.log("- email:", currentUser?.email);
+            console.log("- role:", currentUser?.role);
+            console.log("- nombre:", currentUser?.name);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
             checkPolicy();
         }
         return () => {
@@ -788,6 +804,18 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             ['SI', 'NO', 'N/A'].includes(revisionUnidad[key])
         );
         const shouldValidateInspection = isInspectionRequired || hasHistoricalInspection || manualInspectionRequested || hasAnyInspectionAnswer;
+        const hasExistingPhoto = (existingPhotos.length > 0) || !!initialData?.oneDriveUrl || !!initialData?.photoTimestamp || !!initialData?.photoStoragePath;
+
+        console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[VEHICLE LOG SAVE VALIDATION]\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        console.log("- role:", currentUser?.role);
+        console.log("- isPhotoRequired:", isPhotoRequired);
+        console.log("- isInspectionRequired:", isInspectionRequired);
+        console.log("- shouldValidateInspection:", shouldValidateInspection);
+        console.log("- hasExistingPhoto:", hasExistingPhoto);
+        console.log("- selectedPhotoFiles.length:", selectedPhotoFiles.length);
+        console.log("- cantidad de respuestas de revisión:", Object.keys(revisionUnidad || {}).length);
+        console.log("- estado: SE PROCEDE A EVALUAR BLOQUEOS...");
+        console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
         if (shouldValidateInspection) {
             // Verificar primer punto de revisión que pudiera estar pendiente
@@ -798,6 +826,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                 const val = revisionUnidad?.[item.id];
                 if (!val || !['SI', 'NO', 'N/A'].includes(val)) {
                     setIsLoading(false);
+                    console.log(`[VEHICLE LOG SAVE VALIDATION] BLOQUEADO: Revisión de unidad incompleta (falta ${item.id})`);
                     await confirm({
                         title: 'Revisión de Unidad Incompleta',
                         description: `Debe responder obligatoriamente el punto "${item.label}" en la Revisión de Unidad seleccionando SI, NO o N/A.`,
@@ -811,9 +840,9 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
         }
 
         // 1.4 Validación de Fotografía requerida según política semanal
-        const hasExistingPhoto = (existingPhotos.length > 0) || !!initialData?.oneDriveUrl || !!initialData?.photoTimestamp || !!initialData?.photoStoragePath;
         if (isPhotoRequired && selectedPhotoFiles.length === 0 && !hasExistingPhoto) {
             setIsLoading(false);
+            console.log(`[VEHICLE LOG SAVE VALIDATION] BLOQUEADO: Fotografía requerida faltante`);
             await confirm({
                 title: 'Fotografía de Bitácora Requerida',
                 description: `Hoy (${policyStatus?.todayLabel || 'hoy'}) corresponde adjuntar la fotografía de bitácora para esta unidad según la política semanal. Debe adjuntar al menos una foto actual para registrar o cerrar la boleta.`,
@@ -823,6 +852,8 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             scrollToAndHighlightField('photo-section');
             return;
         }
+        
+        console.log(`[VEHICLE LOG SAVE VALIDATION] PERMITIDO: Pasó validaciones de política`);
 
         // 1.5 Validación condicional para Final de Labores (OBLIGATORIO solo si se ingresa Kilometraje de Llegada)
         if (hasValidKmLlegada) {
