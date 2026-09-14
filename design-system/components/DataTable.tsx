@@ -36,6 +36,7 @@ interface DataTableProps<T> {
   highlightedId?: string | number;
   getRowClassName?: (item: T) => string;
   zebra?: boolean;
+  hideMobileView?: boolean;
 }
 
 const getAlignClass = (align?: 'left' | 'center' | 'right') => {
@@ -125,7 +126,8 @@ export const DataTable = React.memo(function DataTable<T>({
   virtualHeight = 600,
   highlightedId,
   getRowClassName,
-  zebra = true
+  zebra = true,
+  hideMobileView = false
 }: DataTableProps<T>) {
   // Ordenar columnas para vista móvil si tienen mobileOrder
   const mobileColumns = React.useMemo(() => [...columns].sort((a, b) => (a.mobileOrder || 0) - (b.mobileOrder || 0)), [columns]);
@@ -243,6 +245,7 @@ export const DataTable = React.memo(function DataTable<T>({
     </div>
 
       {/* Vista Móvil: Tarjetas Compactas */}
+      {!hideMobileView && (
       <div className="md:hidden space-y-3">
         {isLoading ? (
           <div className="py-12 text-center text-slate-400 bg-white rounded-xl border border-slate-100">
@@ -308,6 +311,7 @@ export const DataTable = React.memo(function DataTable<T>({
           </>
         )}
       </div>
+      )}
 
       {/* Pagination Controls (Traditional) */}
       {(totalRecords !== undefined || (page !== undefined && totalPages !== undefined)) && (

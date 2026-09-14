@@ -396,10 +396,23 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
   // Definición de columnas tipadas para DataTable
   const columns = useMemo<TableColumn<InvItemType>[]>(() => {
     const cols: TableColumn<InvItemType>[] = [
-      {
-        header: 'Foto',
+      { 
+        header: 'Código', 
         align: 'center',
-        width: '60px',
+        width: '120px',
+        mobileGrid: 'left',
+        mobileOrder: 1,
+        render: (item) => (
+          <span className="font-mono font-bold text-[11px] text-slate-700 bg-slate-100 px-2 py-1 rounded inline-block">
+            {item.code}
+          </span>
+        )
+      },
+      { 
+        header: 'Material / Descripción', 
+        className: 'flex-1 min-w-[200px]',
+        mobileGrid: 'full',
+        mobileOrder: 3,
         render: (item) => {
           const images = (() => {
             if (!item) return [];
@@ -414,60 +427,53 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
           const primaryImage = images.length > 0 ? images[0] : '';
           const hasImages = images.length > 0;
           return (
-            <div 
-              className={`w-8 h-8 mx-auto rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center shrink-0 overflow-hidden ${
-                hasImages ? 'cursor-pointer select-none hover:border-blue-400 transition-colors' : 'text-slate-400'
-              }`}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                if (hasImages) {
-                  setPreviewGallery({
-                    images,
-                    currentIndex: 0,
-                    title: item.description,
-                    code: item.code
-                  });
-                }
-              }}
-              title={hasImages ? "Doble clic para ampliar imagen" : undefined}
-            >
-              {hasImages ? (
-                <img 
-                  src={primaryImage} 
-                  alt={item.description} 
-                  className="w-full h-full object-contain p-0.5 pointer-events-none"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <FiBox className="w-4 h-4" />
-              )}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div 
+                className={`w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center shrink-0 overflow-hidden ${
+                  hasImages ? 'cursor-pointer select-none hover:border-blue-400 transition-colors' : 'text-slate-400'
+                }`}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  if (hasImages) {
+                    setPreviewGallery({
+                      images,
+                      currentIndex: 0,
+                      title: item.description,
+                      code: item.code
+                    });
+                  }
+                }}
+                title={hasImages ? "Doble clic para ampliar imagen" : undefined}
+              >
+                {hasImages ? (
+                  <img 
+                    src={primaryImage} 
+                    alt={item.description}
+                    className="w-full h-full object-contain p-0.5 pointer-events-none"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <FiBox className="w-4 h-4" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 truncate">
+                <div className="font-bold text-slate-900 text-xs truncate" title={item.description}>
+                  {item.description}
+                </div>
+                {item.category && (
+                  <span className="text-[10px] text-slate-400 font-medium truncate block">
+                    {item.category}
+                  </span>
+                )}
+              </div>
             </div>
           );
         }
       },
       { 
-        header: 'Código', 
-        accessorKey: 'code', 
-        align: 'left',
-        width: '120px',
-        className: 'font-black text-slate-700',
-        mobileGrid: 'left',
-        mobileOrder: 1,
-        render: (item) => <span>{item.code}</span>
-      },
-      { 
-        header: 'Descripción', 
-        accessorKey: 'description', 
-        align: 'left',
-        width: '300px',
-        className: 'font-bold text-blue-900',
-        mobileGrid: 'full',
-        mobileOrder: 3
-      },
-      { 
         header: 'Stock', 
         align: 'right',
-        width: '100px',
+        width: '110px',
         className: 'text-right',
         mobileGrid: 'right',
         mobileOrder: 2,
@@ -478,8 +484,8 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
            const isLow = available > 0 && available <= item.minStock;
            return (
              <div className="flex flex-col items-end">
-               <span className={`font-black ${isCritical ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-slate-900'}`}>
-                   {available}
+               <span className={`font-black text-xs ${isCritical ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-slate-900'}`}>
+                   {available} <span className="text-[10px] text-slate-400 font-normal">{item.unit || 'und'}</span>
                </span>
                {actualReserved > 0 && (
                  <span className="text-[10px] font-bold text-slate-500">
@@ -510,7 +516,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
           const priceWithTax = displayPrice * 1.13;
           return (
             <div className="flex flex-col items-end">
-                <span className="font-mono font-bold text-slate-700">
+                <span className="font-mono font-bold text-xs text-slate-700">
                 {new Intl.NumberFormat('en-US', { style: 'currency', currency: item.currency || 'USD' }).format(priceWithTax)}
                 </span>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Inc. IVA</span>
@@ -531,7 +537,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
           const totalWithTax = realTotalValue * 1.13;
           return (
             <div className="flex flex-col items-end">
-                <span className="font-mono font-black text-emerald-700">
+                <span className="font-mono font-black text-xs text-emerald-700">
                 {new Intl.NumberFormat('en-US', { style: 'currency', currency: item.currency || 'USD' }).format(totalWithTax)}
                 </span>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">FIFO BASE</span>
@@ -555,7 +561,6 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
         />
       )
     });
-
     return cols;
   }, [currentUser.role, handleEdit, handleDelete, inventoryValuation]);
 
@@ -580,58 +585,121 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                     </div>
                   ) : (
                     <>
-                      <SearchInput 
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          placeholder="Buscar por código, descripción..."
-                          className="w-full md:w-64"
-                      />
-                      <Select
-                          options={[
-                            { label: 'Todas las Categorías', value: 'all' },
-                            ...categories.map(c => ({ label: c, value: c }))
-                          ]}
-                          value={categoryFilter}
-                          onChange={val => setCategoryFilter(val)}
-                          className="w-full md:w-48"
-                          isSearchable={false}
-                      />
-                      <Select
-                          options={[
-                            { label: 'Todo el Stock', value: 'all' },
-                            { label: 'Suficiente (Verde)', value: 'ok' },
-                            { label: 'Bajo (Naranja)', value: 'low' },
-                            { label: 'Sin Stock (Rojo)', value: 'critical' }
-                          ]}
-                          value={stockStatusFilter}
-                          onChange={val => setStockStatusFilter(val as any)}
-                          className="w-full md:w-48"
-                          isSearchable={false}
-                      />
-                      <Select
-                          options={[
-                            { label: 'Ordenar por...', value: 'default' },
-                            { label: 'Código (A-Z)', value: 'code-asc' },
-                            { label: 'Código (Z-A)', value: 'code-desc' },
-                            { label: 'Descripción (A-Z)', value: 'description-asc' },
-                            { label: 'Descripción (Z-A)', value: 'description-desc' },
-                            { label: 'Stock (Menor a Mayor)', value: 'stock-asc' },
-                            { label: 'Stock (Mayor a Menor)', value: 'stock-desc' },
-                            { label: 'Valor Total (Menor a Mayor)', value: 'total-asc' },
-                            { label: 'Valor Total (Mayor a Menor)', value: 'total-desc' }
-                          ]}
-                          value={sortConfig ? `${sortConfig.key}-${sortConfig.direction}` : 'default'}
-                          onChange={val => {
-                            if (val === 'default') {
-                              setSortConfig(null);
-                            } else {
-                              const [key, direction] = val.split('-') as [keyof InvItemType, 'asc' | 'desc'];
-                              setSortConfig({key, direction});
-                            }
-                          }}
-                          className="w-full md:w-48"
-                          isSearchable={false}
-                      />
+                      {/* Mobile Filters: Exactly 2 Rows */}
+                      <div className="block md:hidden space-y-2 w-full">
+                        <div className="grid grid-cols-2 gap-2">
+                          <SearchInput 
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              placeholder="Buscar por código..."
+                              className="w-full"
+                          />
+                          <Select
+                              options={[
+                                { label: 'Todas las Categorías', value: 'all' },
+                                ...categories.map(c => ({ label: c, value: c }))
+                              ]}
+                              value={categoryFilter}
+                              onChange={val => setCategoryFilter(val)}
+                              className="w-full"
+                              isSearchable={false}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Select
+                              options={[
+                                { label: 'Todo el Stock', value: 'all' },
+                                { label: 'Suficiente (Verde)', value: 'ok' },
+                                { label: 'Bajo (Naranja)', value: 'low' },
+                                { label: 'Sin Stock (Rojo)', value: 'critical' }
+                              ]}
+                              value={stockStatusFilter}
+                              onChange={val => setStockStatusFilter(val as any)}
+                              className="w-full"
+                              isSearchable={false}
+                          />
+                          <Select
+                              options={[
+                                { label: 'Código (A-Z)', value: 'code-asc' },
+                                { label: 'Ordenar por...', value: 'default' },
+                                { label: 'Código (Z-A)', value: 'code-desc' },
+                                { label: 'Descripción (A-Z)', value: 'description-asc' },
+                                { label: 'Descripción (Z-A)', value: 'description-desc' },
+                                { label: 'Stock (Menor a Mayor)', value: 'stock-asc' },
+                                { label: 'Stock (Mayor a Menor)', value: 'stock-desc' },
+                                { label: 'Valor Total (Menor a Mayor)', value: 'total-asc' },
+                                { label: 'Valor Total (Mayor a Menor)', value: 'total-desc' }
+                              ]}
+                              value={sortConfig ? `${sortConfig.key}-${sortConfig.direction}` : 'default'}
+                              onChange={val => {
+                                if (val === 'default') {
+                                  setSortConfig(null);
+                                } else {
+                                  const [key, direction] = val.split('-') as [keyof InvItemType, 'asc' | 'desc'];
+                                  setSortConfig({key, direction});
+                                }
+                              }}
+                              className="w-full"
+                              isSearchable={false}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Desktop Filters: Original Inline Layout */}
+                      <div className="hidden md:flex items-center gap-2 w-full">
+                        <SearchInput 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Buscar por código, descripción..."
+                            className="w-64"
+                        />
+                        <Select
+                            options={[
+                              { label: 'Todas las Categorías', value: 'all' },
+                              ...categories.map(c => ({ label: c, value: c }))
+                            ]}
+                            value={categoryFilter}
+                            onChange={val => setCategoryFilter(val)}
+                            className="w-48"
+                            isSearchable={false}
+                        />
+                        <Select
+                            options={[
+                              { label: 'Todo el Stock', value: 'all' },
+                              { label: 'Suficiente (Verde)', value: 'ok' },
+                              { label: 'Bajo (Naranja)', value: 'low' },
+                              { label: 'Sin Stock (Rojo)', value: 'critical' }
+                            ]}
+                            value={stockStatusFilter}
+                            onChange={val => setStockStatusFilter(val as any)}
+                            className="w-48"
+                            isSearchable={false}
+                        />
+                        <Select
+                            options={[
+                              { label: 'Ordenar por...', value: 'default' },
+                              { label: 'Código (A-Z)', value: 'code-asc' },
+                              { label: 'Código (Z-A)', value: 'code-desc' },
+                              { label: 'Descripción (A-Z)', value: 'description-asc' },
+                              { label: 'Descripción (Z-A)', value: 'description-desc' },
+                              { label: 'Stock (Menor a Mayor)', value: 'stock-asc' },
+                              { label: 'Stock (Mayor a Menor)', value: 'stock-desc' },
+                              { label: 'Valor Total (Menor a Mayor)', value: 'total-asc' },
+                              { label: 'Valor Total (Mayor a Menor)', value: 'total-desc' }
+                            ]}
+                            value={sortConfig ? `${sortConfig.key}-${sortConfig.direction}` : 'default'}
+                            onChange={val => {
+                              if (val === 'default') {
+                                setSortConfig(null);
+                              } else {
+                                const [key, direction] = val.split('-') as [keyof InvItemType, 'asc' | 'desc'];
+                                setSortConfig({key, direction});
+                              }
+                            }}
+                            className="w-48"
+                            isSearchable={false}
+                        />
+                      </div>
                     </>
                   )}
               </div>
@@ -655,17 +723,199 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               No hay datos disponibles en el inventario.
             </div>
           ) : (
-            <DataTable 
-                data={filteredItems}
-                columns={columns}
-                keyExtractor={(item: InvItemType) => item.id}
-                isLoading={isLoading}
-                emptyMessage="No se encontraron materiales que coincidan con la búsqueda."
-                enableVirtualization={true}
-                virtualHeight={600}
-                highlightedId={selectedId}
-                className="inventory-grid"
-            />
+            <>
+              {/* Desktop View: DataTable untouched */}
+              <div className="hidden md:block">
+                <DataTable 
+                    data={filteredItems}
+                    columns={columns}
+                    keyExtractor={(item: InvItemType) => item.id}
+                    isLoading={isLoading}
+                    emptyMessage="No se encontraron materiales que coincidan con la búsqueda."
+                    enableVirtualization={true}
+                    virtualHeight={600}
+                    highlightedId={selectedId}
+                    className="inventory-grid"
+                    hideMobileView={true}
+                />
+              </div>
+
+              {/* Mobile View: Redesigned Compact Cards */}
+              <div className="md:hidden space-y-3">
+                {filteredItems.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 bg-white rounded-2xl border border-slate-200">
+                    No se encontraron materiales que coincidan con la búsqueda.
+                  </div>
+                ) : (
+                  filteredItems.map((item) => {
+                    const isHighlighted = selectedId && item.id === selectedId;
+                    const images = (() => {
+                      if (!item) return [];
+                      if (item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
+                        return item.imageUrls.filter(Boolean);
+                      }
+                      if (item.imageUrl) {
+                        return [item.imageUrl];
+                      }
+                      return [];
+                    })();
+                    const primaryImage = images.length > 0 ? images[0] : '';
+                    const hasImages = images.length > 0;
+
+                    const actualReserved = Math.max(0, item.reserved || 0);
+                    const available = (item.stock || 0) - actualReserved;
+                    const isCritical = available <= 0;
+                    const isLow = available > 0 && available <= item.minStock;
+
+                    let displayPrice = item.price || 0;
+                    if (item.providers && item.providers.length > 0) {
+                        const sum = item.providers.reduce((acc, p) => acc + p.price, 0);
+                        displayPrice = sum / item.providers.length;
+                    }
+                    const priceWithTax = displayPrice * 1.13;
+                    const realTotalValue = inventoryValuation.get(item.id) || 0;
+                    const totalWithTax = realTotalValue * 1.13;
+
+                    return (
+                      <div 
+                        key={item.id}
+                        className={`bg-white rounded-2xl border p-3.5 shadow-sm transition-all ${
+                          isHighlighted 
+                            ? 'bg-yellow-50 border-yellow-400 ring-4 ring-yellow-200/50 relative z-10' 
+                            : 'border-slate-200'
+                        }`}
+                      >
+                        {/* Header Area: Photo + Code/Description/Category + Actions */}
+                        <div className="flex items-start gap-3">
+                          {/* Photo Thumbnail */}
+                          <div 
+                            className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center shrink-0 overflow-hidden ${
+                              hasImages ? 'cursor-pointer select-none active:scale-95 transition-transform' : 'text-slate-400'
+                            }`}
+                            onClick={() => {
+                              if (hasImages) {
+                                setPreviewGallery({
+                                  images,
+                                    currentIndex: 0,
+                                    title: item.description,
+                                    code: item.code
+                                });
+                              }
+                            }}
+                            title={hasImages ? "Tocar para ampliar imagen" : undefined}
+                          >
+                            {hasImages ? (
+                              <img 
+                                src={primaryImage} 
+                                alt={item.description}
+                                className="w-full h-full object-contain p-0.5 pointer-events-none"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <FiBox className="w-5 h-5 text-slate-300" />
+                            )}
+                          </div>
+
+                          {/* Code, Description, Category */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 font-black text-[10px] rounded-md tracking-wider">
+                                {item.code}
+                              </span>
+
+                              {/* Actions */}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <IconButton 
+                                  icon={<ACTION_ICONS.view />} 
+                                   variant="primary" 
+                                   onClick={() => setViewingItem(item)} 
+                                   title="Ver detalle"
+                                   className="w-7 h-7"
+                                />
+                                <IconButton 
+                                  icon={<ACTION_ICONS.edit />} 
+                                   variant="primary" 
+                                   onClick={() => handleEdit(item)} 
+                                   title="Editar"
+                                   className="w-7 h-7"
+                                />
+                                {isAdmin(currentUser.role) && (
+                                  <IconButton 
+                                    icon={<ACTION_ICONS.delete />} 
+                                   variant="danger" 
+                                   onClick={() => handleDelete(item)} 
+                                   title="Eliminar"
+                                   className="w-7 h-7"
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            <h4 className="font-bold text-blue-950 text-xs sm:text-sm leading-snug mt-1 line-clamp-2">
+                              {item.description}
+                            </h4>
+
+                            {item.category && (
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mt-0.5 truncate">
+                                {item.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="border-t border-slate-100 my-3" />
+
+                        {/* Bottom Section: Stock, Unitario, Valor Total */}
+                        <div className={`grid ${isAdmin(currentUser.role) ? 'grid-cols-[68px_1fr_1fr]' : 'grid-cols-1'} gap-1.5 text-center`}>
+                          {/* Stock */}
+                          <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Stock</span>
+                            <span className={`font-black text-xs sm:text-sm ${isCritical ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-slate-900'}`}>
+                              {available}
+                            </span>
+                            <span className="text-[9px] font-bold text-slate-500 leading-none mt-0.5">
+                              {item.unit || 'Unidad'}
+                            </span>
+                            {actualReserved > 0 && (
+                              <span className="text-[8px] font-bold text-amber-700 mt-0.5">
+                                ({actualReserved} res.)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Unitario (Admin) */}
+                          {isAdmin(currentUser.role) && (
+                            <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Unitario</span>
+                              <span className="font-mono font-bold text-xs sm:text-sm text-slate-700 truncate w-full">
+                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: item.currency || 'USD' }).format(priceWithTax)}
+                              </span>
+                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-0.5">
+                                INC. IVA
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Valor Total (Admin) */}
+                          {isAdmin(currentUser.role) && (
+                            <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Valor Total</span>
+                              <span className="font-mono font-black text-xs sm:text-sm text-emerald-700 truncate w-full">
+                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: item.currency || 'USD' }).format(totalWithTax)}
+                              </span>
+                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-0.5">
+                                FIFO BASE
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
           )}
 
           <InventoryModal 
