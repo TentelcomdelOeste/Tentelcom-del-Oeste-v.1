@@ -6,8 +6,14 @@ import { UserProvider } from './contexts/UserContext';
 import ErrorBoundary from './core/ErrorBoundary';
 import { ConfirmProvider } from './design-system';
 import { BrowserRouter } from 'react-router-dom';
+import { installHighResolutionCameraConstraints } from './cameraResolutionBootstrap';
 
 async function bootstrap() {
+
+  // En Web/PWA, evitar que Chrome Android inicialice la cámara en 480x640
+  // durante la solicitud de permisos. El plugin @capgo/camera-preview
+  // reutiliza getUserMedia y recibirá aquí preferencias de alta resolución.
+  installHighResolutionCameraConstraints();
 
   // Registrar SW unificado (FCM + App Shell) para soporte offline y notificaciones
   if ('serviceWorker' in navigator) {
