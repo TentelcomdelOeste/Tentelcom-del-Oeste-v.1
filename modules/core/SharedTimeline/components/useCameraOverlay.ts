@@ -45,13 +45,11 @@ export function useCameraOverlay() {
       throw new Error('No se pudo inicializar el contexto 2D del Canvas');
     }
 
-    // 1. Dibujar fotografía original completa
+    // Mantener exactamente las dimensiones nativas recibidas. No redimensionar ni recortar.
     ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
 
-    // 2. Escala proporcional basada en la resolución de la foto (diseñado para 1080p base)
     const scale = Math.max(0.7, Math.min(2.5, img.naturalWidth / 1080));
 
-    // 3. Preparar líneas de texto del overlay
     const lines: { text: string; color: string; isBold?: boolean }[] = [
       { text: `${overlay.company} • REGISTRO OPERATIVO`, color: '#38bdf8', isBold: true },
       { text: `📅 ${overlay.timestamp}`, color: '#ffffff', isBold: true },
@@ -78,12 +76,9 @@ export function useCameraOverlay() {
       });
     }
 
-    // 4. Medir dimensiones del texto para el posicionamiento
     const fontSizeHeader = Math.round(13 * scale);
     const fontSizeBody = Math.round(9.5 * scale);
     const lineHeight = Math.round(15 * scale);
-
-    // Posicionar en la esquina superior izquierda
     const margin = Math.round(16 * scale);
     const textStartX = margin;
     let currentY = margin;
@@ -93,25 +88,20 @@ export function useCameraOverlay() {
 
     lines.forEach((l, idx) => {
       ctx.font = l.isBold ? `bold ${idx === 0 ? fontSizeHeader : fontSizeBody}px sans-serif` : `${fontSizeBody}px sans-serif`;
-      
-      // Dibujar contorno de texto robusto para máxima legibilidad sobre cualquier fondo
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
       ctx.lineWidth = Math.max(2.5, Math.round(3.5 * scale));
       ctx.lineJoin = 'round';
       ctx.strokeText(l.text, textStartX, currentY);
-
-      // Dibujar texto de relleno principal
       ctx.fillStyle = l.color;
       ctx.fillText(l.text, textStartX, currentY);
-      
       currentY += lineHeight;
     });
 
     ctx.restore();
 
-    // Exportar canvas a Blob JPEG de alta calidad
+    // Re-encode once, at very high JPEG quality. No second resize/compression occurs here.
     const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95);
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.98);
     });
 
     if (!blob) {
