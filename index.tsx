@@ -1,7 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import './cameraResolutionBootstrap';
 import App from './App';
 import { UserProvider } from './contexts/UserContext';
 import ErrorBoundary from './core/ErrorBoundary';
