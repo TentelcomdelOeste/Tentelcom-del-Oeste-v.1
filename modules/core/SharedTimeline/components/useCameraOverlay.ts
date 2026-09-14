@@ -36,19 +36,36 @@ export function useCameraOverlay() {
       img.src = src;
     });
 
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+    const sourceWidth = img.naturalWidth;
+    const sourceHeight = img.naturalHeight;
 
-    const ctx = canvas.getContext('2d');
+    if (sourceWidth < 1000 || sourceHeight < 700) {
+      console.warn('[CameraOverlay] WARNING: source photo is unexpectedly small:', {
+        width: sourceWidth,
+        height: sourceHeight,
+      });
+    } else {
+      console.info('[CameraOverlay] Source photo dimensions:', {
+        width: sourceWidth,
+        height: sourceHeight,
+      });
+    }
+
+    const canvas = document.createElement('canvas');
+    // CRITICAL: the canvas is EXACTLY the native photo size. No resize/crop.
+    canvas.width = sourceWidth;
+    canvas.height = sourceHeight;
+
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) {
       throw new Error('No se pudo inicializar el contexto 2D del Canvas');
     }
 
-    // Mantener exactamente las dimensiones nativas recibidas. No redimensionar ni recortar.
-    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, sourceWidth, sourceHeight);
 
-    const scale = Math.max(0.7, Math.min(2.5, img.naturalWidth / 1080));
+    const scale = Math.max(0.7, Math.min(3, sourceWidth / 1080));
 
     const lines: { text: string; color: string; isBold?: boolean }[] = [
       { text: `${overlay.company} • REGISTRO OPERATIVO`, color: '#38bdf8', isBold: true },
@@ -86,27 +103,36 @@ export function useCameraOverlay() {
     ctx.save();
     ctx.textBaseline = 'top';
 
-    lines.forEach((l, idx) => {
-      ctx.font = l.isBold ? `bold ${idx === 0 ? fontSizeHeader : fontSizeBody}px sans-serif` : `${fontSizeBody}px sans-serif`;
+    lines.forEach((line, idx) => {
+      ctx.font = line.isBold
+        ? `bold ${idx === 0 ? fontSizeHeader : fontSizeBody}px sans-serif`
+        : `${fontSizeBody}px sans-serif`;
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
       ctx.lineWidth = Math.max(2.5, Math.round(3.5 * scale));
       ctx.lineJoin = 'round';
-      ctx.strokeText(l.text, textStartX, currentY);
-      ctx.fillStyle = l.color;
-      ctx.fillText(l.text, textStartX, currentY);
+      ctx.strokeText(line.text, textStartX, currentY);
+      ctx.fillStyle = line.color;
+      ctx.fillText(line.text, textStartX, currentY);
       currentY += lineHeight;
     });
 
     ctx.restore();
 
-    // Re-encode once, at very high JPEG quality. No second resize/compression occurs here.
+    // Única re-serialización necesaria para incrustar el overlay. Usamos
+    // calidad 1.0 y conservamos exactamente las dimensiones de la foto.
     const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.98);
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 1.0);
     });
 
     if (!blob) {
       throw new Error('Error al generar el archivo JPEG final desde Canvas');
     }
+
+    console.info('[CameraOverlay] Final stamped photo:', {
+      width: canvas.width,
+      height: canvas.height,
+      sizeBytes: blob.size,
+    });
 
     return new File([blob], filename, { type: 'image/jpeg', lastModified: Date.now() });
   }, []);
