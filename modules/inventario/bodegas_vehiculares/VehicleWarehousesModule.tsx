@@ -16,7 +16,7 @@ import {
   VehicleMaterialRequest,
   VehicleProjectConsumption
 } from '../../../types/vehicleWarehouse.types';
-import { vehicleWarehouseService, getVehicleCatalog } from './services/vehicleWarehouseService';
+import { vehicleWarehouseService, getVehicleCatalog, getDefaultVehicleForUser } from './services/vehicleWarehouseService';
 
 interface VehicleWarehousesModuleProps {
   currentUser?: User | null;
@@ -25,11 +25,15 @@ interface VehicleWarehousesModuleProps {
 const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<'inventory' | 'requests' | 'movements' | 'reports'>('inventory');
   
-  const vehicles = getVehicleCatalog();
-  const initialVehicleId = vehicles.length > 0 ? vehicles[0].id : '';
+  // Shared state across the tabs - Preselección basada en el usuario autenticado
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(() => getDefaultVehicleForUser(currentUser));
 
-  // Shared state across the tabs
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(initialVehicleId);
+  // Sincronizar si cambia el usuario currentUser
+  useEffect(() => {
+    if (currentUser?.email) {
+      setSelectedVehicleId(getDefaultVehicleForUser(currentUser));
+    }
+  }, [currentUser?.email]);
   const [items, setItems] = useState<VehicleWarehouseItem[]>([]);
   const [movements, setMovements] = useState<VehicleMovement[]>([]);
   const [requests, setRequests] = useState<VehicleMaterialRequest[]>([]);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ActionButton, IconButton } from '../../../../design-system';
 import { FiX, FiCheck, FiTrash2, FiSearch, FiChevronDown, FiTruck, FiFolder, FiBox } from 'react-icons/fi';
-import { getVehicleCatalog } from '../services/vehicleWarehouseService';
+import { getVehicleCatalog, getDefaultVehicleForUser } from '../services/vehicleWarehouseService';
 import { subscribeToProjects } from '../../../project_management/services/projectService';
 import { Project } from '../../../project_management/types';
 
@@ -210,7 +210,7 @@ export const VehicleRequestModal: React.FC<Props> = ({
   const vehicles = useMemo(() => getVehicleCatalog(), []);
   // Vehicle Selection (pre-selected from inventory tab, but editable independently in modal)
   const [selectedVehicle, setSelectedVehicle] = useState<string>(
-    initialData?.vehiculoId || initialVehicleId || (vehicles.length > 0 ? vehicles[0].id : '')
+    initialData?.vehiculoId || initialVehicleId || getDefaultVehicleForUser(currentUser)
   );
 
   // Project Autocomplete / Free-text State

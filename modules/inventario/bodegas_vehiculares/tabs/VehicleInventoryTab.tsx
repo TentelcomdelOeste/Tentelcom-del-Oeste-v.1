@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { User } from '../../../../types';
 import { useInventory } from '../../../../hooks/useInventory';
-import { getVehicleCatalog, vehicleWarehouseService, isVehicleDeleteAuthorized } from '../services/vehicleWarehouseService';
+import { getVehicleCatalog, vehicleWarehouseService, isVehicleDeleteAuthorized, getDefaultVehicleForUser } from '../services/vehicleWarehouseService';
 import { ActionButton, IconButton, ACTION_ICONS, useConfirm, DataTable, TableColumn } from '../../../../design-system';
 import { FiRefreshCw, FiSearch, FiX, FiBox, FiChevronRight } from 'react-icons/fi';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
@@ -71,7 +71,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
 
   const items = externalItems || [];
   const vehicles = getVehicleCatalog();
-  const selectedVehicleId = externalSelectedVehicleId || (vehicles.length > 0 ? vehicles[0].id : '');
+  const selectedVehicleId = externalSelectedVehicleId || getDefaultVehicleForUser(currentUser);
 
   const setSelectedVehicleId = onSelectVehicleId || (() => {});
 

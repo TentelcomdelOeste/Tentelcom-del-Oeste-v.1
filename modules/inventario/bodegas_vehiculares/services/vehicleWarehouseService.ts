@@ -20,6 +20,24 @@ export const isVehicleDeleteAuthorized = (user?: { email?: string | null } | nul
 
 export const BODEGA_EXCLUDED_VEHICLES = ['U3', 'U7'];
 
+// Mapeo de unidad preseleccionada por correo electrónico
+export const USER_DEFAULT_VEHICLE_MAP: Record<string, string> = {
+  'jonatanzetha@gmail.com': 'U4',
+  'ronaldporras4@gmail.com': 'U2',
+  'joseluissequeira1126@gmail.com': 'U6',
+  'loncho2886@gmail.com': 'U2',
+  'piedravialesjose@gmail.com': 'U8'
+};
+
+export const getDefaultVehicleForUser = (user?: { email?: string | null } | null): string => {
+  const email = user?.email?.toLowerCase().trim();
+  if (email && USER_DEFAULT_VEHICLE_MAP[email]) {
+    return USER_DEFAULT_VEHICLE_MAP[email];
+  }
+  const catalog = getVehicleCatalog();
+  return catalog.length > 0 ? catalog[0].id : '';
+};
+
 export const formatVehicleOptionLabel = (label: string): string => {
   const parts = label.split(' - ');
   if (parts.length >= 2) {
