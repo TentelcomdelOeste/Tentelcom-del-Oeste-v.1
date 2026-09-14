@@ -9,13 +9,26 @@
  *
  * Este parche solo agrega preferencias de alta resolución cuando la llamada
  * no define ya width/height. No modifica las llamadas que ya tienen una
- * resolución explícita.
+ * resolución explícita y no interviene en plataformas nativas de Capacitor.
  */
 let installed = false;
 
 export function installHighResolutionCameraConstraints(): void {
-  if (installed || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+  if (
+    installed ||
+    typeof navigator === 'undefined' ||
+    !navigator.mediaDevices?.getUserMedia
+  ) {
     return;
+  }
+
+  // En la app nativa el plugin usa CameraX/AVFoundation; este parche es
+  // exclusivamente para el flujo Web/PWA que utiliza getUserMedia.
+  try {
+    const capacitor = (window as any)?.Capacitor;
+    if (capacitor?.isNativePlatform?.()) return;
+  } catch {
+    // Si Capacitor no está disponible, continuar como Web/PWA.
   }
 
   const mediaDevices = navigator.mediaDevices;
