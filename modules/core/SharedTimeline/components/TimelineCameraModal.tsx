@@ -279,8 +279,10 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
 
     try {
       const result = await CameraPreview.capture({
-        quality: 95,
+        quality: 100,
         format: 'jpeg',
+        width: 3840, // Fija la resolución 4K
+        height: 3840,
       });
 
       if (result && result.value) {
