@@ -116,7 +116,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
     const [deletingPhotoIndex, setDeletingPhotoIndex] = useState<number | null>(null);
     const [photoLoading, setPhotoLoading] = useState(false);
     const [manualPhotoRequested, setManualPhotoRequested] = useState(false);
-    const [manualInspectionRequested, setManualInspectionRequested] = useState(false);
     const [revisionUnidad, setRevisionUnidad] = useState<Record<string, InspectionOption>>(() => {
         const unit = initialData?.unidadName || initialData?.unidadId || initialData?.unidad;
         if (initialData?.revisionUnidad) {
@@ -785,25 +784,10 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
             return;
         }
 
-        // 1.3 Validación de Revisión de Unidad (si aplica política semanal, registro histórico o solicitud manual)
+        // 1.3 Validación de Revisión de Unidad (AHORA ES SIEMPRE OBLIGATORIA)
         const isPhotoRequired = Boolean(policyStatus?.requiresPhotos);
-        const isInspectionRequired = Boolean(policyStatus?.requiresInspection);
-        const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
-            initialData.revisionUnidad.estadoLlantas !== undefined ||
-            initialData.revisionUnidad.llantas !== undefined ||
-            initialData.revisionUnidad.inspeccionGolpesDanos !== undefined ||
-            initialData.revisionUnidad.nivelAceite !== undefined ||
-            initialData.revisionUnidad.extintorVigente !== undefined ||
-            initialData.revisionUnidad.cuentaExtintor !== undefined ||
-            initialData.revisionUnidad.terminalesBateriaBuenEstado !== undefined ||
-            initialData.revisionUnidad.enciendeCorreBien !== undefined ||
-            initialData.revisionUnidad.aireAcondicionado !== undefined
-        );
-        const hasAnyInspectionAnswer = Object.keys(revisionUnidad || {}).some(key => 
-            key !== 'llenadoBoletaRecorrido' && key !== 'inspeccionVisualParqueo' && key !== 'cerradoBoletaRecorrido' &&
-            ['SI', 'NO', 'N/A'].includes(revisionUnidad[key])
-        );
-        const shouldValidateInspection = isInspectionRequired || hasHistoricalInspection || manualInspectionRequested || hasAnyInspectionAnswer;
+        const shouldValidateInspection = true; // Forzado a true a petición del usuario
+        const isInspectionRequired = true; // Para mantener consistencia en los logs
         const hasExistingPhoto = (existingPhotos.length > 0) || !!initialData?.oneDriveUrl || !!initialData?.photoTimestamp || !!initialData?.photoStoragePath;
 
         console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[VEHICLE LOG SAVE VALIDATION]\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -1190,7 +1174,7 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     <ActionButton
                                         type="button"
                                         variant="secondary"
-                                        label="+ Adjuntar Foto"
+                                        label="Adjuntar Foto"
                                         onClick={() => setManualPhotoRequested(true)}
                                         className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg"
                                     />
@@ -1316,71 +1300,18 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         );
                     })()}
 
-                    {/* 3B. REVISIÓN DE UNIDAD (INSPECCIÓN TÉCNICA) */}
-                    {(() => {
-                        const isInspectionRequired = Boolean(policyStatus?.requiresInspection);
-                        const hasHistoricalInspection = isEditing && !!initialData?.revisionUnidad && (
-                            initialData.revisionUnidad.estadoLlantas !== undefined ||
-                            initialData.revisionUnidad.llantas !== undefined ||
-                            initialData.revisionUnidad.inspeccionGolpesDanos !== undefined ||
-                            initialData.revisionUnidad.nivelAceite !== undefined ||
-                            initialData.revisionUnidad.extintorVigente !== undefined ||
-                            initialData.revisionUnidad.cuentaExtintor !== undefined ||
-                            initialData.revisionUnidad.terminalesBateriaBuenEstado !== undefined ||
-                            initialData.revisionUnidad.enciendeCorreBien !== undefined ||
-                            initialData.revisionUnidad.aireAcondicionado !== undefined
-                        );
-                        const showInspection = isInspectionRequired || manualInspectionRequested || hasHistoricalInspection;
-
-                        if (!showInspection) {
-                            return (
-                                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-slate-700">🔍 Revisión de Unidad</span>
-                                        <span className="text-[10px] text-slate-500">
-                                            (No requerida hoy)
-                                        </span>
-                                    </div>
-                                    <ActionButton
-                                        type="button"
-                                        variant="secondary"
-                                        label="+ Realizar Revisión"
-                                        onClick={() => setManualInspectionRequested(true)}
-                                        className="!py-1 !px-2.5 !text-[10px] !font-bold !uppercase !rounded-lg"
-                                    />
-                                </div>
-                            );
-                        }
-
-                        return (
-                            <div id="field-container-inspection-section" className={`p-3 sm:p-4 rounded-xl border space-y-3 transition-all duration-300 ${highlightedFieldId === 'inspection-section' ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-50 border-slate-200'}`}>
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                                            Revisión de Unidad
-                                        </span>
-                                        <span className="text-[10px] text-slate-500 font-medium">
-                                            (Inspección técnica y operativa del vehículo)
-                                        </span>
-                                    </div>
-                                    {!isInspectionRequired && !hasHistoricalInspection && manualInspectionRequested && (
-                                        <IconButton
-                                            icon={<FiX size={14} />}
-                                            onClick={() => setManualInspectionRequested(false)}
-                                            className="!p-1 text-slate-400 hover:text-slate-700"
-                                            title="Ocultar revisión opcional"
-                                        />
-                                    )}
-                                </div>
-
-                                {isInspectionRequired && (
-                                    <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-start gap-2 text-amber-800 text-xs">
-                                        <FiAlertTriangle className="text-sm shrink-0 text-amber-600 mt-0.5" />
-                                        <div>
-                                            <span className="font-bold uppercase">Revisión Obligatoria Requerida:</span> Hoy ({policyStatus?.todayLabel || 'hoy'}) corresponde completar la inspección técnica del vehículo según la política semanal.
-                                        </div>
-                                    </div>
-                                )}
+                    {/* 3B. REVISIÓN DE UNIDAD (INSPECCIÓN TÉCNICA) - AHORA SIEMPRE OBLIGATORIA */}
+                    <div id="field-container-inspection-section" className={`p-3 sm:p-4 rounded-xl border space-y-3 transition-all duration-300 ${highlightedFieldId === 'inspection-section' ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                                    Revisión de Unidad
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                    (Inspección técnica y operativa del vehículo - Obligatorio)
+                                </span>
+                            </div>
+                        </div>
 
                                 {/* Grid responsivo de tarjetas organizadas */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1441,8 +1372,6 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                                     </div>
                                 </div>
                             </div>
-                        );
-                    })()}
 
                     {/* 4. FINAL DE LABORES */}
                     <div className={`p-4 rounded-xl border shadow-xs space-y-2 transition-all duration-200 ${
