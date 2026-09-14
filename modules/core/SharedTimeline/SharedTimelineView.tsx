@@ -34,7 +34,6 @@ import {
 } from "react-icons/fi";
 import { IconButton, StatusBadge, ActionButton } from "@/design-system";
 import { OperationalLogInput } from "./components/TimelineInput";
-import { TimelineCameraModal } from "./components/TimelineCameraModal";
 import { Pin, PinOff, Trash, Edit3, CornerUpLeft } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEmployees } from "@/hooks/useEmployees";
@@ -424,13 +423,6 @@ export default function SharedTimeline({
     resolvedTimelineId
   );
 
-  const [isIntegratedCameraOpen, setIsIntegratedCameraOpen] = useState(false);
-
-  const handleIntegratedCameraCapture = async (file: File) => {
-    if (file && currentUser) {
-      await uploadMediaAndSend([file], "image", "");
-    }
-  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1619,19 +1611,10 @@ const getDynamicTitleSize = (title: string) => {
           isGettingLocation={isGettingLocation}
           gpsError={gpsError}
           setGpsError={setGpsError}
-          onOpenCamera={() => setIsIntegratedCameraOpen(true)}
         />
       </div>
-
-      <TimelineCameraModal
-        isOpen={isIntegratedCameraOpen}
-        onClose={() => setIsIntegratedCameraOpen(false)}
-        onCapture={handleIntegratedCameraCapture}
-        currentUser={currentUser}
-        contextInfo={vehicleName ? `Unidad: ${vehicleName}` : jobTitle || ''}
-        jobLocation={jobLocation || ''}
-      />
-
+        </>
+      )}
       {/* PORTALS & MODALS SECTION */}
       <ModalPortal>
         <AnimatePresence>
@@ -1644,62 +1627,67 @@ const getDynamicTitleSize = (title: string) => {
               onClick={() => { setActiveMenuComment(null); setConfirmingDeleteId(null); }}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0, y: 15 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 15 }}
-                transition={{ type: "spring", duration: 0.35 }}
-                className="bg-white rounded-[2rem] w-full max-w-xs shadow-[0_32px_64px_-16px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-200/80"
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="bg-white rounded-[2rem] p-6 max-w-sm w-full shadow-2xl relative overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="bg-slate-50/80 px-6 py-5 border-b border-slate-100 text-left">
-                  <span title={activeMenuComment.usuarioNombre} className="text-[10px] font-black uppercase tracking-widest text-blue-600 block mb-1.5 truncate whitespace-nowrap">{activeMenuComment.usuarioNombre}</span>
-                  <p className="text-xs text-slate-500 font-bold line-clamp-2 leading-relaxed italic">
-                    &quot;{activeMenuComment.eliminado ? "Mensaje eliminado" : activeMenuComment.mensaje || (activeMenuComment.tipo === "imagen" || activeMenuComment.tipo === "foto" ? "Evidencia fotográfica" : "Archivo adjunto")}&quot;
-                  </p>
-                </div>
-                {confirmingDeleteId ? (
-                  <div className="p-6 flex flex-col items-center gap-4 text-center">
-                    <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-500 border border-red-100"><Trash className="w-6 h-6" /></div>
-                    <div>
-                      <p className="text-sm font-black text-slate-800 uppercase tracking-tight mb-1.5">¿Eliminar registro?</p>
-                      <p className="text-[11px] text-slate-500 font-bold leading-normal px-2">Esta acción marcará el registro como eliminado para todos los usuarios.</p>
-                    </div>
-                    <div className="flex gap-3 w-full mt-2">
-                      <ActionButton label="Volver" variant="secondary" className="flex-1 text-[10px] font-black py-3 rounded-xl" onClick={() => setConfirmingDeleteId(null)} />
-                      <button type="button" className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-lg transition-all" onClick={() => { handleDeleteMessage(activeMenuComment); setConfirmingDeleteId(null); }}>Eliminar</button>
-                    </div>
+                {!confirmingDeleteId ? (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => {
+                        setReplyingTo(activeMenuComment);
+                        setActiveMenuComment(null);
+                      }}
+                      className="w-full text-left px-5 py-4 hover:bg-slate-50 rounded-2xl font-bold text-slate-700 transition-colors flex items-center gap-3"
+                    >
+                      <CornerUpLeft className="w-5 h-5 text-blue-500" />
+                      Responder
+                    </button>
+                    {activeMenuComment.mensaje && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(activeMenuComment.mensaje);
+                          setActiveMenuComment(null);
+                        }}
+                        className="w-full text-left px-5 py-4 hover:bg-slate-50 rounded-2xl font-bold text-slate-700 transition-colors flex items-center gap-3"
+                      >
+                        <FiLink className="w-5 h-5 text-blue-500" />
+                        Copiar texto
+                      </button>
+                    )}
+                    {(currentUser?.id === activeMenuComment.usuarioId || currentUser?.rol === 'SuperAdmin') && (
+                      <button
+                        onClick={() => setConfirmingDeleteId(activeMenuComment.id)}
+                        className="w-full text-left px-5 py-4 hover:bg-red-50 rounded-2xl font-bold text-red-600 transition-colors flex items-center gap-3 mt-2"
+                      >
+                        <Trash className="w-5 h-5" />
+                        Eliminar mensaje
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  <div className="flex flex-col p-2.5 bg-white space-y-1">
-                    <button type="button" className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-slate-50 active:bg-slate-100 rounded-2xl text-left text-[11px] font-black uppercase tracking-wider text-slate-700 transition-all group" onClick={() => {
-                      const isTargetingMedia = replyMediaTarget && replyMediaTarget.comment.id === activeMenuComment.id;
-                      setReplyingTo({
-                        id: activeMenuComment.id,
-                        usuarioId: activeMenuComment.usuarioId,
-                        usuarioNombre: activeMenuComment.usuarioNombre || "Usuario",
-                        mensaje: activeMenuComment.mensaje || "",
-                        tipo: activeMenuComment.tipo === "imagen" || activeMenuComment.tipo === "foto" ? "imagen" : activeMenuComment.tipo === "archivo" ? "archivo" : "texto",
-                        imagenUrl: isTargetingMedia ? replyMediaTarget.url : (Array.isArray(activeMenuComment.fileUrls) ? activeMenuComment.fileUrls[0] : undefined),
-                        replyMediaIndex: isTargetingMedia ? replyMediaTarget.index : undefined,
-                      });
-                      setReplyMediaTarget(null);
-                      setActiveMenuComment(null);
-                    }}>
-                      <CornerUpLeft className="w-4 h-4 text-blue-500 shrink-0 group-hover:scale-110 transition-transform" /> <span className="flex-1">Responder mensaje</span>
-                    </button>
-                    <button type="button" className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-slate-50 active:bg-slate-100 rounded-2xl text-left text-[11px] font-black uppercase tracking-wider text-slate-700 transition-all group" onClick={() => handlePinMessage(activeMenuComment)}>
-                      <Pin className="w-4 h-4 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" /> <span className="flex-1">{activeMenuComment.pinned ? "Desfijar reporte" : "Destacar reporte"}</span>
-                    </button>
-                    {activeMenuComment.tipo === "comentario" && !activeMenuComment.eliminado && activeMenuComment.usuarioId === currentUser?.id && (
-                      <button type="button" className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-slate-50 active:bg-slate-100 rounded-2xl text-left text-[11px] font-black uppercase tracking-wider text-slate-700 transition-all group" onClick={() => handleStartEdit(activeMenuComment)}>
-                        <Edit3 className="w-4 h-4 text-emerald-500 shrink-0 group-hover:scale-110 transition-transform" /> <span className="flex-1">Editar contenido</span>
+                  <div className="flex flex-col items-center text-center p-2">
+                    <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">
+                      <Trash className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-800 mb-2">¿Eliminar mensaje?</h3>
+                    <p className="text-sm text-slate-500 mb-6">Esta acción no se puede deshacer.</p>
+                    <div className="flex w-full gap-3">
+                      <button
+                        onClick={() => setConfirmingDeleteId(null)}
+                        className="flex-1 py-3 px-4 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                      >
+                        Cancelar
                       </button>
-                    )}
-                    {!activeMenuComment.eliminado && activeMenuComment.usuarioId === currentUser?.id && (
-                      <button type="button" className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-red-50 text-red-600 rounded-2xl text-left text-[11px] font-black uppercase tracking-wider transition-all group" onClick={() => setConfirmingDeleteId(activeMenuComment.id)}>
-                        <Trash className="w-4 h-4 text-red-500 shrink-0 group-hover:scale-110 transition-transform" /> <span className="flex-1">Eliminar reporte</span>
+                      <button
+                        onClick={() => { handleDeleteMessage(activeMenuComment); setActiveMenuComment(null); setConfirmingDeleteId(null); }}
+                        className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                      >
+                        Eliminar
                       </button>
-                    )}
+                    </div>
                   </div>
                 )}
               </motion.div>
@@ -1711,76 +1699,21 @@ const getDynamicTitleSize = (title: string) => {
       <ModalPortal>
         <AnimatePresence>
           {showGridGallery && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 1.05 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed inset-0 bg-slate-950 z-[500] flex flex-col touch-none"
+            <motion.div
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               className="fixed inset-0 bg-white z-[550] flex flex-col"
             >
-              <div className="flex-none p-5 pb-3 border-b border-white/10 flex flex-col gap-4 sticky top-0 bg-slate-950/90 backdrop-blur-xl z-10 w-full">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Galería Central</span>
-                    <h3 className="text-white text-base font-black uppercase tracking-tight">Bitácora de Medios</h3>
-                  </div>
-                  <IconButton icon={<FiX className="w-5 h-5" />} onClick={() => setShowGridGallery(false)} variant="ghost" className="!w-12 !h-12 !p-0 rounded-full bg-white/5 hover:bg-white/10 text-white border border-white/10 shadow-lg" />
-                </div>
-                <div className="flex gap-6 overflow-x-auto pb-1 scrollbar-none">
-                  <button onClick={() => setGalleryTab('media')} className={`pb-3 text-[11px] font-bold uppercase tracking-wider transition-all border-b-2 relative shrink-0 ${galleryTab === 'media' ? 'text-white border-blue-500' : 'text-white/40 border-transparent hover:text-white/60'}`}>
-                    Archivos Visuales <span className="ml-1 text-[9px] bg-white/10 px-1.5 py-0.5 rounded-md">{projectImages?.length}</span>
-                  </button>
-                  <button onClick={() => setGalleryTab('docs')} className={`pb-3 text-[11px] font-bold uppercase tracking-wider transition-all border-b-2 relative shrink-0 ${galleryTab === 'docs' ? 'text-white border-blue-500' : 'text-white/40 border-transparent hover:text-white/60'}`}>
-                    Documentación <span className="ml-1 text-[9px] bg-white/10 px-1.5 py-0.5 rounded-md">{projectFiles?.length}</span>
-                  </button>
-                  <button onClick={() => setGalleryTab('links')} className={`pb-3 text-[11px] font-bold uppercase tracking-wider transition-all border-b-2 relative shrink-0 ${galleryTab === 'links' ? 'text-white border-blue-500' : 'text-white/40 border-transparent hover:text-white/60'}`}>
-                    Enlaces <span className="ml-1 text-[9px] bg-white/10 px-1.5 py-0.5 rounded-md">{projectLinks?.length}</span>
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 pb-32 custom-scrollbar">
-                {galleryTab === 'media' && (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {projectImages.map((img, idx) => (
-                      <div key={`gal-${idx}`} className="aspect-square relative cursor-pointer group bg-slate-900 rounded-xl overflow-hidden border border-white/5 shadow-2xl" onClick={() => setFullscreenImage({ urls: projectImages.map(i => i.url), currentIndex: idx })} onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget({ type: 'image', url: img.url, comment: img.comment, index: img.index }); }}>
-                        <img src={img.url} alt={`Evidence ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out brightness-[0.85] group-hover:brightness-100" loading="lazy" referrerPolicy="no-referrer" />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2.5 pt-6 text-[9px] text-white/90 truncate font-black uppercase tracking-tight">{img.label}</div>
-                        <div className="absolute inset-0 ring-4 ring-inset ring-white/0 group-hover:ring-blue-500/40 transition-all duration-300" />
-                      </div>
-                    ))}
-                    {projectImages?.length === 0 && <div className="col-span-full h-64 flex flex-col items-center justify-center text-white/30 text-xs font-black uppercase tracking-widest gap-4 border border-white/5 bg-white/2 rounded-3xl mt-10"><FiCamera size={32} /> No hay archivos visuales registrados</div>}
-                  </div>
-                )}
-                {galleryTab === 'docs' && (
-                  <div className="flex flex-col gap-3 max-w-3xl mx-auto mt-4 px-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {projectFiles.map((file, idx) => (
-                      <div key={`doc-${idx}`} className="flex items-center bg-white/5 hover:bg-white/10 transition-all p-4 rounded-2xl gap-5 border border-white/5 shadow-xl group" onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget({ type: 'file', url: file.url, name: file.name, comment: file.comment, index: file.index }); }}>
-                        <div className="w-12 h-12 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:scale-110 transition-transform"><FiFileText className="text-blue-400 w-6 h-6" /></div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-black text-white truncate uppercase tracking-tight" title={file.name}>{file.name}</p>
-                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/40 font-black uppercase tracking-widest">{file.size > 0 && <span>{(file.size / 1024).toFixed(1)} KB</span>} <span>•</span> <span>Por {file.label}</span></div>
-                        </div>
-                        <IconButton icon={<FiDownload className="w-5 h-5" />} onClick={() => forceDownloadFile(file.url, file.name)} variant="ghost" className="!w-10 !h-10 !p-0 rounded-full bg-white/5 hover:bg-blue-600 hover:text-white transition-all text-white/70" />
-                      </div>
-                    ))}
-                    {projectFiles?.length === 0 && <div className="h-64 flex flex-col items-center justify-center text-white/30 text-xs font-black uppercase tracking-widest gap-4 border border-white/5 bg-white/2 rounded-3xl mt-10"><FiFileText size={32} /> No hay documentos adjuntos</div>}
-                  </div>
-                )}
-                {galleryTab === 'links' && (
-                  <div className="flex flex-col gap-3 max-w-3xl mx-auto mt-4 px-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {projectLinks.map((link, idx) => (
-                      <a key={`link-${idx}`} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-start bg-white/5 hover:bg-white/10 transition-all p-4 rounded-2xl gap-5 border border-white/5 shadow-xl group">
-                        <div className="w-12 h-12 rounded-xl bg-indigo-600/20 flex items-center justify-center shrink-0 border border-indigo-500/20 group-hover:scale-110 transition-transform mt-0.5"><FiLink className="text-indigo-400 w-5 h-5" /></div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-black text-white hover:text-blue-400 truncate uppercase tracking-tight transition-colors" title={link.url}>{link.url}</p>
-                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/40 font-black uppercase tracking-widest"><span>{getHostname(link.url)}</span> <span>•</span> <span>Por {link.label}</span></div>
-                        </div>
-                      </a>
-                    ))}
-                    {projectLinks?.length === 0 && <div className="h-64 flex flex-col items-center justify-center text-white/30 text-xs font-black uppercase tracking-widest gap-4 border border-white/5 bg-white/2 rounded-3xl mt-10"><FiLink size={32} /> No hay enlaces externos</div>}
-                  </div>
-                )}
-              </div>
+               <div className="p-4 flex items-center justify-between border-b">
+                 <h2 className="text-lg font-bold">Galería</h2>
+                 <button onClick={() => setShowGridGallery(false)} className="px-4 py-2 bg-slate-100 rounded-lg">Cerrar</button>
+               </div>
+               <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 overflow-y-auto">
+                 {projectImages.map((img, i) => (
+                    <img key={i} src={img.url} className="w-full h-32 object-cover rounded-lg cursor-pointer" onClick={() => setFullscreenImage({ urls: projectImages.map(x => x.url), currentIndex: i })} />
+                 ))}
+               </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1796,306 +1729,38 @@ const getDynamicTitleSize = (title: string) => {
               transition={{ duration: 0.25 }}
               className="fixed inset-0 bg-slate-950/98 flex flex-col items-center justify-center z-[550] select-none touch-none p-0" 
               onClick={() => setFullscreenImage(null)} 
-              onTouchStart={(e) => { touchStartZoomX.current = e.touches[0].clientX; }} 
-              onTouchEnd={(e) => {
-                if (!touchStartZoomX.current) return;
-                const diff = e.changedTouches[0].clientX - touchStartZoomX.current;
-                if (Math.abs(diff) > 60) {
-                  if (diff > 0) setFullscreenImage(prev => prev ? { ...prev, currentIndex: Math.max(0, prev.currentIndex - 1) } : null);
-                  else setFullscreenImage(prev => prev ? { ...prev, currentIndex: Math.min(prev.urls?.length - 1, prev.currentIndex + 1) } : null);
-                }
-                touchStartZoomX.current = null;
-              }}
             >
               <div className="absolute top-0 left-0 right-0 p-5 flex justify-between items-center bg-gradient-to-b from-black/80 via-black/40 to-transparent z-10">
                 <div className="flex flex-col">
-                  <span className="text-white text-[10px] font-black uppercase tracking-widest opacity-60 mb-0.5">Visor Fullscreen</span>
+                  <span className="text-white text-[10px] font-black uppercase tracking-widest opacity-60 mb-0.5">Visor</span>
                   <span className="text-white text-xs font-black tabular-nums">{fullscreenImage.currentIndex + 1} / {fullscreenImage.urls?.length}</span>
                 </div>
-                <IconButton icon={<FiX className="w-5 h-5" />} onClick={() => setFullscreenImage(null)} variant="ghost" className="!w-12 !h-12 !p-0 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/10 shadow-2xl" />
+                <button onClick={() => setFullscreenImage(null)} className="text-white bg-white/20 p-2 rounded-full w-10 h-10 flex items-center justify-center font-bold">✕</button>
               </div>
-              <button className="absolute left-4 w-12 h-12 rounded-full bg-black/40 text-white/50 hover:text-white hover:bg-black/60 flex items-center justify-center transition-all z-10 border border-white/5" onClick={(e) => { e.stopPropagation(); setFullscreenImage(prev => prev ? { ...prev, currentIndex: Math.max(0, prev.currentIndex - 1) } : null); }}><FiChevronLeft size={28} /></button>
-              <button className="absolute right-4 w-12 h-12 rounded-full bg-black/40 text-white/50 hover:text-white hover:bg-black/60 flex items-center justify-center transition-all z-10 border border-white/5" onClick={(e) => { e.stopPropagation(); setFullscreenImage(prev => prev ? { ...prev, currentIndex: Math.min(prev.urls?.length - 1, prev.currentIndex + 1) } : null); }}><FiChevronRight size={28} /></button>
               
-              {/* Zoomable Image Implementation */}
               <div 
                 className="relative w-full h-full flex items-center justify-center p-0 overflow-hidden" 
                 onClick={(e) => e.stopPropagation()}
               >
                 <img 
-                  key={displayZoomUrl}
-                  src={displayZoomUrl} 
+                  src={fullscreenImage.urls[fullscreenImage.currentIndex]} 
                   alt="Zoom" 
                   className="max-w-full max-h-full object-contain transition-transform duration-75 ease-out" 
-                  style={{
-                    transform: `scale(${zoomState.scale}) translate3d(${zoomState.x}px, ${zoomState.y}px, 0)`,
-                    touchAction: zoomState.scale > 1 ? 'none' : 'auto',
-                    willChange: 'transform'
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    let foundMsg = Array.isArray(projectImages) ? projectImages.find(img => img.url === displayZoomUrl)?.comment : null;
-                    if (!foundMsg && fullscreenImage?.commentId) foundMsg = mergedComments.find(c => c.id === fullscreenImage.commentId);
-                    setContextMenuTarget({ type: 'image', url: displayZoomUrl, comment: foundMsg });
-                  }} 
-                  onTouchStart={handleZoomTouchStart}
-                  onTouchMove={handleZoomTouchMove}
-                  onTouchEnd={handleZoomTouchEnd}
-                  onDoubleClick={handleDoubleTap}
                   referrerPolicy="no-referrer" 
                 />
               </div>
+              
               <div className="absolute bottom-10 left-0 right-0 flex justify-center px-4">
-                <span className="bg-white/5 backdrop-blur-md px-6 py-3 rounded-full text-white/60 text-[10px] font-black uppercase tracking-widest border border-white/10 shadow-lg">Desliza para navegar</span>
+                 <div className="flex gap-4">
+                   <button onClick={(e) => { e.stopPropagation(); setFullscreenImage(prev => prev ? { ...prev, currentIndex: Math.max(0, prev.currentIndex - 1) } : null); }} className="w-12 h-12 bg-white/10 rounded-full text-white flex items-center justify-center">‹</button>
+                   <button onClick={(e) => { e.stopPropagation(); setFullscreenImage(prev => prev ? { ...prev, currentIndex: Math.min(prev.urls.length - 1, prev.currentIndex + 1) } : null); }} className="w-12 h-12 bg-white/10 rounded-full text-white flex items-center justify-center">›</button>
+                 </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </ModalPortal>
-
-      <ModalPortal>
-        <AnimatePresence>
-          {showProjectInfo && (
-            <div className="fixed inset-0 z-[400]">
-              <motion.div 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 0.35 }} 
-                exit={{ opacity: 0 }} 
-                onClick={() => setShowProjectInfo(false)} 
-                className="fixed inset-0 bg-slate-950 transition-opacity" 
-              />
-              <motion.div 
-                initial={{ y: "100%", opacity: 0 }} 
-                animate={{ y: 0, opacity: 1 }} 
-                exit={{ y: "100%", opacity: 0 }} 
-                transition={{ type: "spring", damping: 28, stiffness: 220 }} 
-                className="fixed inset-x-0 bottom-0 md:top-6 md:right-6 md:bottom-6 md:left-auto md:w-[460px] bg-white rounded-t-[3rem] md:rounded-[3rem] shadow-[0_32px_128px_-16px_rgba(0,0,0,0.4)] flex flex-col border border-slate-200/80 max-h-[92vh] md:max-h-[calc(100vh-3rem)] overflow-hidden"
-              >
-                <div className="w-12 h-1.5 bg-slate-200 tracking-wide rounded-full mx-auto mt-4 mb-2 shrink-0 md:hidden" />
-                <div className="px-7 pb-5 pt-3 md:pt-7 flex items-center justify-between border-b border-slate-100 shrink-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase text-blue-600 tracking-widest bg-blue-50/85 px-3 py-1 rounded-lg border border-blue-100/30 font-mono">{fetchedTrabajoDetails?.otCode ? `OT-${fetchedTrabajoDetails.otCode}` : "PROYECTO"}</span>
-                      {jobStatus && <StatusBadge label={jobStatus.replace(/_/g, " ")} variant={getStatusVariant(jobStatus) as any} />}
-                    </div>
-                    <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight truncate mt-2 leading-none">{jobTitle}</h2>
-                  </div>
-                  <IconButton icon={<FiX className="w-6 h-6" />} onClick={() => setShowProjectInfo(false)} variant="ghost" className="!w-12 !h-12 !p-0 rounded-full hover:bg-slate-100 shrink-0" />
-                </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-7 space-y-8">
-                  <div>
-                    <div className="flex items-center justify-between mb-5 px-1">
-                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2.5">Evidencia Destacada <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100/50">{projectImages?.length}</span></h3>
-                    </div>
-                    {projectImages?.length > 0 ? (
-                      <div className="space-y-5">
-                        <div className="flex gap-4 overflow-x-auto pb-5 scrollbar-none snap-x -mx-1 px-1">
-                          {projectImages.slice(0, 12).map((img, idx) => (
-                            <div key={idx} onClick={() => setFullscreenImage({ urls: projectImages.map(i => i.url), currentIndex: idx })} className="relative w-32 h-32 md:w-36 md:h-36 rounded-[2rem] overflow-hidden shrink-0 border border-slate-200/80 shadow-md cursor-pointer snap-start hover:scale-[0.97] active:scale-95 transition-all duration-300 group hover:border-blue-300">
-                              <img src={img.url} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:brightness-95 transition-all duration-500" alt={`Evidence ${idx + 1}`} loading="lazy" />
-                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent p-3 text-[9px] text-white truncate text-center font-black uppercase tracking-tight">{img.label}</div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex justify-end pr-1">
-                          <ActionButton label={`Ver galería completa (${projectImages?.length})`} icon={<FiChevronRight className="w-4 h-4 ml-1" />} onClick={() => setShowGridGallery(true)} variant="secondary" className="text-[10px] md:text-xs font-black py-3 px-6 rounded-2xl shadow-sm hover:shadow-md" />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12 bg-slate-50/50 border border-dashed border-slate-200 rounded-[2.5rem] text-slate-400 select-none gap-3"><p className="text-xs font-black uppercase tracking-widest">Sin capturas registradas</p></div>
-                    )}
-                  </div>
-                  <div className="space-y-6">
-                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest px-1">Detalles Operativos</h3>
-                    <div className="bg-slate-50/60 p-6 rounded-[2rem] border border-slate-200/50 shadow-sm hover:border-slate-300 transition-all">
-                      <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block mb-3">Descripción General</span>
-                      <p className={`text-xs text-slate-600 leading-relaxed font-bold ${isDescCollapsed ? "line-clamp-5" : ""}`}>{fetchedTrabajoDetails?.descripcion || "Sin descripción técnica programada."}</p>
-                      {(fetchedTrabajoDetails?.descripcion?.length || 0) > 160 && (
-                        <div role="button" onClick={() => setIsDescCollapsed(!isDescCollapsed)} className="text-[10px] font-black text-blue-600 hover:text-blue-700 mt-4 flex items-center gap-1.5 cursor-pointer select-none">
-                          {isDescCollapsed ? "Expandir descripción" : "Colapsar descripción"} {isDescCollapsed ? <FiChevronDown className="w-4 h-4" /> : <FiChevronUp className="w-4 h-4" />}
-                        </div>
-                      )}
-                    </div>
-                    {fetchedTrabajoDetails?.observaciones && (
-                      <div className="bg-amber-50/60 p-6 rounded-[2rem] border border-amber-200/60 flex flex-col gap-3">
-                        <span className="text-[9px] uppercase font-black tracking-widest text-amber-600 block">Notas Críticas</span>
-                        <p className="text-xs text-amber-950 font-black leading-relaxed">{fetchedTrabajoDetails.observaciones}</p>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm hover:border-slate-200 transition-all flex flex-col gap-3">
-                        <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block">Personal Asignado</span>
-                        <div className="flex flex-wrap gap-2">
-                          {fetchedTrabajoDetails?.cuadrilla && fetchedTrabajoDetails.cuadrilla?.length > 0 ? fetchedTrabajoDetails.cuadrilla.map((operator: string, idx: number) => (
-                            <span key={idx} className="inline-flex items-center gap-2 text-[10px] font-black bg-slate-50 border border-slate-200/60 text-slate-700 px-4 py-2 rounded-2xl"><FiUsers className="w-3.5 h-3.5 text-slate-400 shrink-0" />{operator}</span>
-                          )) : <span className="text-[10px] font-bold text-slate-400">Sin asignar</span>}
-                        </div>
-                      </div>
-                      <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm hover:border-slate-200 transition-all flex flex-col gap-3">
-                        <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block">Móviles / Bitácora Ligada</span>
-                        <div className="flex flex-wrap gap-2">
-                          {fetchedTrabajoDetails?.unidades && fetchedTrabajoDetails.unidades?.length > 0 ? fetchedTrabajoDetails.unidades.map((unit: string, idx: number) => (
-                            <span key={idx} className="inline-flex items-center gap-2 text-[10px] font-black bg-indigo-50/50 border border-indigo-200/50 text-indigo-700 px-4 py-2 rounded-2xl"><FiTruck className="w-3.5 h-3.5 text-indigo-400 shrink-0" />{unit}</span>
-                          )) : linkedLogDetails ? (
-                            <div className="flex flex-col gap-1 w-full">
-                               <span className="inline-flex items-center gap-2 text-[10px] font-black bg-indigo-600 text-white px-4 py-2 rounded-2xl shadow-md w-fit">
-                                 <FiTruck className="w-3.5 h-3.5 shrink-0" />
-                                 {linkedLogDetails.unidadName || linkedLogDetails.unidadId || "Móvil Ligado"}
-                               </span>
-                               <span className="text-[8px] font-black uppercase text-indigo-600 tracking-wider ml-1">Bitácora: {linkedLogDetails.placa || linkedLogDetails._resolvedPlaca || "N/A"}</span>
-                            </div>
-                          ) : <span className="text-[10px] font-bold text-slate-400">N/A</span>}
-                        </div>
-                      </div>
-                      <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm hover:border-slate-200 transition-all group">
-                        <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block mb-3 leading-none">Programación</span>
-                        <p className="text-xs font-black text-slate-700 flex items-center gap-3">
-                          <FiCalendar className="w-5 h-5 text-blue-500 shrink-0 group-hover:scale-110 transition-transform" /> 
-                          {(() => {
-                            // 1. Prioritize Scheduled Job date (fecha_inicio)
-                            const jobDate = fetchedTrabajoDetails?.fecha_inicio;
-                            if (jobDate) {
-                              const d = safeDate(jobDate);
-                              if (d.getTime() > 0) return formatJobDate(jobDate, fetchedTrabajoDetails?.fecha_fin);
-                            }
-                            
-                            // 2. Fallback to Vehicle Log date (fecha) from either details or linkedLog
-                            const logDate = fetchedTrabajoDetails?.fecha || linkedLogDetails?.fecha;
-                            if (logDate) {
-                              const d = safeDate(logDate);
-                              if (d.getTime() > 0) return formatJobDate(logDate);
-                            }
-                            
-                            return "Pendiente";
-                          })()}
-                        </p>
-                      </div>
-                      <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm hover:border-slate-200 transition-all group">
-                        <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block mb-3 leading-none">Ventana Horaria</span>
-                        <p className="text-xs font-black text-slate-700 flex items-center gap-3"><FiClock className="w-5 h-5 text-blue-500 shrink-0 group-hover:scale-110 transition-transform" /> {fetchedTrabajoDetails?.hora_inicio || "--:--"} a {fetchedTrabajoDetails?.hora_fin || "--:--"}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-5">
-                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest px-1">Documentos Técnicos</h3>
-                    {projectFiles?.length > 0 ? (
-                      <div className="grid grid-cols-1 gap-3">
-                        {projectFiles.map((file, idx) => (
-                          <button type="button" onClick={() => forceDownloadFile(file.url, file.name)} key={idx} className="w-full text-left flex items-center gap-5 p-5 bg-slate-50/40 hover:bg-slate-50 border border-slate-200/60 rounded-[2.2rem] transition-all duration-300 group shadow-sm active:scale-[0.99]">
-                            <div className="w-12 h-12 rounded-2xl bg-white text-slate-500 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center shrink-0 border border-slate-200 group-hover:border-blue-500 transition-all shadow-sm"><FiFileText className="w-6 h-6" /></div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-black text-slate-800 truncate uppercase tracking-tight leading-tight mb-1">{file.name}</p>
-                              <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest block opacity-70">Certificación / Acta</span>
-                            </div>
-                            <FiDownload className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-10 bg-slate-50/50 border border-dashed border-slate-200 rounded-[2.5rem] text-slate-400 select-none gap-3"><p className="text-xs font-black uppercase tracking-widest">Sin reportes asociados</p></div>
-                    )}
-                  </div>
-                </div>
-                <div className="p-7 bg-slate-50/90 backdrop-blur-md border-t border-slate-100 flex gap-4 shrink-0 justify-end md:rounded-b-[3rem]">
-                  <ActionButton label="Cerrar Panel" variant="secondary" onClick={() => setShowProjectInfo(false)} className="text-[10px] font-black px-8 py-4 rounded-2xl" />
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </ModalPortal>
-
-      <ModalPortal>
-        <AnimatePresence>
-          {contextMenuTarget && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[700] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md touch-none"
-              onClick={() => setContextMenuTarget(null)}
-            >
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0, y: 15 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 15 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                className="bg-slate-900 border border-white/10 w-full max-w-[300px] rounded-[2.5rem] shadow-[0_32px_96px_-16px_rgba(0,0,0,0.8)] overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-6 border-b border-white/5 bg-white/2">
-                  <p className="text-white/40 text-[9px] font-black uppercase tracking-[0.2em] text-center mb-3">Gestión de Medios</p>
-                  {contextMenuTarget.type === 'file' && <p className="text-white text-xs font-black text-center truncate px-2 uppercase tracking-tight">{contextMenuTarget.name}</p>}
-                  {contextMenuTarget.type === 'image' && <p className="text-white text-[10px] font-bold text-center opacity-60">Evidencia Fotográfica</p>}
-                </div>
-                <div className="flex flex-col p-2.5 space-y-1">
-                  <button onClick={handleShowInChatContext} className="flex items-center gap-4 w-full px-5 py-4 text-white hover:bg-white/5 active:bg-white/10 rounded-2xl transition-all group font-black text-[11px] uppercase tracking-wider uppercase"><FiMessageSquare className="w-5 h-5 text-indigo-400 group-hover:scale-110 transition-transform" /> <span>MOSTRAR EN EL CHAT</span></button>
-                  <button onClick={handleReplyContext} className="flex items-center gap-4 w-full px-5 py-4 text-white hover:bg-white/5 active:bg-white/10 rounded-2xl transition-all group font-black text-[11px] uppercase tracking-wider uppercase"><CornerUpLeft className="w-5 h-5 text-blue-400 group-hover:scale-110 transition-transform" /> <span>Responder</span></button>
-                  <button onClick={handleDownloadContext} className="flex items-center gap-4 w-full px-5 py-4 text-white hover:bg-white/5 active:bg-white/10 rounded-2xl transition-all group font-black text-[11px] uppercase tracking-wider uppercase"><FiDownload className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" /> <span>Descargar</span></button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </ModalPortal>
-
-      <ModalPortal>
-        <AnimatePresence>
-          {inlineReplyTarget && (
-            <motion.div
-              initial={{ opacity: 0, y: 100 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              transition={{ type: "spring", damping: 28, stiffness: 220 }}
-              className="fixed bottom-0 left-0 right-0 z-[750] flex flex-col items-center p-4 sm:p-8 bg-transparent pointer-events-none touch-none"
-            >
-              <div className="w-full max-w-2xl flex flex-col bg-slate-900 border border-white/10 shadow-[0_32px_128px_rgba(0,0,0,0.8)] rounded-[2.5rem] overflow-hidden pointer-events-auto">
-                <div className="p-4 border-b border-white/5 flex items-center justify-between gap-5 bg-slate-900/90 backdrop-blur-xl">
-                  <div className="flex flex-1 items-center gap-4 overflow-hidden">
-                    <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-800 shrink-0 flex items-center justify-center border border-white/5">
-                      {inlineReplyTarget.type === 'image' ? <img src={inlineReplyTarget.url} alt="Reply" className="w-full h-full object-cover" /> : <FiFileText className="w-6 h-6 text-slate-500" />}
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] uppercase font-black text-blue-400 truncate tracking-[0.15em] mb-1">En respuesta a {inlineReplyTarget.comment?.usuarioNombre || "Usuario"}</span>
-                      <span className="text-xs font-black text-white truncate uppercase tracking-tight">{inlineReplyTarget.type === "image" ? "Evidencia Visual" : (inlineReplyTarget.name || "Archivo de Datos")}</span>
-                    </div>
-                  </div>
-                  <IconButton icon={<FiX className="w-5 h-5" />} onClick={() => setInlineReplyTarget(null)} variant="ghost" className="!w-10 !h-10 !p-0 rounded-full bg-white/5 hover:bg-white/10 text-white" />
-                </div>
-                <div className="flex items-center gap-3 p-4 bg-slate-900">
-                  <input
-                    type="text"
-                    autoFocus
-                    value={inlineReplyMessage}
-                    onChange={(e) => setInlineReplyMessage(e.target.value)}
-                    placeholder="Escribe un mensaje..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-2xl text-sm font-black text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500 py-4 px-6 transition-all"
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendInlineReply(); } }}
-                  />
-                  <IconButton
-                    icon={<FiSend className="w-5 h-5 ml-0.5" />}
-                    onClick={handleSendInlineReply}
-                    disabled={!inlineReplyMessage.trim()}
-                    variant="primary"
-                    className="!h-[56px] !w-[56px] !rounded-2xl flex-shrink-0"
-                  />
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </ModalPortal>
-      
-      <ImportWizardModal 
-        show={showImportWizard} 
-        onClose={() => setShowImportWizard(false)} 
-        resolvedTimelineId={resolvedTimelineId}
-        activeParentId={activeParentId}
-        currentCollection={currentCollection}
-        currentUser={currentUser}
-      />
-        </>
-      )}
     </div>
   );
-}
+};
+

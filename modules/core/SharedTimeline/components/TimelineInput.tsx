@@ -33,7 +33,6 @@ interface OperationalLogInputProps {
   isGettingLocation?: boolean;
   gpsError?: string | null;
   setGpsError?: (err: string | null) => void;
-  onOpenCamera?: () => void;
 }
 
 export const OperationalLogInput: React.FC<OperationalLogInputProps> = ({
@@ -58,16 +57,11 @@ export const OperationalLogInput: React.FC<OperationalLogInputProps> = ({
   isGettingLocation = false,
   gpsError = null,
   setGpsError,
-  onOpenCamera
 }) => {
   const [isLongText, setIsLongText] = React.useState(false);
 
   const handleCameraClick = () => {
-    if (onOpenCamera) {
-      onOpenCamera();
-    } else {
       cameraRef.current?.click();
-    }
   };
 
   return (

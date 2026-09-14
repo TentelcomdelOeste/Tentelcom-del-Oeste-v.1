@@ -189,21 +189,41 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     {
       header: 'Material / Descripción',
       className: 'flex-1 min-w-[200px]',
-      render: (item) => (
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center shrink-0 text-slate-400">
-            <FiBox className="w-4 h-4" />
-          </div>
-          <div className="min-w-0 flex-1 truncate">
-            <div className="font-bold text-slate-900 text-xs truncate" title={item.description}>
-              {item.description}
+      render: (item) => {
+        const images = itemImagesMap.get(item.inventoryItemId) || [];
+        const primaryImage = images.length > 0 ? images[0] : '';
+        const hasImages = images.length > 0;
+        return (
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div 
+              className={`w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center shrink-0 overflow-hidden ${
+                hasImages ? 'cursor-pointer select-none hover:border-blue-400 transition-colors' : 'text-slate-400'
+              }`}
+              onDoubleClick={(e) => handleImageDoubleClick(item, images, e)}
+              title={hasImages ? "Doble clic para ampliar imagen" : undefined}
+            >
+              {hasImages ? (
+                <img 
+                  src={primaryImage} 
+                  alt={item.description} 
+                  className="w-full h-full object-contain p-0.5 pointer-events-none"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <FiBox className="w-4 h-4" />
+              )}
             </div>
-            <span className="text-[10px] text-slate-400 font-medium truncate block">
-              {item.category}
-            </span>
+            <div className="min-w-0 flex-1 truncate">
+              <div className="font-bold text-slate-900 text-xs truncate" title={item.description}>
+                {item.description}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium truncate block">
+                {item.category}
+              </span>
+            </div>
           </div>
-        </div>
-      )
+        );
+      }
     },
     {
       header: 'Categoría',

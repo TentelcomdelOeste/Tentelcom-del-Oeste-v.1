@@ -14,6 +14,8 @@ import { triggerFileDownload } from '../utils/fileUtils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { LOGO_BASE64 } from '../utils/logoBase64';
+import { FiBox } from 'react-icons/fi';
+import { ImageViewerModal } from '../components/ImageViewerModal';
 import { 
   useConfirm, 
   DataTable, 
@@ -51,6 +53,12 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
   const [sortConfig, setSortConfig] = useState<{key: keyof InvItemType, direction: 'asc' | 'desc'}>({ key: "code", direction: "asc" });
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<InvItemType | null>(null);
+  const [previewGallery, setPreviewGallery] = useState<{
+    images: string[];
+    currentIndex: number;
+    title: string;
+    code: string;
+  } | null>(null);
 
   /*
   // Automatic audit for admins
@@ -388,6 +396,55 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
   // Definición de columnas tipadas para DataTable
   const columns = useMemo<TableColumn<InvItemType>[]>(() => {
     const cols: TableColumn<InvItemType>[] = [
+      {
+        header: 'Foto',
+        align: 'center',
+        width: '60px',
+        render: (item) => {
+          const images = (() => {
+            if (!item) return [];
+            if (item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
+              return item.imageUrls.filter(Boolean);
+            }
+            if (item.imageUrl) {
+              return [item.imageUrl];
+            }
+            return [];
+          })();
+          const primaryImage = images.length > 0 ? images[0] : '';
+          const hasImages = images.length > 0;
+          return (
+            <div 
+              className={`w-8 h-8 mx-auto rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center shrink-0 overflow-hidden ${
+                hasImages ? 'cursor-pointer select-none hover:border-blue-400 transition-colors' : 'text-slate-400'
+              }`}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (hasImages) {
+                  setPreviewGallery({
+                    images,
+                    currentIndex: 0,
+                    title: item.description,
+                    code: item.code
+                  });
+                }
+              }}
+              title={hasImages ? "Doble clic para ampliar imagen" : undefined}
+            >
+              {hasImages ? (
+                <img 
+                  src={primaryImage} 
+                  alt={item.description} 
+                  className="w-full h-full object-contain p-0.5 pointer-events-none"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <FiBox className="w-4 h-4" />
+              )}
+            </div>
+          );
+        }
+      },
       { 
         header: 'Código', 
         accessorKey: 'code', 
@@ -642,6 +699,16 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                 }
               }}
           />
+
+          {previewGallery && (
+            <ImageViewerModal
+              images={previewGallery.images}
+              initialIndex={previewGallery.currentIndex}
+              title={previewGallery.title}
+              code={previewGallery.code}
+              onClose={() => setPreviewGallery(null)}
+            />
+          )}
       </ModulePage>
     </div>
   );
