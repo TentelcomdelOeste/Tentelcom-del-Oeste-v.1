@@ -101,24 +101,60 @@
   animation: progress 1.5s infinite linear;
 }
 
-
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Transparencia del WebView cuando la preview nativa queda detrás del contenido. */
 body.camera-preview-active,
 body.camera-preview-active #root,
-.camera-preview-transparent {
+.camera-preview-transparent,
+html.native-camera-active,
+html.native-camera-active body,
+html.native-camera-active #root {
   background-color: transparent !important;
   background: transparent !important;
 }
 
+/* Evitar poster/controles nativos que pueden hacer que la preview parezca una imagen estática. */
+video::-webkit-media-controls,
+video::-webkit-media-controls-enclosure,
+video::-webkit-media-controls-panel,
+video::-webkit-media-controls-play-button,
+video::-webkit-media-controls-start-playback-button,
+video::-webkit-media-controls-overlay-play-button,
+video::-webkit-media-controls-overlay-enclosure,
+video::-webkit-media-controls-timeline,
+video::-webkit-media-controls-current-time-display,
+video::-webkit-media-controls-time-remaining-display,
+video::-webkit-media-controls-mute-button,
+video::-webkit-media-controls-toggle-closed-captions-button,
+video::-webkit-media-controls-volume-slider,
+video::-webkit-media-controls-fullscreen-button {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  -webkit-appearance: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+  visibility: hidden !important;
+}
+
+video {
+  outline: none !important;
+  object-fit: cover !important;
+  -webkit-appearance: none !important;
+}
+
+.camera-preview-video,
+.camera-preview-video video,
 #timeline-camera-preview-container video,
 #capgo_video,
 video#capgo_video {
   position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
+  inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
@@ -126,4 +162,13 @@ video#capgo_video {
   display: block !important;
   opacity: 1 !important;
   visibility: visible !important;
+  background: #000 !important;
+  outline: none !important;
+  -webkit-appearance: none !important;
+}
+
+.camera-preview-video::before,
+.camera-preview-video::after {
+  display: none !important;
+  content: none !important;
 }
