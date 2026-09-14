@@ -21,6 +21,11 @@ interface GPSCoordinates {
   accuracy: number | null;
 }
 
+interface PictureSize {
+  width: number;
+  height: number;
+}
+
 export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
   isOpen,
   onClose,
@@ -37,37 +42,28 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
   const [initError, setInitError] = useState<string | null>(null);
 
   const { stampOverlayOnImage } = useCameraOverlay();
-
-  // Zoom Ref para persistir el zoom durante la reinstanciación sin re-ejecutar el efecto de la cámara
   const zoomLevelRef = useRef(zoomLevel);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const touchDistanceRef = useRef<number | null>(null);
+  const activeRef = useRef(false);
+  const captureSizeRef = useRef<PictureSize | null>(null);
+
   useEffect(() => {
     zoomLevelRef.current = zoomLevel;
   }, [zoomLevel]);
 
-  // Live Clock State
   const [currentDateTime, setCurrentDateTime] = useState<Date>(new Date());
-
-  // Live GPS State
   const [gpsCoords, setGpsCoords] = useState<GPSCoordinates | null>(null);
   const [gpsStatus, setGpsStatus] = useState<'searching' | 'active' | 'unavailable'>('searching');
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const touchDistanceRef = useRef<number | null>(null);
-  const activeRef = useRef(false);
-
-  // 1. Reloj en tiempo real (actualización cada segundo)
   useEffect(() => {
     if (!isOpen) return;
-    const interval = setInterval(() => {
-      setCurrentDateTime(new Date());
-    }, 1000);
+    const interval = setInterval(() => setCurrentDateTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, [isOpen]);
 
-  // 2. Rastreo GPS en tiempo real para el overlay
   useEffect(() => {
     if (!isOpen) return;
-
     if (!navigator.geolocation) {
       setGpsStatus('unavailable');
       return;
@@ -87,32 +83,56 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
         console.warn('[TimelineCamera] Geolocation watch error:', err);
         setGpsStatus((prev) => (prev === 'active' ? 'active' : 'unavailable'));
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 3000,
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
     );
 
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
+    return () => navigator.geolocation.clearWatch(watchId);
   }, [isOpen]);
 
-  // Safe stop helper
   const stopCamera = useCallback(async () => {
     try {
       await CameraPreview.stop({ force: true });
     } catch {
-      // Ignorar si ya estaba detenida
+      // Camera may already be stopped.
     } finally {
       document.body.classList.remove('camera-preview-active');
+      document.documentElement.classList.remove('native-camera-active');
       const root = document.getElementById('root');
       if (root) root.classList.remove('camera-preview-transparent');
     }
   }, []);
 
-  // 3. Inicializar CameraPreview
+  const resolveLargestPictureSize = useCallback(async () => {
+    try {
+      if (!CameraPreview.getSupportedPictureSizes) return null;
+
+      const response = await CameraPreview.getSupportedPictureSizes();
+      const groups = Array.isArray((response as any)?.supportedPictureSizes)
+        ? (response as any).supportedPictureSizes
+        : [];
+      const group = groups.find(
+        (item: any) => String(item?.facing || '').toLowerCase() === cameraPosition
+      );
+      const sizes: PictureSize[] = Array.isArray(group?.supportedPictureSizes)
+        ? group.supportedPictureSizes.filter(
+            (size: any) =>
+              Number.isFinite(Number(size?.width)) &&
+              Number.isFinite(Number(size?.height)) &&
+              Number(size.width) > 0 &&
+              Number(size.height) > 0
+          )
+        : [];
+
+      if (!sizes.length) return null;
+      return [...sizes].sort(
+        (a, b) => Number(b.width) * Number(b.height) - Number(a.width) * Number(a.height)
+      )[0] || null;
+    } catch (error) {
+      console.warn('[TimelineCamera] Could not resolve native picture size:', error);
+      return null;
+    }
+  }, [cameraPosition]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -123,17 +143,17 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
       try {
         setInitError(null);
         setIsReady(false);
+        captureSizeRef.current = null;
 
         const isNative = Capacitor.isNativePlatform();
 
-        // En nativo, hacemos transparente el fondo de la app para que el SurfaceView detrás sea visible
         if (isNative) {
           document.body.classList.add('camera-preview-active');
+          document.documentElement.classList.add('native-camera-active');
           const root = document.getElementById('root');
           if (root) root.classList.add('camera-preview-transparent');
         }
 
-        // Request permissions
         try {
           if (CameraPreview.requestPermissions) {
             await CameraPreview.requestPermissions({ disableAudio: true });
@@ -142,7 +162,6 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
           console.warn('[TimelineCamera] Permission request warning:', permErr);
         }
 
-        // Configuración adaptativa según entorno
         const options: any = {
           position: cameraPosition,
           toBack: isNative,
@@ -152,41 +171,44 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
           disableAudio: true,
           rotateWhenOrientationChanged: true,
           initialZoomLevel: zoomLevelRef.current,
-          enableHighResolution: true, // Solicita la máxima calidad del sensor
+          enableHighResolution: true,
+          className: 'camera-preview-video',
         };
 
         if (!isNative) {
           options.parent = 'timeline-camera-preview-container';
         }
 
-        await CameraPreview.start(options);
+        const previewInfo = await CameraPreview.start(options);
+        console.info('[TimelineCamera] Preview started:', previewInfo);
+
+        captureSizeRef.current = await resolveLargestPictureSize();
+        if (captureSizeRef.current) {
+          console.info('[TimelineCamera] Native capture size:', captureSizeRef.current);
+        }
 
         if (!mounted || !activeRef.current) {
           await stopCamera();
           return;
         }
 
-        // Restaurar zoom apropiadamente sin romper la cámara
         try {
           await CameraPreview.setZoom({ level: zoomLevelRef.current });
         } catch {
           try {
             await CameraPreview.setZoom({ level: 1 });
           } catch {
-            // No-op
+            // Unsupported on this device.
           }
         }
 
-        // Inicializar Flash en Off
         try {
           await CameraPreview.setFlashMode({ flashMode: 'off' });
         } catch {
-          // No-op si no es soportado
+          // Unsupported.
         }
 
-        if (mounted) {
-          setIsReady(true);
-        }
+        if (mounted) setIsReady(true);
       } catch (err: any) {
         console.error('[TimelineCamera] Error starting camera preview:', err);
         if (mounted) {
@@ -196,46 +218,39 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
       }
     };
 
-    startCamera();
+    void startCamera();
 
     return () => {
       mounted = false;
       activeRef.current = false;
-      stopCamera();
+      void stopCamera();
     };
-  }, [isOpen, cameraPosition, stopCamera]);
+  }, [isOpen, cameraPosition, resolveLargestPictureSize, stopCamera]);
 
-  // Flash toggle handler - Controla de verdad el flash de la cámara (torch enciende físicamente el LED)
   const handleToggleFlash = async () => {
-    if (cameraPosition === 'front') return; // Sin flash físico en cámara frontal
-
+    if (cameraPosition === 'front') return;
     const next = flashMode === 'off' ? 'on' : 'off';
     setFlashMode(next);
+
     try {
-      // 'torch' enciende físicamente el LED de la cámara trasera inmediatamente en Android/iOS
       await CameraPreview.setFlashMode({ flashMode: next === 'on' ? 'torch' : 'off' });
     } catch (err) {
-      console.warn('[TimelineCamera] Error setting flash mode to torch, trying fallback:', err);
+      console.warn('[TimelineCamera] Torch failed, using flash fallback:', err);
       try {
         await CameraPreview.setFlashMode({ flashMode: next });
-      } catch (errFallback) {
-        console.warn('[TimelineCamera] Flash fallback failed:', errFallback);
+      } catch (fallbackError) {
+        console.warn('[TimelineCamera] Flash fallback failed:', fallbackError);
       }
     }
   };
 
-  // Flip camera handler
   const handleFlipCamera = async () => {
     if (!isReady || isCapturing) return;
     const nextPosition = cameraPosition === 'rear' ? 'front' : 'rear';
     setCameraPosition(nextPosition);
-    // Si pasamos a frontal, apagamos el flash en el estado inmediatamente
-    if (nextPosition === 'front') {
-      setFlashMode('off');
-    }
+    if (nextPosition === 'front') setFlashMode('off');
   };
 
-  // Zoom handler
   const handleSetZoom = async (newZoom: number) => {
     const clamped = Math.max(1, Math.min(5, Number(newZoom.toFixed(1))));
     setZoomLevel(clamped);
@@ -246,7 +261,6 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
     }
   };
 
-  // Pinch to zoom handler
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -262,9 +276,7 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
       const newDistance = Math.sqrt(dx * dx + dy * dy);
       const delta = (newDistance - touchDistanceRef.current) / 150;
       touchDistanceRef.current = newDistance;
-
-      const newLevel = Math.max(1, Math.min(5, zoomLevel + delta));
-      handleSetZoom(newLevel);
+      void handleSetZoom(zoomLevel + delta);
     }
   };
 
@@ -272,56 +284,73 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
     touchDistanceRef.current = null;
   };
 
-  // Capture & Stamp handler
   const handleCapture = async () => {
     if (isCapturing || !isReady) return;
     setIsCapturing(true);
 
     try {
-      const result = await CameraPreview.capture({
+      const captureOptions: any = {
         quality: 100,
         format: 'jpeg',
-        width: 3840, // Fija la resolución 4K
-        height: 3840,
+        saveToGallery: false,
+        mirrorFrontCamera: false,
+        photoQualityPrioritization: 'quality',
+      };
+
+      const nativeSize = captureSizeRef.current;
+      if (nativeSize) {
+        captureOptions.width = nativeSize.width;
+        captureOptions.height = nativeSize.height;
+      }
+
+      const result = await CameraPreview.capture(captureOptions);
+      if (!result?.value) throw new Error('No se recibió la imagen de la cámara.');
+
+      console.info('[TimelineCamera] Capture received:', {
+        bytesBase64: String(result.value).length,
+        width: nativeSize?.width,
+        height: nativeSize?.height,
       });
 
-      if (result && result.value) {
-        const formattedTimestamp = currentDateTime.toLocaleString('es-CR', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true,
-        });
+      const formattedTimestamp = currentDateTime.toLocaleString('es-CR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
 
-        const technicianName = currentUser?.name || currentUser?.displayName || currentUser?.email || 'Técnico';
+      const technicianName = currentUser?.name || currentUser?.displayName || currentUser?.email || 'Técnico';
 
-        // 1. Estampar la información del overlay directamente en la fotografía usando Canvas
-        const stampedFile = await stampOverlayOnImage(
-          result.value,
-          {
-            company: 'TENTELCOM',
-            timestamp: formattedTimestamp,
-            technician: technicianName,
-            contextInfo: contextInfo,
-            locationName: jobLocation,
-            coords: gpsCoords,
-          },
-          `camera_highres_${Date.now()}.jpg`
-        );
+      // El overlay en vivo sigue siendo independiente. Aquí se estampa la misma información
+      // sobre la fotografía final para que la evidencia conserve los datos aunque se comparta.
+      const stampedFile = await stampOverlayOnImage(
+        result.value,
+        {
+          company: 'TENTELCOM',
+          timestamp: formattedTimestamp,
+          technician: technicianName,
+          contextInfo,
+          locationName: jobLocation,
+          coords: gpsCoords,
+        },
+        `camera_highres_${Date.now()}.jpg`
+      );
 
-        // Etiquetar archivo para que useTimelineUploader no aplique compresión secundaria reductiva
-        (stampedFile as any).bypassCompression = true;
+      // Impide la compresión reductiva de 1200 px/75 % del uploader de Timeline.
+      (stampedFile as any).bypassCompression = true;
 
-        // 2. Detener cámara y entregar fotografía al Timeline
-        await stopCamera();
-        onCapture(stampedFile);
-        onClose();
-      } else {
-        throw new Error('No se recibió la imagen de la cámara.');
-      }
+      console.info('[TimelineCamera] Stamped high-resolution file:', {
+        name: stampedFile.name,
+        sizeBytes: stampedFile.size,
+        type: stampedFile.type,
+      });
+
+      await stopCamera();
+      onCapture(stampedFile);
+      onClose();
     } catch (err: any) {
       console.error('[TimelineCamera] Capture failed:', err);
       alert('Error al capturar la imagen: ' + (err?.message || 'Intente nuevamente'));
@@ -340,15 +369,10 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
   const isNative = Capacitor.isNativePlatform();
   const technicianName = currentUser?.name || currentUser?.displayName || currentUser?.email || 'Técnico';
   const formattedDate = currentDateTime.toLocaleDateString('es-CR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+    day: '2-digit', month: '2-digit', year: 'numeric',
   });
   const formattedTime = currentDateTime.toLocaleTimeString('es-CR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
   });
 
   return (
@@ -357,21 +381,14 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className={`fixed inset-0 z-[9999] flex flex-col justify-between select-none overflow-hidden ${
-        isNative ? 'bg-transparent' : 'bg-black'
-      }`}
+      className={`fixed inset-0 z-[9999] flex flex-col justify-between select-none overflow-hidden ${isNative ? 'bg-transparent' : 'bg-black'}`}
     >
-      {/* 0. Contenedor del Preview de Video (Especialmente para Web/Chrome/PWA) */}
       <div
         id="timeline-camera-preview-container"
-        className={`absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center pointer-events-none ${
-          isNative ? 'bg-transparent' : 'bg-black'
-        }`}
+        className={`absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center pointer-events-none ${isNative ? 'bg-transparent' : 'bg-black'}`}
       />
 
-      {/* 1. Barra Superior: Controles de Flash, Flip y Cerrar - Agrupados a la derecha */}
       <div className="flex items-center justify-end gap-2 p-3 pt-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent z-30 pointer-events-auto">
-        {/* Botón de Flash */}
         <button
           type="button"
           onClick={handleToggleFlash}
@@ -380,24 +397,14 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
           title={cameraPosition === 'front' ? 'Flash no disponible en cámara frontal' : 'Controlar Flash'}
         >
           {cameraPosition === 'front' ? (
-            <>
-              <FiZapOff className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-slate-400">NO DISP.</span>
-            </>
+            <><FiZapOff className="w-3.5 h-3.5 text-slate-500" /><span className="text-slate-400">NO DISP.</span></>
           ) : flashMode === 'off' ? (
-            <>
-              <FiZapOff className="w-3.5 h-3.5 text-slate-300" />
-              <span>FLASH OFF</span>
-            </>
+            <><FiZapOff className="w-3.5 h-3.5 text-slate-300" /><span>FLASH OFF</span></>
           ) : (
-            <>
-              <FiZap className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
-              <span>FLASH ON</span>
-            </>
+            <><FiZap className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" /><span>FLASH ON</span></>
           )}
         </button>
 
-        {/* Botón para Voltear la Cámara */}
         <button
           type="button"
           onClick={handleFlipCamera}
@@ -408,7 +415,6 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
           <span>{cameraPosition === 'rear' ? 'TRASERA' : 'FRONTAL'}</span>
         </button>
 
-        {/* Botón de Cerrar */}
         <IconButton
           icon={<FiX className="w-4 h-4 text-white" />}
           onClick={handleClose}
@@ -418,7 +424,7 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
         />
       </div>
 
-      {/* 2. OVERLAY EN TIEMPO REAL */}
+      {/* OVERLAY EN TIEMPO REAL — NO ELIMINAR */}
       <CameraOverlay
         technicianName={technicianName}
         contextInfo={contextInfo}
@@ -429,76 +435,37 @@ export const TimelineCameraModal: React.FC<TimelineCameraModalProps> = ({
         formattedTime={formattedTime}
       />
 
-      {/* Error State if any */}
       {initError && (
         <div className="mx-6 p-4 bg-rose-900/90 text-white rounded-2xl border border-rose-500 backdrop-blur-md text-center flex flex-col gap-2 z-30 pointer-events-auto">
           <p className="font-bold text-sm">Error de Cámara</p>
           <p className="text-xs text-rose-200">{initError}</p>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="mt-2 py-2 px-4 bg-white text-rose-900 font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-rose-100 transition-colors"
-          >
+          <button type="button" onClick={handleClose} className="mt-2 py-2 px-4 bg-white text-rose-900 font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-rose-100 transition-colors">
             Volver al Timeline
           </button>
         </div>
       )}
 
-      {/* 3. Barra Inferior: Selector de Zoom, Botón de Captura */}
       <div className="flex flex-col items-center gap-4 p-6 pb-8 bg-gradient-to-t from-black/85 via-black/50 to-transparent z-30 pointer-events-auto">
-        {/* Controles de Zoom */}
         <div className="flex items-center gap-2 bg-black/50 border border-white/20 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg">
-          <button
-            type="button"
-            onClick={() => handleSetZoom(zoomLevel - 0.5)}
-            disabled={zoomLevel <= 1}
-            className="p-1 text-white/80 hover:text-white disabled:opacity-30 transition-colors"
-            title="Reducir zoom"
-          >
+          <button type="button" onClick={() => void handleSetZoom(zoomLevel - 0.5)} disabled={zoomLevel <= 1} className="p-1 text-white/80 hover:text-white disabled:opacity-30 transition-colors" title="Reducir zoom">
             <FiMinus className="w-3.5 h-3.5" />
           </button>
-
           <div className="flex items-center gap-1 px-1">
             {[1, 2, 3].map((z) => (
-              <button
-                key={z}
-                type="button"
-                onClick={() => handleSetZoom(z)}
-                className={`w-7 h-7 rounded-full text-[11px] font-black transition-all ${
-                  Math.abs(zoomLevel - z) < 0.25
-                    ? 'bg-sky-400 text-black shadow-md scale-110'
-                    : 'text-white/80 hover:text-white hover:bg-white/10'
-                }`}
-              >
+              <button key={z} type="button" onClick={() => void handleSetZoom(z)} className={`w-7 h-7 rounded-full text-[11px] font-black transition-all ${Math.abs(zoomLevel - z) < 0.25 ? 'bg-sky-400 text-black shadow-md scale-110' : 'text-white/80 hover:text-white hover:bg-white/10'}`}>
                 {z}x
               </button>
             ))}
           </div>
-
-          <button
-            type="button"
-            onClick={() => handleSetZoom(zoomLevel + 0.5)}
-            disabled={zoomLevel >= 5}
-            className="p-1 text-white/80 hover:text-white disabled:opacity-30 transition-colors"
-            title="Aumentar zoom"
-          >
+          <button type="button" onClick={() => void handleSetZoom(zoomLevel + 0.5)} disabled={zoomLevel >= 5} className="p-1 text-white/80 hover:text-white disabled:opacity-30 transition-colors" title="Aumentar zoom">
             <FiPlus className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {/* Botón de Captura Shutter */}
         <div className="flex items-center justify-center w-full">
-          <button
-            type="button"
-            onClick={handleCapture}
-            disabled={!isReady || isCapturing}
-            className="relative group p-1.5 rounded-full border-4 border-white/90 bg-transparent hover:scale-105 active:scale-95 transition-transform disabled:opacity-40 disabled:hover:scale-100"
-            title="Tomar fotografía con overlay"
-          >
+          <button type="button" onClick={() => void handleCapture()} disabled={!isReady || isCapturing} className="relative group p-1.5 rounded-full border-4 border-white/90 bg-transparent hover:scale-105 active:scale-95 transition-transform disabled:opacity-40 disabled:hover:scale-100" title="Tomar fotografía con overlay">
             <div className="w-16 h-16 rounded-full bg-white group-active:bg-slate-200 transition-colors shadow-2xl flex items-center justify-center">
-              {isCapturing && (
-                <div className="w-8 h-8 rounded-full border-3 border-slate-400 border-t-sky-500 animate-spin" />
-              )}
+              {isCapturing && <div className="w-8 h-8 rounded-full border-3 border-slate-400 border-t-sky-500 animate-spin" />}
             </div>
           </button>
         </div>
