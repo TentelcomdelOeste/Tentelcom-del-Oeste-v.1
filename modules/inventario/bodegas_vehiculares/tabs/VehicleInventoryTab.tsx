@@ -479,8 +479,8 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                           hasImages ? 'cursor-pointer select-none active:scale-95 transition-transform' : ''
                         }`}
                         onDoubleClick={(e) => handleImageDoubleClick(item, images, e)}
-                        onClick={(e) => handleImageClick(item, images, e)}
-                        title={hasImages ? "Doble clic para ampliar imágenes" : undefined}
+                        onClick={(e) => handleImageDoubleClick(item, images, e)}
+                        title={hasImages ? "Clic para ampliar imágenes" : undefined}
                       >
                         {hasImages ? (
                           <>
