@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { InventoryProvider } from '../types/inventoryProvider.types';
+import { withTimeout } from '../utils/promiseUtils';
 
 const COLLECTION_NAME = 'inventory_providers';
 
@@ -68,18 +69,27 @@ export const addInventoryProvider = async (
   const docRef = doc(db, COLLECTION_NAME, docId);
 
   try {
-    const existing = await getDoc(docRef);
+    const existing = await withTimeout(
+      getDoc(docRef),
+      3000,
+      `Timeout consultando proveedor ${trimmed} en Firestore`
+    );
+
     if (existing.exists()) {
       const data = existing.data();
       // Si estaba marcado como eliminado, lo reactivamos
       if (data.isDeleted) {
-        await setDoc(docRef, {
-          name: trimmed,
-          normalizedName: normalizeProviderName(trimmed),
-          isDeleted: false,
-          updatedAt: new Date().toISOString(),
-          updatedBy: currentUser?.email || currentUser?.name || 'Sistema'
-        }, { merge: true });
+        await withTimeout(
+          setDoc(docRef, {
+            name: trimmed,
+            normalizedName: normalizeProviderName(trimmed),
+            isDeleted: false,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser?.email || currentUser?.name || 'Sistema'
+          }, { merge: true }),
+          3000,
+          `Timeout reactivando proveedor ${trimmed} en Firestore`
+        );
       }
       return {
         id: docId,
@@ -97,11 +107,19 @@ export const addInventoryProvider = async (
       isDeleted: false
     };
 
-    await setDoc(docRef, newProvider);
+    await withTimeout(
+      setDoc(docRef, newProvider),
+      3000,
+      `Timeout creando proveedor ${trimmed} en Firestore`
+    );
     return newProvider;
   } catch (error) {
-    console.error("Error al registrar proveedor en Firestore:", error);
-    throw error;
+    console.warn("[addInventoryProvider] Error o timeout al registrar proveedor en Firestore, usando fallback local:", error);
+    return {
+      id: docId,
+      name: trimmed,
+      normalizedName: normalizeProviderName(trimmed)
+    };
   }
 };
 
@@ -120,13 +138,16 @@ export const deleteInventoryProvider = async (providerIdOrName: string): Promise
 
   try {
     // Marcamos como eliminado para evitar que se vuelva a agregar por bootstrapping y lo eliminamos
-    await setDoc(docRef, {
-      isDeleted: true,
-      deletedAt: new Date().toISOString()
-    }, { merge: true });
+    await withTimeout(
+      setDoc(docRef, {
+        isDeleted: true,
+        deletedAt: new Date().toISOString()
+      }, { merge: true }),
+      3000,
+      `Timeout eliminando proveedor ${docId} de Firestore`
+    );
   } catch (error) {
-    console.error("Error al eliminar proveedor del catálogo:", error);
-    throw error;
+    console.warn("[deleteInventoryProvider] Error o timeout al eliminar proveedor en Firestore:", error);
   }
 };
 
@@ -140,7 +161,11 @@ export const seedInitialProviders = async (
   if (!names || names.length === 0) return;
 
   try {
-    const existingSnap = await getDocs(collection(db, COLLECTION_NAME));
+    const existingSnap = await withTimeout(
+      getDocs(collection(db, COLLECTION_NAME)),
+      4000,
+      "Timeout consultando proveedores existentes"
+    );
     const existingMap = new Map<string, any>();
     existingSnap.docs.forEach(d => {
       existingMap.set(d.id, d.data());
@@ -157,14 +182,18 @@ export const seedInitialProviders = async (
       if (!existingMap.has(docId)) {
         const docRef = doc(db, COLLECTION_NAME, docId);
         writes.push(
-          setDoc(docRef, {
-            id: docId,
-            name: trimmed,
-            normalizedName: normalizeProviderName(trimmed),
-            createdAt: new Date().toISOString(),
-            createdBy: currentUser?.email || 'Sistema (Inventario)',
-            isDeleted: false
-          })
+          withTimeout(
+            setDoc(docRef, {
+              id: docId,
+              name: trimmed,
+              normalizedName: normalizeProviderName(trimmed),
+              createdAt: new Date().toISOString(),
+              createdBy: currentUser?.email || 'Sistema (Inventario)',
+              isDeleted: false
+            }),
+            3000,
+            `Timeout guardando proveedor inicial ${trimmed}`
+          ).catch(e => console.warn(`Error guardando proveedor ${trimmed}:`, e))
         );
       }
     }

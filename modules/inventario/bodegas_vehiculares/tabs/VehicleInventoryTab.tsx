@@ -648,6 +648,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
           item={detailItem}
           selectedVehicleId={selectedVehicleId}
           movements={movements}
+          currentUser={currentUser}
         />
       )}
 

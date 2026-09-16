@@ -624,6 +624,94 @@ export const vehicleWarehouseService = {
     });
   },
 
+  // 4b. Adjust physical inventory item in vehicle warehouse (Exclusive for Admin / Supervisor)
+  async adjustInventoryItem(
+    vehiculoId: string,
+    inventoryItemId: string,
+    adjustQuantity: number,
+    adjustmentType: string,
+    justification: string,
+    observations?: string,
+    currentUser?: { id?: string; name?: string; email?: string; role?: string } | null
+  ): Promise<void> {
+    if (!justification || justification.trim() === '') {
+      throw new Error('La justificación es obligatoria para realizar un ajuste de inventario.');
+    }
+    if (adjustQuantity === 0 || isNaN(adjustQuantity)) {
+      throw new Error('La cantidad a ajustar debe ser diferente de cero.');
+    }
+
+    const docRef = doc(db, 'vehicle_warehouse_items', `${vehiculoId}_${inventoryItemId}`);
+    const movementRef = doc(collection(db, 'vehicle_movements'));
+    const now = new Date().toISOString();
+    const userName = currentUser?.name || currentUser?.email || 'Usuario Sistema';
+    const userId = currentUser?.id || 'system';
+    const userRole = currentUser?.role || 'Usuario';
+
+    const vehicles = getVehicleCatalog();
+    const veh = vehicles.find(v => v.id === vehiculoId);
+    const vehAlias = veh?.alias || 'Bodega Vehicular';
+    const vehPlaca = veh?.placa || '';
+
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (!snap.exists()) {
+        throw new Error('El registro de inventario no existe en esta bodega vehicular.');
+      }
+
+      const itemData = snap.data() as VehicleWarehouseItem;
+      const previousPhysicalStock = Number(itemData.physicalStock) || 0;
+      const committedStock = Number(itemData.committedStock) || 0;
+      const newPhysicalStock = previousPhysicalStock + adjustQuantity;
+
+      if (newPhysicalStock < 0) {
+        throw new Error(`El ajuste generaría un stock físico negativo (${newPhysicalStock}). Stock físico actual: ${previousPhysicalStock}.`);
+      }
+
+      const newAvailableStock = newPhysicalStock - committedStock;
+
+      transaction.update(docRef, {
+        physicalStock: newPhysicalStock,
+        availableStock: newAvailableStock,
+        updatedAt: now,
+        updatedBy: currentUser?.email || userName
+      });
+
+      const movementNumber = `MOV-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const movementData: VehicleMovement = {
+        id: movementRef.id,
+        movementNumber,
+        reference: `AJU-${adjustmentType.toUpperCase().slice(0, 3)}`,
+        type: 'Ajuste',
+        vehiculoId,
+        vehiculoPlaca: itemData.vehiculoPlaca || vehPlaca,
+        vehiculoAlias: itemData.vehiculoAlias || vehAlias,
+        items: [{
+          inventoryItemId: itemData.inventoryItemId,
+          code: itemData.code,
+          description: itemData.description,
+          quantity: Math.abs(adjustQuantity),
+          previousPhysicalStock,
+          newPhysicalStock,
+          previousCommittedStock: committedStock,
+          newCommittedStock: committedStock
+        }],
+        date: now,
+        reason: `${adjustmentType} — ${justification}`,
+        adjustmentType,
+        justification,
+        observations: observations || '',
+        performedBy: userId,
+        performedByName: userName,
+        performedByRole: userRole,
+        createdAt: now
+      };
+
+      transaction.set(movementRef, movementData);
+    });
+  },
+
   // 5. Delete Inventory Item from a vehicle warehouse (Exclusive for authorized admin)
   async deleteInventoryItem(
     itemId: string,

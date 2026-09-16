@@ -103,8 +103,12 @@ export interface VehicleMovement {
   items: VehicleMovementItem[];
   date: string;
   reason: string;
+  adjustmentType?: string;
+  justification?: string;
+  observations?: string;
   performedBy: string;
   performedByName: string;
+  performedByRole?: string;
   createdAt: string;
 }
 

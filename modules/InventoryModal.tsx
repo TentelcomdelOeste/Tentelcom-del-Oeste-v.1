@@ -137,6 +137,9 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
            setIsSubmitting(false);
            return;
         }
+        if (codeStatus.status === 'UNVERIFIED') {
+           console.warn(`[InventoryModal] La disponibilidad remota del código "${formData.code}" no se pudo verificar a tiempo por la red. Procediendo con el guardado local (Offline-First).`);
+        }
       }
 
       // Register any new providers in the catalog
@@ -145,7 +148,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
           try {
             await addInventoryProvider(p.name, currentUser);
           } catch (e) {
-            console.error("Failed to add provider:", e);
+            console.warn("No se pudo agregar proveedor a la base remota:", e);
           }
         }
       }

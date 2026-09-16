@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, 
@@ -13,11 +13,14 @@ import {
   Truck,
   Layers,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Sliders
 } from 'lucide-react';
 import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicleWarehouse.types';
 import { DataTable, TableColumn, StatusBadge } from '../../../../design-system';
 import { format } from 'date-fns';
+import { User } from '../../../../types';
+import { VehicleInventoryAdjustmentModal } from './VehicleInventoryAdjustmentModal';
 
 interface Props {
   show: boolean;
@@ -25,6 +28,7 @@ interface Props {
   item: VehicleWarehouseItem | null;
   selectedVehicleId: string;
   movements: VehicleMovement[];
+  currentUser?: User | null;
 }
 
 export const VehicleInventoryDetailModal: React.FC<Props> = ({
@@ -32,8 +36,11 @@ export const VehicleInventoryDetailModal: React.FC<Props> = ({
   onClose,
   item,
   selectedVehicleId,
-  movements
+  movements,
+  currentUser
 }) => {
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState<boolean>(false);
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -53,6 +60,14 @@ export const VehicleInventoryDetailModal: React.FC<Props> = ({
       document.body.style.overflow = 'unset';
     };
   }, [show]);
+
+  const canAdjust = useMemo(() => {
+    if (!currentUser?.role) return false;
+    const normalized = currentUser.role.toLowerCase().trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return ["admin", "administrador", "administracion", "superadmin", "supervisor"].includes(normalized);
+  }, [currentUser?.role]);
 
   const itemMovements = useMemo(() => {
     if (!item || !selectedVehicleId) return [];
@@ -106,10 +121,17 @@ export const VehicleInventoryDetailModal: React.FC<Props> = ({
         direction = 'SALIDA';
         originDest = `${m.vehiculoAlias || 'Esta Unidad'} → Bodega Central`;
       } else if (m.type === 'Ajuste') {
-        displayType = 'Ajuste de Inventario';
-        const isIncrease = matchedItem && matchedItem.newPhysicalStock > matchedItem.previousPhysicalStock;
+        const prevStock = matchedItem ? matchedItem.previousPhysicalStock : 0;
+        const newStock = matchedItem ? matchedItem.newPhysicalStock : 0;
+        const isIncrease = newStock >= prevStock;
+        const diff = newStock - prevStock;
+
+        displayType = `Ajuste (${m.adjustmentType || 'Inventario'})`;
         direction = isIncrease ? 'ENTRADA' : 'SALIDA';
-        originDest = `Ajuste (${m.reason || 'S/R'})`;
+        
+        const changeStr = diff > 0 ? `+${diff}` : `${diff}`;
+        const userStr = m.performedByName ? ` • Por: ${m.performedByName}${m.performedByRole ? ` (${m.performedByRole})` : ''}` : '';
+        originDest = `Ajuste: ${changeStr} und — ${m.justification || m.reason || 'S/N'}${userStr}`;
       } else {
         displayType = m.type.replace(/_/g, ' ');
         direction = 'ENTRADA';
@@ -125,7 +147,8 @@ export const VehicleInventoryDetailModal: React.FC<Props> = ({
         originDest,
         reference: refStr,
         reason: m.reason,
-        performedByName: m.performedByName
+        performedByName: m.performedByName,
+        performedByRole: m.performedByRole
       };
     });
   }, [movements, item, selectedVehicleId]);
@@ -154,7 +177,7 @@ export const VehicleInventoryDetailModal: React.FC<Props> = ({
         <div className="flex items-center gap-2">
           {m.direction === 'ENTRADA' ? (
             <div className="w-6 h-6 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0 text-emerald-600">
-              <ArrowDownLeft className="w-3..5 h-3.5" />
+              <ArrowDownLeft className="w-3.5 h-3.5" />
             </div>
           ) : (
             <div className="w-6 h-6 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0 text-rose-600">
@@ -183,10 +206,10 @@ export const VehicleInventoryDetailModal: React.FC<Props> = ({
       )
     },
     {
-      header: 'Origen / Destino',
-      className: 'min-w-[180px]',
+      header: 'Origen / Destino / Detalle',
+      className: 'min-w-[200px]',
       render: (m) => (
-        <span className="text-xs text-slate-600 font-medium block truncate max-w-[220px]" title={m.originDest}>
+        <span className="text-xs text-slate-600 font-medium block truncate max-w-[260px]" title={m.originDest}>
           {m.originDest}
         </span>
       )
@@ -222,12 +245,25 @@ export const VehicleInventoryDetailModal: React.FC<Props> = ({
               {item.description}
             </h2>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600 rounded-lg transition-colors shrink-0 ml-4"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            {canAdjust && (
+              <button
+                type="button"
+                onClick={() => setShowAdjustmentModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-extrabold rounded-xl shadow-xs hover:shadow-sm transition-all cursor-pointer"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Ajustar inventario</span>
+                <span className="inline sm:hidden">Ajustar</span>
+              </button>
+            )}
+            <button 
+              onClick={onClose} 
+              className="p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600 rounded-lg transition-colors shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}
@@ -370,6 +406,15 @@ export const VehicleInventoryDetailModal: React.FC<Props> = ({
           </button>
         </div>
       </div>
+
+      {showAdjustmentModal && (
+        <VehicleInventoryAdjustmentModal
+          show={showAdjustmentModal}
+          onClose={() => setShowAdjustmentModal(false)}
+          item={item}
+          currentUser={currentUser}
+        />
+      )}
     </div>,
     document.body
   );

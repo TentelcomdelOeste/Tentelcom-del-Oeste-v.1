@@ -11,6 +11,7 @@ import { globalSearchEngine, inventorySearchPlugin } from '../core/search';
 import { hasPermission, isAdmin } from '../utils/permissions';
 
 import { logger } from '../utils/logger';
+import { withTimeout } from '../utils/promiseUtils';
 
 export const useInventory = (currentUser: User | null, options?: { fetchAll?: boolean }) => {
   const { authReady } = useUserContext();
@@ -273,9 +274,13 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
     }
 
     try {
-      // 2. Consultar colección inventory_items en Firestore
+      // 2. Consultar colección inventory_items en Firestore con timeout de 4s
       const q = query(collection(db, "inventory_items"), where("code", "==", normalizedCode));
-      const snapshot = await getDocs(q);
+      const snapshot = await withTimeout(
+        getDocs(q),
+        4000,
+        `Timeout consultando código ${normalizedCode} en Firestore`
+      );
       
       let activeDoc: any = null;
       let deletedDoc: any = null;
@@ -313,10 +318,14 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
         };
       }
 
-      // 3. Si no está en inventory_items, verificar en historial de asignaciones
+      // 3. Si no está en inventory_items, verificar en historial de asignaciones con timeout de 3s
       try {
         const assignQ = query(collection(db, "tool_assignments"), where("itemCode", "==", normalizedCode), limit(1));
-        const assignSnap = await getDocs(assignQ);
+        const assignSnap = await withTimeout(
+          getDocs(assignQ),
+          3000,
+          `Timeout consultando asignaciones para código ${normalizedCode}`
+        );
         if (!assignSnap.empty) {
           const assignData = assignSnap.docs[0].data() || {};
           return {
@@ -330,13 +339,14 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
           };
         }
       } catch (histErr) {
-        // Fallback no bloqueante si no hay permisos de asignaciones
+        // Fallback no bloqueante si no hay permisos de asignaciones o hay timeout
+        console.warn("[checkCodeStatus] Fallback/timeout en verificación de asignaciones:", histErr);
       }
 
       return { status: 'AVAILABLE' };
     } catch (err) {
-      console.warn("Error verificando código en Firestore, usando fallback local:", err);
-      return { status: 'AVAILABLE' };
+      console.warn("[checkCodeStatus] Error/timeout al verificar código en Firestore, retornando UNVERIFIED para permitir guardado offline:", err);
+      return { status: 'UNVERIFIED' };
     }
   }, [items, authReady, currentUser]);
 

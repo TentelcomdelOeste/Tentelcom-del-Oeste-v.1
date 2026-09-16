@@ -29,7 +29,7 @@ export interface InventoryItem {
 }
 
 export interface CodeStatusResult {
-  status: 'AVAILABLE' | 'ACTIVE_EXISTS' | 'PREVIOUSLY_USED';
+  status: 'AVAILABLE' | 'ACTIVE_EXISTS' | 'PREVIOUSLY_USED' | 'UNVERIFIED';
   activeItem?: {
     id: string;
     code: string;
