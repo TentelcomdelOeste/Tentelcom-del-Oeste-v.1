@@ -119,24 +119,13 @@ export const setVersionedDocOffline = async (
     // Encolar mutación
     await offlineQueueEngine.enqueueMutation(collectionName, docId, 'create', enrichedData);
 
-    // Intento de escritura REAL e INMEDIATA en Firestore si hay conexión
+    // Disparar sincronización automática con SyncEngine en segundo plano (sin bloquear ni duplicar llamadas)
     if (networkProbe.isOnline()) {
-      // Limpiar metadatos locales antes de enviar a Firestore
-      const { isDirty, revision, docId: _, ...cleanData } = enrichedData as any;
-
-      import('firebase/firestore').then(({ setDoc, doc }) => {
-        import('../firebase').then(({ db }) => {
-          setDoc(doc(db, collectionName, docId), cleanData).then(() => {
-            console.log(`[VersionControl] Documento ${docId} creado/actualizado en Firestore de forma inmediata.`);
-          }).catch((firestoreErr) => {
-            console.warn(`[VersionControl] Fallo la escritura inmediata en Firestore para ${docId}, el SyncEngine lo reintentará:`, firestoreErr);
-          });
+      setTimeout(() => {
+        syncEngine.runSyncCycle().catch((err) => {
+          console.error("Error al disparar sync automático desde setVersionedDocOffline:", err);
         });
-      });
-      
-      syncEngine.runSyncCycle().catch((err) => {
-        console.error("Error al disparar sync automático desde setVersionedDocOffline:", err);
-      });
+      }, 0);
     }
 
     return enrichedData;
@@ -202,29 +191,13 @@ export const updateVersionedDocOffline = async (
     // Encolar mutación
     await offlineQueueEngine.enqueueMutation(collectionName, docId, 'update', enrichedData);
 
-    // Intento de actualización REAL e INMEDIATA en Firestore si hay conexión
+    // Disparar sincronización automática con SyncEngine en segundo plano (sin bloquear ni duplicar llamadas)
     if (networkProbe.isOnline()) {
-      // Limpiar metadatos locales antes de enviar a Firestore
-      const { isDirty, revision, docId: _, ...cleanData } = enrichedData as any;
-
-      import('firebase/firestore').then(({ updateDoc, doc }) => {
-        import('../firebase').then(({ db }) => {
-          updateDoc(doc(db, collectionName, docId), cleanData).then(() => {
-            console.log(`[VersionControl] Documento ${docId} actualizado en Firestore de forma inmediata con updateDoc.`);
-          }).catch((firestoreErr: any) => {
-            if (firestoreErr?.code === 'not-found' || firestoreErr?.message?.includes('No document to update') || firestoreErr?.message?.includes('not found')) {
-              console.warn(`[VersionControl] Documento ${docId} fue eliminado en Firestore. Purgando localmente:`, firestoreErr);
-              localDocStore.removeLocalDoc(collectionName, docId);
-            } else {
-              console.warn(`[VersionControl] Falló la actualización inmediata en Firestore para ${docId}, el SyncEngine lo reintentará:`, firestoreErr);
-            }
-          });
+      setTimeout(() => {
+        syncEngine.runSyncCycle().catch((err) => {
+          console.error("Error al disparar sync automático desde updateVersionedDocOffline:", err);
         });
-      });
-
-      syncEngine.runSyncCycle().catch((err) => {
-        console.error("Error al disparar sync automático desde updateVersionedDocOffline:", err);
-      });
+      }, 0);
     }
 
     return enrichedData;
@@ -302,21 +275,13 @@ export const deleteVersionedDocOffline = async (
     // 2. Encolar mutación de eliminación para persistencia offline
     await offlineQueueEngine.enqueueMutation(collectionName, docId, 'delete', null);
 
-    // 3. Intento de eliminación REAL e INMEDIATA en Firestore si hay conexión
+    // 3. Disparar sincronización en segundo plano con SyncEngine si hay conexión
     if (networkProbe.isOnline()) {
-      try {
-        const { deleteDoc, doc } = await import('firebase/firestore');
-        const { db } = await import('../firebase');
-        await deleteDoc(doc(db, collectionName, docId));
-        console.log(`[VersionControl] Documento ${docId} eliminado físicamente en Firestore de forma inmediata.`);
-      } catch (firestoreErr) {
-        console.warn(`[VersionControl] Fallo el borrado inmediato en Firestore para ${docId}, el SyncEngine lo reintentará:`, firestoreErr);
-      }
-      
-      // Siempre disparamos el sync cycle por si acaso
-      syncEngine.runSyncCycle().catch((err) => {
-        console.error("Error al disparar sync automático desde deleteVersionedDocOffline:", err);
-      });
+      setTimeout(() => {
+        syncEngine.runSyncCycle().catch((err) => {
+          console.error("Error al disparar sync automático desde deleteVersionedDocOffline:", err);
+        });
+      }, 0);
     }
   } catch (error) {
     console.error("Error en deleteVersionedDocOffline:", error);

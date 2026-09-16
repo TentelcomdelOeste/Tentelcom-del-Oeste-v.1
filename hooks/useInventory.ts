@@ -370,16 +370,21 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
     return result;
   };
 
-  const addInventoryItem = useCallback(async (item: Omit<InventoryItem, 'id' | 'updatedAt' | 'updatedBy'>) => {
+  const addInventoryItem = useCallback(async (
+    item: Omit<InventoryItem, 'id' | 'updatedAt' | 'updatedBy'>,
+    options?: { skipCodeCheck?: boolean }
+  ) => {
     if (!authReady || !currentUser) {
       console.warn('[INVENTORY] Firebase Auth aún no restaurado o sin usuario.');
       throw new Error("No autenticado");
     }
     
     const normalizedItem = normalizeItem(item);
-    const statusResult = await checkCodeStatus(normalizedItem.code);
-    if (statusResult.status === 'ACTIVE_EXISTS') {
-        throw new Error(`El código "${normalizedItem.code}" ya está en uso por un material activo (${statusResult.activeItem?.description || 'en inventario'}).`);
+    if (!options?.skipCodeCheck) {
+      const statusResult = await checkCodeStatus(normalizedItem.code);
+      if (statusResult.status === 'ACTIVE_EXISTS') {
+          throw new Error(`El código "${normalizedItem.code}" ya está en uso por un material activo (${statusResult.activeItem?.description || 'en inventario'}).`);
+      }
     }
 
     const id = crypto.randomUUID();
@@ -402,7 +407,11 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
     return { ...itemData, id };
   }, [currentUser, checkCodeStatus, authReady]);
 
-  const updateInventoryItem = useCallback(async (id: string, item: Partial<InventoryItem>) => {
+  const updateInventoryItem = useCallback(async (
+    id: string, 
+    item: Partial<InventoryItem>,
+    options?: { skipCodeCheck?: boolean }
+  ) => {
     if (!authReady || !currentUser) {
       console.warn('[INVENTORY] Firebase Auth aún no restaurado o sin usuario.');
       throw new Error("No autenticado");
@@ -420,7 +429,7 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
     const normalizedItem = normalizeItem(cleanInput);
     const currentItem = items.find(i => i.id === id);
     
-    if (normalizedItem.code && currentItem && normalizedItem.code.trim().toUpperCase() !== currentItem.code.trim().toUpperCase()) {
+    if (!options?.skipCodeCheck && normalizedItem.code && currentItem && normalizedItem.code.trim().toUpperCase() !== currentItem.code.trim().toUpperCase()) {
         const statusResult = await checkCodeStatus(normalizedItem.code, id);
         if (statusResult.status === 'ACTIVE_EXISTS') {
             throw new Error(`El código "${normalizedItem.code}" ya está en uso por otro material activo (${statusResult.activeItem?.description || 'en inventario'}).`);

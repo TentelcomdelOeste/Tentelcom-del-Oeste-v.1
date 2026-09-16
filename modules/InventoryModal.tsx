@@ -12,7 +12,7 @@ import { ProviderCombobox } from './inventario/components/ProviderCombobox';
 interface InventoryModalProps {
   show: boolean;
   onClose: () => void;
-  onSubmit: (data: Partial<InventoryItem>) => Promise<void>;
+  onSubmit: (data: Partial<InventoryItem>, options?: { skipCodeCheck?: boolean }) => Promise<void>;
   checkCodeStatus?: (code: string, excludeId?: string) => Promise<import('../inventoryTypes').CodeStatusResult>;
   currentUser: User;
   initialData?: InventoryItem | null;
@@ -142,15 +142,19 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
         }
       }
 
-      // Register any new providers in the catalog
-      for (const p of formData.providers || []) {
-        if (p.name && p.name.trim()) {
-          try {
-            await addInventoryProvider(p.name, currentUser);
-          } catch (e) {
-            console.warn("No se pudo agregar proveedor a la base remota:", e);
+      // Register any new providers in the catalog in the background without blocking UI
+      if (formData.providers && formData.providers.length > 0) {
+        Promise.all((formData.providers || []).map(async (p: any) => {
+          if (p.name && p.name.trim()) {
+            try {
+              await addInventoryProvider(p.name, currentUser);
+            } catch (e) {
+              console.warn("No se pudo agregar proveedor a la base remota:", e);
+            }
           }
-        }
+        })).catch(err => {
+          console.warn("Error en registro de proveedores en segundo plano:", err);
+        });
       }
 
       // Convert empty strings to 0 before submitting
@@ -170,7 +174,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
         updatedBy: currentUser.email
       };
 
-      await onSubmit(dataToSubmit);
+      await onSubmit(dataToSubmit, { skipCodeCheck: true });
       onClose();
     } catch (err: any) {
       setError(err.message || "Error al guardar el material.");

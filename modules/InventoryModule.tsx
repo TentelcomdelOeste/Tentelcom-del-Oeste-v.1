@@ -264,11 +264,11 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
     }
   }, [confirm, deleteInventoryItem]);
 
-  const handleSave = async (data: any) => {
+  const handleSave = async (data: any, options?: { skipCodeCheck?: boolean }) => {
       if (editingItem) {
-          await updateInventoryItem(editingItem.id, data);
+          await updateInventoryItem(editingItem.id, data, options);
       } else {
-          await addInventoryItem(data);
+          await addInventoryItem(data, options);
       }
   };
 
