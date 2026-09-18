@@ -69,7 +69,34 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     return map;
   }, [generalInventoryItems]);
 
-  const items = externalItems || [];
+  const generalInventoryMap = useMemo(() => {
+    const mapById = new Map<string, any>();
+    const mapByCode = new Map<string, any>();
+    if (Array.isArray(generalInventoryItems)) {
+      generalInventoryItems.forEach(item => {
+        if (item) {
+          if (item.id) mapById.set(item.id, item);
+          if (item.code) mapByCode.set(item.code, item);
+        }
+      });
+    }
+    return { mapById, mapByCode };
+  }, [generalInventoryItems]);
+
+  const items = useMemo(() => {
+    const rawItems = externalItems || [];
+    return rawItems.map(item => {
+      const master = generalInventoryMap.mapById.get(item.inventoryItemId) || generalInventoryMap.mapByCode.get(item.code);
+      if (!master) return item;
+      return {
+        ...item,
+        code: master.code || item.code,
+        description: master.description || item.description,
+        category: master.category || item.category,
+        unit: master.unit || item.unit
+      };
+    });
+  }, [externalItems, generalInventoryMap]);
   const vehicles = getVehicleCatalog();
   const selectedVehicleId = externalSelectedVehicleId || getDefaultVehicleForUser(currentUser);
 

@@ -11,6 +11,7 @@ import {
 
 import { 
   doc, 
+  getDoc,
   updateDoc, 
   collection, 
   query, 
@@ -275,102 +276,160 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     logger.log("📡 [UserProvider] Attaching profile listener");
-    const userDocRef = doc(db, "employees", firebaseUser.uid);
 
-    const unsubscribeProfile = onSnapshot(
-      userDocRef,
-      { includeMetadataChanges: true },
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const userData = docSnap.data() as Employee;
-          const isActiveUser = userData.status === "activo" || userData.isActive === true;
+    let unsubProfile: (() => void) | null = null;
+    let isCancelled = false;
 
-          const fullUser: User = {
-            id: firebaseUser.uid,
-            uid: firebaseUser.uid,
-            email: userData.email || firebaseUser.email || '',
-            name: userData.name || firebaseUser.displayName || '',
-            role: userData.role || 'empleado',
-            active: isActiveUser,
-            forcePasswordChange: userData.forcePasswordChange || false,
-            canUseOperationalLog: isAdmin(userData.role) || userData.canUseOperationalLog || false,
-            permissions: userData.permissions,
-          };
+    const syncProfile = async () => {
+      let targetDocId = firebaseUser.uid;
+      let userDocRef = doc(db, "employees", targetDocId);
 
-          setCurrentUser(prev => {
-            if (prev && JSON.stringify(prev) === JSON.stringify(fullUser)) return prev;
-            safeSetCachedUser(fullUser);
-            return fullUser;
-          });
+      try {
+        const directSnap = await getDoc(userDocRef);
+        if (!directSnap.exists()) {
+          // 1. Intento de búsqueda por campo 'uid'
+          const uidQuery = query(collection(db, "employees"), where("uid", "==", firebaseUser.uid));
+          const uidSnap = await getDocs(uidQuery);
 
-          setUserPermisos(prev => {
-            const newPerms = userData.permissions || {};
-            if (prev && JSON.stringify(prev) === JSON.stringify(newPerms)) return prev;
-            return newPerms;
-          });
-
-          if (!isActiveUser && !docSnap.metadata.fromCache && networkProbe.isOnline()) {
-            logger.log("⚠️ [UserProvider] Account inactive (confirmed by server), logging out.");
-            logout();
-            setLoginError("Usuario sin acceso");
-          }
-
-          setShowForcePasswordChangeModal(
-            !!userData.forcePasswordChange && !isAdmin(userData.role)
-          );
-
-          // authReady=true inmediatamente después de perfil cargado (Optimización)
-          if (!authReadyRef.current) {
-            logger.log("🔑 [UserProvider] Profile loaded. Marks authReady = true (Optimized)");
-            authReadyRef.current = true;
-            setAuthReady(true);
-            setIsAuthLoading(false);
-
-            // Audit login se dispara en segundo plano sin bloquear el render
-            claimsPromise.then(() => {
-              auditService.logEvent({
-                userId: fullUser.id,
-                userName: fullUser.name,
-                email: fullUser.email,
-                role: fullUser.role,
-                action: 'login',
-                module: 'Auth',
-                route: window.location.pathname
-              });
-            });
-          }
-
-        } else {
-          if (!docSnap.metadata.fromCache && networkProbe.isOnline()) {
-            logger.log("⚠️ [UserProvider] User not found in Firestore (confirmed by server).");
-            logout();
-            setLoginError("Usuario no encontrado");
+          if (!uidSnap.empty && uidSnap.docs.length === 1) {
+            targetDocId = uidSnap.docs[0].id;
+            userDocRef = doc(db, "employees", targetDocId);
           } else {
-            logger.log("⚠️ [UserProvider] User doc from cache or offline.");
+            // 2. Búsqueda secundaria por correo electrónico
+            const userEmail = (firebaseUser.email || '').trim().toLowerCase();
+            if (userEmail) {
+              const emailQuery = query(collection(db, "employees"), where("email", "==", userEmail));
+              const emailSnap = await getDocs(emailQuery);
+
+              if (!emailSnap.empty) {
+                if (emailSnap.docs.length === 1) {
+                  const matchedDoc = emailSnap.docs[0];
+                  targetDocId = matchedDoc.id;
+                  userDocRef = doc(db, "employees", targetDocId);
+
+                  // Asociar el UID de Firebase Authentication si aún no está asignado
+                  const matchedData = matchedDoc.data();
+                  if (matchedData.uid !== firebaseUser.uid) {
+                    try {
+                      await updateDoc(userDocRef, { uid: firebaseUser.uid });
+                      logger.log(`✅ Associated Auth UID ${firebaseUser.uid} with employee doc ${targetDocId}`);
+                    } catch (updErr) {
+                      logger.error("Error updating employee with uid:", updErr);
+                    }
+                  }
+                } else {
+                  logger.warn(`⚠️ Multiple employees (${emailSnap.docs.length}) found for email ${userEmail}. UID association skipped.`);
+                }
+              }
+            }
+          }
+        }
+      } catch (resErr) {
+        logger.error("Error resolving employee document ID:", resErr);
+      }
+
+      if (isCancelled) return;
+
+      unsubProfile = onSnapshot(
+        userDocRef,
+        { includeMetadataChanges: true },
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const userData = docSnap.data() as Employee;
+            const isActiveUser = userData.status === "activo" || userData.isActive === true;
+
+            const fullUser: User = {
+              id: docSnap.id,
+              uid: firebaseUser.uid,
+              email: userData.email || firebaseUser.email || '',
+              name: userData.name || firebaseUser.displayName || '',
+              role: userData.role || 'empleado',
+              active: isActiveUser,
+              forcePasswordChange: userData.forcePasswordChange || false,
+              canUseOperationalLog: isAdmin(userData.role) || userData.canUseOperationalLog || false,
+              permissions: userData.permissions,
+            };
+
+            setCurrentUser(prev => {
+              if (prev && JSON.stringify(prev) === JSON.stringify(fullUser)) return prev;
+              safeSetCachedUser(fullUser);
+              return fullUser;
+            });
+
+            setUserPermisos(prev => {
+              const newPerms = userData.permissions || {};
+              if (prev && JSON.stringify(prev) === JSON.stringify(newPerms)) return prev;
+              return newPerms;
+            });
+
+            if (!isActiveUser && !docSnap.metadata.fromCache && networkProbe.isOnline()) {
+              logger.log("⚠️ [UserProvider] Account inactive (confirmed by server), logging out.");
+              logout();
+              setLoginError("Usuario sin acceso");
+            }
+
+            setShowForcePasswordChangeModal(
+              !!userData.forcePasswordChange && !isAdmin(userData.role)
+            );
+
+            // authReady=true inmediatamente después de perfil cargado (Optimización)
+            if (!authReadyRef.current) {
+              logger.log("🔑 [UserProvider] Profile loaded. Marks authReady = true (Optimized)");
+              authReadyRef.current = true;
+              setAuthReady(true);
+              setIsAuthLoading(false);
+
+              // Audit login se dispara en segundo plano sin bloquear el render
+              claimsPromise.then(() => {
+                auditService.logEvent({
+                  userId: fullUser.id,
+                  userName: fullUser.name,
+                  email: fullUser.email,
+                  role: fullUser.role,
+                  action: 'login',
+                  module: 'Auth',
+                  route: window.location.pathname
+                });
+              });
+            }
+
+          } else {
+            if (!docSnap.metadata.fromCache && networkProbe.isOnline()) {
+              logger.log("⚠️ [UserProvider] User not found in Firestore (confirmed by server).");
+              logout();
+              setLoginError("Usuario no encontrado");
+            } else {
+              logger.log("⚠️ [UserProvider] User doc from cache or offline.");
+              if (!authReadyRef.current) {
+                authReadyRef.current = true;
+                setAuthReady(true);
+              }
+            }
+            setIsAuthLoading(false);
+          }
+        },
+        (error) => {
+          logger.error("🔥 [UserProvider] Profile sync error:", error);
+          if (currentUser) {
+            setIsAuthLoading(false);
             if (!authReadyRef.current) {
               authReadyRef.current = true;
               setAuthReady(true);
             }
+          } else {
+            setLoginError("Error de sincronización de perfil");
+            setIsAuthLoading(false);
           }
-          setIsAuthLoading(false);
         }
-      },
-      (error) => {
-        logger.error("🔥 [UserProvider] Profile sync error:", error);
-        if (currentUser) {
-          setIsAuthLoading(false);
-          if (!authReadyRef.current) {
-            authReadyRef.current = true;
-            setAuthReady(true);
-          }
-        } else {
-          setLoginError("Error de sincronización de perfil");
-          setIsAuthLoading(false);
-        }
-      }
-    );
+      );
+    };
 
-    return () => unsubscribeProfile();
+    syncProfile();
+
+    return () => {
+      isCancelled = true;
+      if (unsubProfile) unsubProfile();
+    };
   }, [currentUser?.id, firebaseAuthUser?.uid]);
 
   const contextValue = useMemo(() => {

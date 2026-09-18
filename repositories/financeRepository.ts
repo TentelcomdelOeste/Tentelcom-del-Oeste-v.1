@@ -294,6 +294,95 @@ export const financeRepository = {
     await updateDoc(employeeRef, data);
   },
 
+  createEmployeeWithoutAuth: async (employeeData: Partial<Employee>): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const newDocRef = doc(collection(db, "employees"));
+      const finalEmail = employeeData.email && employeeData.email.trim() !== '' ? employeeData.email.trim() : '';
+      const finalUsername = employeeData.username && employeeData.username.trim() !== '' ? employeeData.username.trim() : '';
+
+      const finalFirestoreData = { 
+        ...employeeData, 
+        email: finalEmail,
+        username: finalUsername,
+        hasAuthAccount: false,
+        createdAt: new Date().toISOString()
+      };
+
+      await setDoc(newDocRef, finalFirestoreData);
+      return { success: true };
+    } catch (err: any) {
+      console.error("❌ Error creando colaborador sin Auth:", err);
+      return { success: false, message: err.message || "Error al crear colaborador." };
+    }
+  },
+
+  updateEmployeePasswordOrAuth: async (id: string, employeeData: Partial<Employee>, password: string): Promise<{ success: boolean; message?: string }> => {
+    let finalEmail = employeeData.email && employeeData.email.trim() !== '' ? employeeData.email.trim() : '';
+
+    const employeeRef = doc(db, "employees", id);
+    const employeeDoc = await getDoc(employeeRef);
+    const currentData = employeeDoc.exists() ? employeeDoc.data() : {};
+    
+    if (!finalEmail && currentData.email) {
+      finalEmail = currentData.email.trim();
+    }
+
+    const tempAppName = `auth-worker-${Date.now()}`;
+    const tempApp = initializeApp(firebaseConfig, tempAppName);
+    const tempAuth = getAuth(tempApp);
+    await setPersistence(tempAuth, inMemoryPersistence);
+
+    try {
+      if (finalEmail) {
+        try {
+          await createUserWithEmailAndPassword(tempAuth, finalEmail, password);
+        } catch (err: any) {
+          if (err.code === "auth/email-already-in-use") {
+            await updateDoc(employeeRef, {
+              ...employeeData,
+              email: finalEmail,
+              hasAuthAccount: true,
+              forcePasswordChange: true
+            });
+            return { success: true };
+          }
+          return { success: false, message: "Error al configurar credenciales: " + (err.message || "Inválido") };
+        }
+      } else {
+        let attempt = 1;
+        let created = false;
+        const baseName = employeeData.name || currentData.name || 'User';
+        
+        while (!created) {
+          finalEmail = generateInternalEmail(baseName, attempt);
+          try {
+            await createUserWithEmailAndPassword(tempAuth, finalEmail, password);
+            created = true;
+          } catch (err: any) {
+            if (err.code === 'auth/email-already-in-use') {
+              attempt++;
+            } else {
+              return { success: false, message: "Error al generar correo de acceso para el usuario." };
+            }
+          }
+        }
+      }
+
+      await updateDoc(employeeRef, {
+        ...employeeData,
+        email: finalEmail,
+        hasAuthAccount: true,
+        forcePasswordChange: true
+      });
+      return { success: true };
+    } catch (err: any) {
+      console.error("❌ Error actualizando contraseña/Auth de colaborador:", err);
+      return { success: false, message: err.message || "Error al actualizar la contraseña." };
+    } finally {
+      await deleteApp(tempApp).catch(() => null);
+    }
+  },
+
   createEmployeeWithAuth: async (employeeData: Partial<Employee>, password: string): Promise<{ success: boolean; message?: string }> => {
     let userCredential;
     let finalEmail = employeeData.email && employeeData.email.trim() !== '' ? employeeData.email.trim() : '';
@@ -354,7 +443,7 @@ export const financeRepository = {
       }
 
       const newUserId = userCredential.user.uid;
-      const finalFirestoreData = { ...employeeData, email: finalEmail, forcePasswordChange: true };
+      const finalFirestoreData = { ...employeeData, email: finalEmail, uid: newUserId, forcePasswordChange: true };
 
       // Guardar en Firestore
     try {

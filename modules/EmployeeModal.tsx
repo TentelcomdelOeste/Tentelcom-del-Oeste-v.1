@@ -126,33 +126,38 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
     setError(null);
     
     // Validation
-    if (!name || !employeeCode || !position || !baseSalary || !email || !username || (!isEditing && !password)) {
-        setError("Los campos marcados con * son obligatorios.");
+    if (!name?.trim() || !employeeCode?.trim() || !position?.trim() || !baseSalary) {
+        setError("Los campos marcados con * (Nombre, Código, Cargo, Salario Base) son obligatorios.");
+        return;
+    }
+
+    if (password && password.trim() !== '' && password.trim().length < 6) {
+        setError("La contraseña debe tener al menos 6 caracteres si se va a asignar acceso al sistema.");
         return;
     }
 
     setIsSubmitting(true);
     try {
         const payload: any = {
-            name,
-            employeeCode,
-            position,
+            name: name.trim(),
+            employeeCode: employeeCode.trim(),
+            position: position.trim(),
             baseSalary: parseFloat(baseSalary),
             ccssDeduction: parseFloat(ccssDeduction) || 0,
             ccssDeductionQuincenal: parseFloat(ccssDeductionQuincenal) || 0,
             reportadoCCSS: parseFloat(reportadoCCSS) || 0,
-            phone,
-            email,
+            phone: phone ? phone.trim() : '',
+            email: email ? email.trim() : '',
             role,
-            username,
+            username: username ? username.trim() : '',
             status,
             hireDate,
             canUseOperationalLog,
             permissions
         };
 
-        if (!isEditing) {
-            payload.password = password;
+        if (password && password.trim() !== '') {
+            payload.password = password.trim();
         }
 
         const result = await onSubmit(payload, employeeData?.id);
@@ -262,13 +267,13 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                     </div>
 
                     <div className="col-span-2 sm:col-span-1">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Correo Electrónico *</label>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Correo Electrónico (Opcional)</label>
                         <input 
                             type="email" 
                             value={email} 
                             onChange={e => setEmail(e.target.value)} 
                             className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
-                            placeholder="correo@empresa.com"
+                            placeholder="correo@empresa.com (Opcional)"
                         />
                     </div>
 
@@ -361,48 +366,46 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                     </div>
 
                     <div className="col-span-2 sm:col-span-1">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Usuario *</label>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Usuario (Opcional)</label>
                         <input 
                             type="text" 
                             value={username} 
                             onChange={e => setUsername(e.target.value)} 
                             className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
-                            placeholder="nombre.apellido"
+                            placeholder="nombre.apellido (Opcional)"
                         />
                     </div>
 
-                    {!employeeData?.id && (
-                        <div className="col-span-2 sm:col-span-1 relative">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Contraseña *</label>
-                            <div className="relative">
-                                <input 
-                                    type={showPassword ? "text" : "password"}
-                                    value={password} 
-                                    onChange={e => setPassword(e.target.value)} 
-                                    className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all pr-20" 
-                                    placeholder="********"
+                    <div className="col-span-2 sm:col-span-1 relative">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Contraseña (Opcional)</label>
+                        <div className="relative">
+                            <input 
+                                type={showPassword ? "text" : "password"}
+                                value={password} 
+                                onChange={e => setPassword(e.target.value)} 
+                                className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all pr-20" 
+                                placeholder={isEditing ? "Dejar en blanco para no cambiar" : "Opcional para acceso al sistema"}
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                <IconButton 
+                                    type="button"
+                                    onClick={generatePassword}
+                                    title="Generar contraseña"
+                                    icon={<FiRefreshCcw size={14} />}
+                                    className="!w-8 !h-8 !p-0 !rounded-lg"
+                                    variant="neutral"
                                 />
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                    <IconButton 
-                                        type="button"
-                                        onClick={generatePassword}
-                                        title="Generar contraseña"
-                                        icon={<FiRefreshCcw size={14} />}
-                                        className="!w-8 !h-8 !p-0 !rounded-lg"
-                                        variant="neutral"
-                                    />
-                                    <IconButton 
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        title={showPassword ? "Ocultar" : "Mostrar"}
-                                        icon={showPassword ? <FiEyeOff size={14} /> : <FiEye size={14} />}
-                                        className="!w-8 !h-8 !p-0 !rounded-lg"
-                                        variant="neutral"
-                                    />
-                                </div>
+                                <IconButton 
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    title={showPassword ? "Ocultar" : "Mostrar"}
+                                    icon={showPassword ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+                                    className="!w-8 !h-8 !p-0 !rounded-lg"
+                                    variant="neutral"
+                                />
                             </div>
                         </div>
-                    )}
+                    </div>
 
                     <div className="col-span-2 sm:col-span-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Rol de Usuario</label>

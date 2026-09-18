@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { Quote } from '../types';
+import { ToolAssignment } from '@/types/toolAssignment.types';
 import { Employee, PayStub } from '../financeTypes';
 import { MaterialRequest } from '../dispatchTypes';
 import { AutomaticAdjustment } from '../modules/finance/automatic_adjustments/automaticAdjustments.types';
@@ -1781,6 +1782,156 @@ export const generateProjectConsumptionPDF = async (
   }
 
   const fileName = `REPORTE_CONSUMO_${projectName.replace(/[\s-]+/g, '_')}.pdf`;
+  const blob = doc.output('blob');
+  triggerFileDownload(blob, fileName);
+};
+
+export const exportAssignmentActaPDF = (assignment: ToolAssignment, allAssignments: ToolAssignment[] = []) => {
+  const doc = new jsPDF('p', 'pt');
+  const pageHeight = doc.internal.pageSize.height;
+  const pageWidth = doc.internal.pageSize.width;
+  const margin = 40;
+
+  // Header Logo & Company Info
+  const logoWidth = 90;
+  const logoX = margin;
+  const logoY = margin - 10;
+  try {
+    doc.addImage(LOGO_BASE64, 'PNG', logoX, logoY, logoWidth, 0);
+  } catch (e) {
+    console.warn('Logo could not be loaded in PDF', e);
+  }
+
+  const companyInfoX = margin + logoWidth + 20;
+  let textY = margin;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(30, 58, 138);
+  doc.text("TENTELCOM DEL OESTE S.A.", companyInfoX, textY);
+  textY += 15;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100);
+  doc.text("Soluciones en Telecomunicaciones y Fibra Óptica", companyInfoX, textY);
+  textY += 12;
+  doc.text("Cédula Jurídica: 3-101-438992 | Tel: 2249 5551", companyInfoX, textY);
+
+  let y = Math.max(textY, logoY + 40) + 25;
+
+  // Title Box
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(margin, y, pageWidth - (margin * 2), 32, 4, 4, 'F');
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(30, 58, 138);
+  doc.text("ACTA DE ENTREGA / ASIGNACIÓN DE HERRAMIENTAS Y EQUIPOS", margin + 12, y + 20);
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(50, 50, 50);
+  doc.text(`Comprobante: ${assignment.requestNumber || 'MOV-XXXX'}`, pageWidth - margin - 120, y + 20);
+
+  y += 45;
+
+  // Recipient & Details
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(41, 51, 61);
+  doc.text("DATOS DEL DESTINATARIO:", margin, y);
+  doc.text("DETALLES DE ASIGNACIÓN:", pageWidth / 2 + 10, y);
+  y += 14;
+
+  doc.setFont("helvetica", "normal");
+  doc.text(`Destinatario: ${assignment.recipientName}`, margin, y);
+  doc.text(`Fecha de Entrega: ${assignment.assignedDate}`, pageWidth / 2 + 10, y);
+  y += 13;
+
+  doc.text(`Tipo: ${assignment.recipientType === 'colaborador' ? 'Colaborador' : 'Unidad Vehicular'}`, margin, y);
+  doc.text(`Entregado por: ${assignment.assignedBy}`, pageWidth / 2 + 10, y);
+  y += 13;
+
+  if (assignment.recipientDetail) {
+    doc.text(`Detalle: ${assignment.recipientDetail}`, margin, y);
+  }
+  if (assignment.projectName) {
+    doc.text(`Proyecto: ${assignment.projectName}`, pageWidth / 2 + 10, y);
+  }
+  y += 20;
+
+  // Gather items (if batch/movementId matches, gather all assigned items in this batch, otherwise just this assignment)
+  const batchItems = allAssignments.length > 0 && assignment.movementId
+    ? allAssignments.filter(a => a.movementId === assignment.movementId)
+    : [assignment];
+
+  const tableBody = batchItems.map((item, index) => [
+    index + 1,
+    item.itemCode || '---',
+    item.itemDescription || '---',
+    item.itemCategory || 'Herramientas',
+    `${item.quantity} ${item.itemUnit || 'unid'}`,
+    item.initialCondition || 'Bueno'
+  ]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [['#', 'CÓDIGO', 'DESCRIPCIÓN / ARTÍCULO', 'CATEGORÍA', 'CANTIDAD', 'CONDICIÓN']],
+    body: tableBody,
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 5 },
+    headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 25 },
+      1: { halign: 'center', cellWidth: 60 },
+      2: { cellWidth: 'auto' },
+      3: { cellWidth: 80 },
+      4: { halign: 'center', cellWidth: 60 },
+      5: { halign: 'center', cellWidth: 70 }
+    }
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 25;
+
+  if (assignment.observations) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("OBSERVACIONES:", margin, y);
+    y += 12;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    const obsLines = doc.splitTextToSize(assignment.observations, pageWidth - (margin * 2));
+    doc.text(obsLines, margin, y);
+    y += (obsLines.length * 12) + 20;
+  } else {
+    y += 10;
+  }
+
+  // Signatures
+  if (y + 90 > pageHeight - margin) {
+    doc.addPage();
+    y = margin + 20;
+  }
+
+  const sigWidth = 200;
+  const leftX = margin + 30;
+  const rightX = pageWidth - margin - sigWidth - 30;
+
+  doc.setDrawColor(150, 150, 150);
+  doc.setLineWidth(0.75);
+
+  doc.line(leftX, y + 40, leftX + sigWidth, y + 40);
+  doc.line(rightX, y + 40, rightX + sigWidth, y + 40);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text("ENTREGADO POR (BODEGA)", leftX + (sigWidth / 2), y + 55, { align: 'center' });
+  doc.text("RECIBIDO DE CONFORMIDAD", rightX + (sigWidth / 2), y + 55, { align: 'center' });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(assignment.assignedBy || 'Responsable', leftX + (sigWidth / 2), y + 68, { align: 'center' });
+  doc.text(assignment.recipientName, rightX + (sigWidth / 2), y + 68, { align: 'center' });
+
+  const fileName = `Acta_Asignacion_${assignment.requestNumber || 'MOV'}_${assignment.recipientName.replace(/\s+/g, '_')}.pdf`;
   const blob = doc.output('blob');
   triggerFileDownload(blob, fileName);
 };

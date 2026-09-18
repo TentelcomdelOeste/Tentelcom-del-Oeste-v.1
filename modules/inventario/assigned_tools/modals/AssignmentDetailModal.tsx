@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '@/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import {
   FiX,
   FiBox,
@@ -14,16 +14,20 @@ import {
   FiCheckCircle,
   FiInfo,
   FiFileText,
-  FiCornerDownLeft
+  FiCornerDownLeft,
+  FiLayers
 } from 'react-icons/fi';
 import { ToolAssignment } from '@/types/toolAssignment.types';
 import useLockBodyScroll from '@/hooks/useLockBodyScroll';
 import { ActionButton, IconButton, StatusBadge } from '@/design-system';
+import { getAssignmentBatchId } from './RecipientDetailModal';
 
 interface AssignmentDetailModalProps {
   show: boolean;
   onClose: () => void;
   assignment: ToolAssignment | null;
+  allAssignments?: ToolAssignment[];
+  onSelectAssignment?: (assignment: ToolAssignment) => void;
   onOpenReturn?: (assignment: ToolAssignment) => void;
   onOpenIncident?: (assignment: ToolAssignment) => void;
 }
@@ -32,6 +36,8 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
   show,
   onClose,
   assignment,
+  allAssignments = [],
+  onSelectAssignment,
   onOpenReturn,
   onOpenIncident
 }) => {
@@ -42,15 +48,29 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
   useEffect(() => {
     let active = true;
     const itemId = assignment?.itemId || (assignment as any)?.inventoryItemId;
-    if (show && itemId) {
+    const itemCode = assignment?.itemCode;
+    if (show && (itemId || itemCode)) {
       const fetchCategory = async () => {
         try {
-          const docRef = doc(db, 'inventory_items', itemId);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists() && active) {
-            const data = docSnap.data();
-            if (data?.category) {
-              setDbCategory(data.category);
+          if (itemId) {
+            const docRef = doc(db, 'inventory_items', itemId);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists() && active) {
+              const data = docSnap.data();
+              if (data?.category) {
+                setDbCategory(data.category);
+                return;
+              }
+            }
+          }
+          if (itemCode && active) {
+            const q = query(collection(db, 'inventory_items'), where('code', '==', itemCode));
+            const querySnap = await getDocs(q);
+            if (!querySnap.empty && active) {
+              const data = querySnap.docs[0].data();
+              if (data?.category) {
+                setDbCategory(data.category);
+              }
             }
           }
         } catch (error) {
@@ -65,6 +85,28 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
       active = false;
     };
   }, [show, assignment]);
+
+  // Identificar artículos pertenecientes al mismo lote/movimiento
+  const batchId = useMemo(() => (assignment ? getAssignmentBatchId(assignment) : null), [assignment]);
+
+  const relatedBatchAssignments = useMemo(() => {
+    if (!assignment || !allAssignments || allAssignments.length === 0) return [];
+
+    return allAssignments.filter((a) => {
+      if (a.id === assignment.id) return false;
+
+      const otherBatchId = getAssignmentBatchId(a);
+      if (batchId && otherBatchId && batchId === otherBatchId) {
+        return true;
+      }
+
+      return (
+        a.recipientId === assignment.recipientId &&
+        a.assignedDate === assignment.assignedDate &&
+        a.assignedBy === assignment.assignedBy
+      );
+    });
+  }, [assignment, allAssignments, batchId]);
 
   if (!show || !assignment) return null;
 
@@ -157,6 +199,68 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Artículos Entregados en el Mismo Lote / Movimiento */}
+          {relatedBatchAssignments.length > 0 && (
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <FiLayers className="text-blue-600 text-sm" /> Artículos Entregados en el Mismo Movimiento
+                </span>
+                {batchId && (
+                  <span className="font-mono text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200">
+                    {batchId}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Esta asignación incluyó {relatedBatchAssignments.length + 1} artículos en total para {assignment.recipientName}:
+              </p>
+              <div className="space-y-1.5">
+                {/* Ítem actualmente seleccionado */}
+                <div className="p-2.5 bg-blue-50/80 rounded-xl border border-blue-200 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-black text-[10px] bg-blue-200 text-blue-900 px-1.5 py-0.5 rounded">
+                      {assignment.itemCode}
+                    </span>
+                    <span className="font-bold text-slate-900">{assignment.itemDescription}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-700">{assignment.quantity} {assignment.itemUnit || 'unid'}</span>
+                    <span className="text-[9px] font-extrabold bg-blue-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      Viendo este ítem
+                    </span>
+                  </div>
+                </div>
+
+                {/* Ítems adicionales del mismo lote */}
+                {relatedBatchAssignments.map((rel) => (
+                  <div
+                    key={rel.id}
+                    onClick={() => onSelectAssignment && onSelectAssignment(rel)}
+                    className="p-2.5 bg-white hover:bg-slate-100 transition-colors rounded-xl border border-slate-200 flex items-center justify-between text-xs cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-[10px] bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded border border-slate-200">
+                        {rel.itemCode}
+                      </span>
+                      <span className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors">
+                        {rel.itemDescription}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-600">{rel.quantity} {rel.itemUnit || 'unid'}</span>
+                      <StatusBadge
+                        status={rel.status}
+                        variant={getStatusVariant(rel.status)}
+                        size="sm"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Destinatario y Custodia */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -369,3 +473,4 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
     document.body
   );
 };
+

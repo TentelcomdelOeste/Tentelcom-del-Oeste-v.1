@@ -99,6 +99,14 @@ export const useToolAssignments = (currentUser: User | null) => {
     [currentUser]
   );
 
+  const addAssignmentBatch = useCallback(
+    async (dtos: CreateAssignmentDTO[]) => {
+      setError(null);
+      return await toolAssignmentService.createBatchAssignment(dtos, currentUser);
+    },
+    [currentUser]
+  );
+
   const returnAssignment = useCallback(
     async (dto: ReturnAssignmentDTO) => {
       setError(null);
@@ -137,6 +145,7 @@ export const useToolAssignments = (currentUser: User | null) => {
     error,
     kpis,
     addAssignment,
+    addAssignmentBatch,
     returnAssignment,
     reportIncident,
     resolveIncident,

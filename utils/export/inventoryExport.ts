@@ -306,6 +306,43 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
       currentY += boxHeight + 20;
     }
 
+    // Signatures Area for Assignment
+    if (currentY + 80 > doc.internal.pageSize.height - 40) {
+      doc.addPage();
+      currentY = margin + 20;
+    } else {
+      currentY += 10;
+    }
+
+    const isUnit = movement.recipientType === 'unidad' || 
+      (movement.recipientType && movement.recipientType.toLowerCase().includes('unidad')) ||
+      (movement.recipientName && movement.recipientName.toLowerCase().includes('vehic')) ||
+      (movement.destination && movement.destination.toLowerCase().includes('vehic'));
+
+    const receiveTitle = isUnit ? "RECIBE / RESPONSABLE DE LA UNIDAD" : "FIRMA DEL COLABORADOR";
+    const receiveName = movement.recipientName || movement.destination || '---';
+    const deliverName = movement.assignedBy || movement.userName || '---';
+
+    const sigWidth = 200;
+    const leftX = margin + 30;
+    const rightX = pageWidth - margin - sigWidth - 30;
+
+    doc.setDrawColor(150, 150, 150);
+    doc.setLineWidth(0.75);
+
+    doc.line(leftX, currentY + 40, leftX + sigWidth, currentY + 40);
+    doc.line(rightX, currentY + 40, rightX + sigWidth, currentY + 40);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text("QUIEN ENTREGA", leftX + (sigWidth / 2), currentY + 55, { align: 'center' });
+    doc.text(receiveTitle, rightX + (sigWidth / 2), currentY + 55, { align: 'center' });
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text(deliverName, leftX + (sigWidth / 2), currentY + 68, { align: 'center' });
+    doc.text(receiveName, rightX + (sigWidth / 2), currentY + 68, { align: 'center' });
+
     // Footer
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);

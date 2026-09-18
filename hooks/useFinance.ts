@@ -119,7 +119,15 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
         }
         
         const oldData = data.employees.find(e => e.id === id);
-        await financeRepository.updateEmployee(id, dataToUpdate);
+
+        if (password && password.trim() !== '') {
+          const updateResult = await financeRepository.updateEmployeePasswordOrAuth(id, dataToUpdate, password.trim());
+          if (!updateResult.success) {
+            return updateResult;
+          }
+        } else {
+          await financeRepository.updateEmployee(id, dataToUpdate);
+        }
         clearEmployeesCache();
 
         if (oldData && currentUser) {
@@ -186,12 +194,17 @@ export const useFinance = (currentUser: User | null, filters?: FinanceFilters) =
         }
       } else {
         // Creación
-        if (!password || !firestoreData.name) {
-          return { success: false, message: "El nombre y la contraseña son obligatorios." };
+        if (!firestoreData.name) {
+          return { success: false, message: "El nombre es obligatorio." };
         }
         
-        // Delegar la lógica compleja de creación de Auth al repositorio
-        const result = await financeRepository.createEmployeeWithAuth(firestoreData, password);
+        let result: { success: boolean; message?: string };
+        if (password && password.trim() !== '') {
+          result = await financeRepository.createEmployeeWithAuth(firestoreData, password.trim());
+        } else {
+          result = await financeRepository.createEmployeeWithoutAuth(firestoreData);
+        }
+
         if (!result.success) return result;
         clearEmployeesCache();
       }

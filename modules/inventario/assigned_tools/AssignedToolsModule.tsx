@@ -11,7 +11,8 @@ import {
   FiCornerDownLeft,
   FiCheckCircle,
   FiClock,
-  FiFileText
+  FiFileText,
+  FiChevronRight
 } from 'react-icons/fi';
 import { User } from '@/utils/types';
 import { useToolAssignments } from '@/hooks/useToolAssignments';
@@ -37,6 +38,17 @@ import { NewAssignmentModal } from './modals/NewAssignmentModal';
 import { ReturnAssignmentModal } from './modals/ReturnAssignmentModal';
 import { IncidentReportModal } from './modals/IncidentReportModal';
 import { AssignmentDetailModal } from './modals/AssignmentDetailModal';
+import { RecipientDetailModal } from './modals/RecipientDetailModal';
+
+export interface GroupedRecipient {
+  id: string;
+  recipientId: string;
+  recipientName: string;
+  recipientType: RecipientType;
+  recipientDetail?: string;
+  count: number;
+  assignments: ToolAssignment[];
+}
 
 interface AssignedToolsModuleProps {
   currentUser?: User | null;
@@ -44,7 +56,7 @@ interface AssignedToolsModuleProps {
 
 export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ currentUser = null }) => {
   const confirm = useConfirm();
-  const { items: inventoryItems } = useInventory(currentUser);
+  const { items: inventoryItems } = useInventory(currentUser, { fetchAll: true });
   const { activeEmployees } = useEmployees();
   const vehicles = useMemo(() => getVehicleCatalog(), []);
 
@@ -54,6 +66,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
     error,
     kpis,
     addAssignment,
+    addAssignmentBatch,
     returnAssignment,
     reportIncident,
     resolveIncident,
@@ -73,19 +86,95 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
   const [showIncidentModal, setShowIncidentModal] = useState<boolean>(false);
   const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
   const [selectedAssignment, setSelectedAssignment] = useState<ToolAssignment | null>(null);
+  const [selectedRecipientGroupId, setSelectedRecipientGroupId] = useState<string | null>(null);
+
+  // Mapa maestro de catálogo de inventario general para garantizar fuente única de verdad
+  const masterInventoryMap = useMemo(() => {
+    const mapById = new Map<string, any>();
+    const mapByCode = new Map<string, any>();
+    if (Array.isArray(inventoryItems)) {
+      inventoryItems.forEach((item) => {
+        if (item) {
+          if (item.id) mapById.set(item.id, item);
+          if (item.code) mapByCode.set(item.code, item);
+        }
+      });
+    }
+    return { mapById, mapByCode };
+  }, [inventoryItems]);
+
+  // Enriquecer asignaciones con la información del inventario maestro en tiempo real
+  const enrichedAssignments = useMemo(() => {
+    return assignments.map((a) => {
+      const master = masterInventoryMap.mapById.get(a.itemId) || masterInventoryMap.mapByCode.get(a.itemCode);
+      if (!master) return a;
+      return {
+        ...a,
+        itemCategory: master.category || a.itemCategory,
+        itemDescription: master.description || a.itemDescription,
+        itemCode: master.code || a.itemCode,
+        itemUnit: master.unit || a.itemUnit
+      };
+    });
+  }, [assignments, masterInventoryMap]);
 
   // Lista única de categorías de los artículos asignados
   const uniqueCategories = useMemo(() => {
     const cats = new Set<string>();
-    assignments.forEach((a) => {
+    enrichedAssignments.forEach((a) => {
       if (a.itemCategory) cats.add(a.itemCategory);
     });
     return Array.from(cats);
-  }, [assignments]);
+  }, [enrichedAssignments]);
+
+  // Estadísticas y Métricas alineadas a Destinatarios y Asignaciones (Opción 2)
+  const stats = useMemo(() => {
+    let totalItemsQuantity = 0;
+    let totalActiveAssignmentsCount = 0;
+    let pendingReturnAssignmentsCount = 0;
+    let incidentCount = 0;
+
+    const activeColaboradorIds = new Set<string>();
+    const activeUnidadIds = new Set<string>();
+
+    enrichedAssignments.forEach((a) => {
+      const isDevuelto = a.status === 'Devuelto';
+      const recipientKey = a.recipientId || `${a.recipientType}_${a.recipientName}`;
+
+      if (!isDevuelto) {
+        totalActiveAssignmentsCount += 1;
+        totalItemsQuantity += a.quantity || 1;
+        pendingReturnAssignmentsCount += 1;
+
+        if (a.recipientType === 'colaborador') {
+          activeColaboradorIds.add(recipientKey);
+        } else {
+          activeUnidadIds.add(recipientKey);
+        }
+      }
+
+      if (
+        a.status === 'Con incidencia' ||
+        (a.incidentReport && a.incidentReport.status === 'Abierta')
+      ) {
+        incidentCount += 1;
+      }
+    });
+
+    return {
+      activeDestinatariosCount: activeColaboradorIds.size + activeUnidadIds.size,
+      activeColaboradoresCount: activeColaboradorIds.size,
+      activeUnidadesCount: activeUnidadIds.size,
+      totalActiveAssignmentsCount,
+      totalItemsQuantity,
+      pendingReturnAssignmentsCount,
+      incidentCount
+    };
+  }, [enrichedAssignments]);
 
   // Filtrado de asignaciones
   const filteredAssignments = useMemo(() => {
-    return assignments.filter((item) => {
+    return enrichedAssignments.filter((item) => {
       // 1. Texto de búsqueda
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
@@ -123,7 +212,45 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
 
       return true;
     });
-  }, [assignments, searchTerm, filterType, filterRecipientId, filterStatus, filterCategory]);
+  }, [enrichedAssignments, searchTerm, filterType, filterRecipientId, filterStatus, filterCategory]);
+
+  // Agrupación por Destinatario (una fila por colaborador o unidad vehicular)
+  const groupedRecipients = useMemo(() => {
+    const groupsMap = new Map<string, GroupedRecipient>();
+
+    filteredAssignments.forEach((item) => {
+      const key = item.recipientId || `${item.recipientType}_${item.recipientName}`;
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, {
+          id: key,
+          recipientId: item.recipientId,
+          recipientName: item.recipientName,
+          recipientType: item.recipientType,
+          recipientDetail: item.recipientDetail,
+          count: 0,
+          assignments: []
+        });
+      }
+      const group = groupsMap.get(key)!;
+      group.assignments.push(item);
+      group.count += 1;
+    });
+
+    return Array.from(groupsMap.values());
+  }, [filteredAssignments]);
+
+  const activeGroup = useMemo(() => {
+    if (!selectedRecipientGroupId) return null;
+    return groupedRecipients.find((g) => g.id === selectedRecipientGroupId) || null;
+  }, [selectedRecipientGroupId, groupedRecipients]);
+
+  const recipientAllAssignments = useMemo(() => {
+    if (!selectedRecipientGroupId) return [];
+    return enrichedAssignments.filter((item) => {
+      const key = item.recipientId || `${item.recipientType}_${item.recipientName}`;
+      return key === selectedRecipientGroupId;
+    });
+  }, [selectedRecipientGroupId, enrichedAssignments]);
 
   // Opciones de destinatarios dinámicos según el tipo seleccionado
   const recipientOptions = useMemo(() => {
@@ -248,146 +375,85 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
     setShowIncidentModal(true);
   };
 
-  // Definición de columnas de DataTable
-  const columns: TableColumn<ToolAssignment>[] = [
+  // Definición de columnas de la tabla principal agrupada por Destinatario
+  const groupColumns: TableColumn<GroupedRecipient>[] = [
     {
-      key: 'item',
-      header: 'Herramienta / Equipo',
-      className: 'min-w-[200px]',
-      render: (assignment) => (
-        <div className="space-y-0.5 w-full">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-mono text-[10px] font-black bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded border border-slate-200">
-              {assignment.itemCode}
-            </span>
-            {assignment.itemCategory && (
-              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">
-                {assignment.itemCategory}
+      key: 'recipientName',
+      header: 'Destinatario',
+      className: 'min-w-[220px]',
+      render: (group) => (
+        <div
+          className="flex items-center gap-3 w-full cursor-pointer py-1"
+          onClick={() => setSelectedRecipientGroupId(group.id)}
+        >
+          <div
+            className={`w-9 h-9 rounded-xl flex items-center justify-center flex-none font-bold ${
+              group.recipientType === 'colaborador'
+                ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+            }`}
+          >
+            {group.recipientType === 'colaborador' ? (
+              <FiUser className="text-base" />
+            ) : (
+              <FiTruck className="text-base" />
+            )}
+          </div>
+          <div>
+            <h4 className="font-bold text-xs md:text-sm text-slate-900 leading-tight">
+              {group.recipientName}
+            </h4>
+            {group.recipientDetail && (
+              <span className="text-[11px] text-slate-500 font-medium block">
+                {group.recipientDetail}
               </span>
             )}
           </div>
-          <p className="font-bold text-xs text-slate-900 leading-tight whitespace-nowrap overflow-hidden text-ellipsis md:whitespace-normal">
-            {assignment.itemDescription}
-          </p>
         </div>
       )
     },
     {
-      key: 'recipient',
-      header: 'Destinatario',
-      className: 'min-w-[160px]',
-      render: (assignment) => (
-        <div className="flex items-center gap-2 w-full">
-          <div
-            className={`w-7 h-7 rounded-lg flex items-center justify-center flex-none text-xs font-bold ${
-              assignment.recipientType === 'colaborador'
-                ? 'bg-blue-50 text-blue-600'
-                : 'bg-emerald-50 text-emerald-600'
-            }`}
-          >
-            {assignment.recipientType === 'colaborador' ? (
-              <FiUser className="text-sm" />
-            ) : (
-              <FiTruck className="text-sm" />
-            )}
-          </div>
-          <span className="font-bold text-xs text-slate-800 leading-tight whitespace-nowrap overflow-hidden text-ellipsis md:whitespace-normal">
-            {assignment.recipientName}
-          </span>
-        </div>
-      )
-    },
-    {
-      key: 'quantity',
-      header: 'Cantidad',
-      align: 'center',
-      width: '90px',
-      render: (assignment) => (
-        <div className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-800 border border-slate-200 whitespace-nowrap">
-          {assignment.quantity} {assignment.itemUnit || 'unid'}
-        </div>
-      )
-    },
-    {
-      key: 'assignedDate',
-      header: 'Fecha Entrega',
-      align: 'center',
-      width: '110px',
-      render: (assignment) => (
-        <span className="text-xs font-bold text-slate-700 whitespace-nowrap">
-          {assignment.assignedDate}
+      key: 'recipientType',
+      header: 'Tipo',
+      width: '180px',
+      render: (group) => (
+        <span
+          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+            group.recipientType === 'colaborador'
+              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+          }`}
+        >
+          {group.recipientType === 'colaborador' ? 'COLABORADOR' : 'UNIDAD VEHICULAR'}
         </span>
       )
     },
     {
-      key: 'condition',
-      header: 'Condición',
-      width: '120px',
-      render: (assignment) => (
-        <div className="text-xs space-y-0.5 whitespace-nowrap">
-          <span className="text-slate-600 font-medium block">
-            Inicial: <strong>{assignment.initialCondition}</strong>
-          </span>
-          {assignment.status === 'Devuelto' && assignment.returnCondition && (
-            <span className="text-emerald-700 font-medium block text-[11px]">
-              Devuelto: <strong>{assignment.returnCondition}</strong>
-            </span>
-          )}
-        </div>
+      key: 'count',
+      header: 'Asignaciones',
+      align: 'center',
+      width: '140px',
+      render: (group) => (
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-800 border border-slate-200">
+          {group.count} {group.count === 1 ? 'asignación' : 'asignaciones'}
+        </span>
       )
     },
     {
       key: 'actions',
       header: 'Acciones',
       align: 'right',
-      width: '160px',
-      render: (assignment) => {
-        const isReturned = assignment.status === 'Devuelto';
-        const isUserAdmin = currentUser ? isAdmin(currentUser.role) : false;
-
-        return (
-          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-            <IconButton
-              icon={<FiEye />}
-              variant="primary"
-              title="Ver detalle y trazabilidad"
-              onClick={() => handleOpenDetail(assignment)}
-            />
-            {!isReturned && (
-              <IconButton
-                icon={<FiCornerDownLeft />}
-                variant="success"
-                title="Registrar devolución"
-                onClick={() => handleOpenReturn(assignment)}
-              />
-            )}
-            {!isReturned && (
-              <IconButton
-                icon={<FiAlertTriangle />}
-                variant={
-                  assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
-                    ? 'warning'
-                    : 'danger'
-                }
-                title={
-                  assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
-                    ? 'Resolver Incidencia'
-                    : 'Reportar Incidencia'
-                }
-                onClick={() => handleOpenIncident(assignment)}
-              />
-            )}
-            {isUserAdmin && (
-              <IconButton
-                icon={<FiTrash2 />}
-                variant="danger"
-                title="Eliminar asignación"
-                onClick={() => handleDelete(assignment)}
-              />
-            )}
-          </div>
-        );
-      }
+      width: '100px',
+      render: (group) => (
+        <div className="flex items-center justify-end gap-1">
+          <IconButton
+            icon={<FiChevronRight className="text-lg text-slate-600" />}
+            variant="ghost"
+            title="Ver asignaciones del destinatario"
+            onClick={() => setSelectedRecipientGroupId(group.id)}
+          />
+        </div>
+      )
     }
   ];
 
@@ -404,77 +470,88 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
           />
         }
       >
-      {/* KPI STAT CARDS */}
+      {/* KPI STAT CARDS (Opción 2: Alineadas a Destinatarios y Asignaciones) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 mb-6">
-        {/* Total Asignados Activos */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg flex-none font-bold">
-            <FiBox />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-              En Custodia Activa
-            </p>
-            <h4 className="text-lg md:text-xl font-black text-slate-900">
-              {kpis.totalAssignedUnits}
-              <span className="text-xs font-bold text-slate-400 ml-1">unid.</span>
-            </h4>
-          </div>
-        </div>
-
-        {/* A Colaboradores */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
+        {/* 1. Destinatarios Activos */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5 hover:border-slate-300 transition-colors">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg flex-none font-bold">
             <FiUser />
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-              A Colaboradores
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-tight">
+              Destinatarios Activos
             </p>
-            <h4 className="text-lg md:text-xl font-black text-slate-900">
-              {kpis.toEmployeesUnits}
-              <span className="text-xs font-bold text-slate-400 ml-1">unid.</span>
+            <h4 className="text-lg md:text-xl font-black text-slate-900 mt-0.5 leading-none">
+              {stats.activeDestinatariosCount}
             </h4>
+            <span className="text-[10px] font-bold text-slate-500 block mt-1">
+              {stats.activeColaboradoresCount} colab. • {stats.activeUnidadesCount} vehíc.
+            </span>
           </div>
         </div>
 
-        {/* A Unidades */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
+        {/* 2. Asignaciones en Custodia (Coincide con la suma de asignaciones en la tabla) */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5 hover:border-slate-300 transition-colors">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg flex-none font-bold">
+            <FiBox />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-tight">
+              Asignaciones en Custodia
+            </p>
+            <h4 className="text-lg md:text-xl font-black text-slate-900 mt-0.5 leading-none">
+              {stats.totalActiveAssignmentsCount}
+              <span className="text-xs font-bold text-slate-400 ml-1">asig.</span>
+            </h4>
+            <span className="text-[10px] font-bold text-blue-600 block mt-1">
+              En poder de destinatarios
+            </span>
+          </div>
+        </div>
+
+        {/* 3. Artículos / Ítems Totales */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5 hover:border-slate-300 transition-colors">
           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg flex-none font-bold">
             <FiTruck />
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-              A Unidades Flota
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-tight">
+              Artículos / Ítems Totales
             </p>
-            <h4 className="text-lg md:text-xl font-black text-slate-900">
-              {kpis.toVehiclesUnits}
+            <h4 className="text-lg md:text-xl font-black text-slate-900 mt-0.5 leading-none">
+              {stats.totalItemsQuantity}
               <span className="text-xs font-bold text-slate-400 ml-1">unid.</span>
             </h4>
+            <span className="text-[10px] font-bold text-slate-500 block mt-1">
+              Suma de unidades físicas
+            </span>
           </div>
         </div>
 
-        {/* Pendientes de Devolución */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
+        {/* 4. Pendientes Retorno */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5 hover:border-slate-300 transition-colors">
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg flex-none font-bold">
             <FiClock />
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-tight">
               Pendientes Retorno
             </p>
-            <h4 className="text-lg md:text-xl font-black text-slate-900">
-              {kpis.pendingReturnCount}
-              <span className="text-xs font-bold text-slate-400 ml-1">reg.</span>
+            <h4 className="text-lg md:text-xl font-black text-slate-900 mt-0.5 leading-none">
+              {stats.pendingReturnAssignmentsCount}
+              <span className="text-xs font-bold text-slate-400 ml-1">asig.</span>
             </h4>
+            <span className="text-[10px] font-bold text-slate-500 block mt-1">
+              Por ser reintegradas
+            </span>
           </div>
         </div>
 
-        {/* Con Incidencias */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5 col-span-2 sm:col-span-1">
+        {/* 5. Con Incidencias */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5 col-span-2 sm:col-span-1 hover:border-slate-300 transition-colors">
           <div
             className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-none font-bold ${
-              kpis.activeIncidentsCount > 0
+              stats.incidentCount > 0
                 ? 'bg-rose-50 text-rose-600 animate-pulse'
                 : 'bg-slate-50 text-slate-400'
             }`}
@@ -482,17 +559,20 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
             <FiAlertTriangle />
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-tight">
               Con Incidencias
             </p>
             <h4
-              className={`text-lg md:text-xl font-black ${
-                kpis.activeIncidentsCount > 0 ? 'text-rose-600' : 'text-slate-900'
+              className={`text-lg md:text-xl font-black mt-0.5 leading-none ${
+                stats.incidentCount > 0 ? 'text-rose-600' : 'text-slate-900'
               }`}
             >
-              {kpis.activeIncidentsCount}
+              {stats.incidentCount}
               <span className="text-xs font-bold text-slate-400 ml-1">reg.</span>
             </h4>
+            <span className="text-[10px] font-bold text-slate-500 block mt-1">
+              {stats.incidentCount > 0 ? 'Requiere atención' : 'Sin alertas activas'}
+            </span>
           </div>
         </div>
       </div>
@@ -584,13 +664,13 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       </div>
 
       {/* DATA TABLE */}
-      {filteredAssignments.length === 0 && !isLoading ? (
+      {groupedRecipients.length === 0 && !isLoading ? (
         <div className="bg-white rounded-2xl border border-slate-200/80 p-10 text-center shadow-xs flex flex-col items-center justify-center">
           <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 text-xl mb-3">
             <FiBox />
           </div>
           <h4 className="text-base font-bold text-slate-800 mb-1">
-            No se encontraron asignaciones
+            No se encontraron destinatarios con asignaciones
           </h4>
           <p className="text-xs text-slate-500 max-w-md mx-auto mb-4 leading-relaxed">
             {searchTerm || filterType !== 'all' || filterStatus !== 'all' || filterCategory !== 'all'
@@ -605,8 +685,8 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
         </div>
       ) : (
         <DataTable
-          data={filteredAssignments}
-          columns={columns}
+          data={groupedRecipients}
+          columns={groupColumns}
           isLoading={isLoading}
           keyExtractor={(item) => item.id}
           showItemCount={true}
@@ -618,6 +698,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
         show={showNewModal}
         onClose={() => setShowNewModal(false)}
         onSubmit={addAssignment}
+        onSubmitBatch={addAssignmentBatch}
         currentUser={currentUser}
         inventoryItems={inventoryItems}
       />
@@ -652,9 +733,27 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
           setSelectedAssignment(null);
         }}
         assignment={selectedAssignment}
+        allAssignments={enrichedAssignments}
+        onSelectAssignment={(a) => setSelectedAssignment(a)}
         onOpenReturn={handleOpenReturn}
         onOpenIncident={handleOpenIncident}
       />
+
+      {activeGroup && (
+        <RecipientDetailModal
+          show={!!activeGroup}
+          onClose={() => setSelectedRecipientGroupId(null)}
+          recipientName={activeGroup.recipientName}
+          recipientType={activeGroup.recipientType}
+          recipientDetail={activeGroup.recipientDetail}
+          assignments={recipientAllAssignments}
+          currentUser={currentUser}
+          onOpenIndividualDetail={handleOpenDetail}
+          onOpenReturn={handleOpenReturn}
+          onOpenIncident={handleOpenIncident}
+          onDeleteAssignment={handleDelete}
+        />
+      )}
     </ModulePage>
     </div>
   );

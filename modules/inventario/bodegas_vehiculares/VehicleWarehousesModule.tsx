@@ -92,7 +92,28 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
     const unsubItems = onSnapshot(collection(db, 'vehicle_warehouse_items'), (snapshot) => {
       const firestoreItems: VehicleWarehouseItem[] = [];
       snapshot.forEach((docSnap) => {
-        firestoreItems.push({ id: docSnap.id, ...docSnap.data() } as VehicleWarehouseItem);
+        const data = docSnap.data();
+        const physical = Number(data.physicalStock || 0);
+        const committed = Number(data.committedStock || 0);
+        const available = data.availableStock !== undefined ? Number(data.availableStock) : (physical - committed);
+
+        firestoreItems.push({
+          id: docSnap.id,
+          vehiculoId: data.vehiculoId || data.vehicleId || '',
+          vehiculoPlaca: data.vehiculoPlaca || '',
+          vehiculoAlias: data.vehiculoAlias || '',
+          inventoryItemId: data.inventoryItemId || data.itemId || '',
+          code: data.code || data.itemCode || '',
+          description: data.description || data.itemDescription || '',
+          category: data.category || 'Herramientas',
+          unit: data.unit || 'unid',
+          physicalStock: physical,
+          committedStock: committed,
+          availableStock: available,
+          minStockAlert: data.minStockAlert || data.minStock || 0,
+          updatedAt: data.updatedAt || new Date().toISOString(),
+          updatedBy: data.updatedBy || ''
+        } as VehicleWarehouseItem);
       });
       setItems(firestoreItems);
       setItemsLoaded(true);

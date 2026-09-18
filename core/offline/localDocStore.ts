@@ -1,5 +1,26 @@
 import { localDB } from './localDB';
 
+function safeStringify(obj: any): string {
+    const seen = new WeakSet();
+    try {
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) {
+                    return '[Circular]';
+                }
+                seen.add(value);
+                const name = value.constructor?.name;
+                if (name && (name === 'Y2' || name === 'Ka' || name === 'DocumentReference' || name === 'CollectionReference' || name === 'DocumentSnapshot')) {
+                    return '[FirestoreRef]';
+                }
+            }
+            return value;
+        });
+    } catch (e) {
+        return String(Math.random());
+    }
+}
+
 export interface LocalDocument {
     collection: string;
     docId: string;
@@ -54,7 +75,7 @@ export const localDocStore = {
             const { id: i, ...newPayload } = data;
             
             // Comparación simple por stringify para detectar cambios en el payload
-            if (JSON.stringify(existingPayload) === JSON.stringify(newPayload) && existing.isDirty === isDirty) {
+            if (safeStringify(existingPayload) === safeStringify(newPayload) && existing.isDirty === isDirty) {
                 return;
             }
         }
@@ -87,7 +108,7 @@ export const localDocStore = {
                 const { revision: _, isDirty: __, docId: ___, ...existingPayload } = existing;
                 const { id: i, ...newPayload } = doc;
                 
-                if (JSON.stringify(existingPayload) === JSON.stringify(newPayload) && !existing.isDirty) {
+                if (safeStringify(existingPayload) === safeStringify(newPayload) && !existing.isDirty) {
                     needsUpdate = false;
                 }
             }

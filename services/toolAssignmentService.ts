@@ -229,10 +229,10 @@ export const toolAssignmentService = {
           requestNumber: finalRequestNumber,
           movementId: movementRef.id,
           itemId: dto.itemId,
-          itemCode: dto.itemCode || itemData.code || '',
-          itemDescription: dto.itemDescription || itemData.description || '',
-          itemCategory: dto.itemCategory || itemData.category || 'Herramientas',
-          itemUnit: dto.itemUnit || itemData.unit || 'unid',
+          itemCode: itemData.code || dto.itemCode || '',
+          itemDescription: itemData.description || dto.itemDescription || '',
+          itemCategory: itemData.category || dto.itemCategory || 'Herramientas',
+          itemUnit: itemData.unit || dto.itemUnit || 'unid',
           quantity: dto.quantity,
           recipientType: dto.recipientType,
           recipientId: dto.recipientId,
@@ -275,10 +275,10 @@ export const toolAssignmentService = {
               id: `${dto.recipientId}_${dto.itemId}`,
               vehiculoId: dto.recipientId,
               inventoryItemId: dto.itemId,
-              code: dto.itemCode || itemData.code || '',
-              description: dto.itemDescription || itemData.description || '',
-              category: dto.itemCategory || itemData.category || 'Herramientas',
-              unit: dto.itemUnit || itemData.unit || 'unid',
+              code: itemData.code || dto.itemCode || '',
+              description: itemData.description || dto.itemDescription || '',
+              category: itemData.category || dto.itemCategory || 'Herramientas',
+              unit: itemData.unit || dto.itemUnit || 'unid',
               physicalStock: dto.quantity,
               availableStock: dto.quantity,
               committedStock: 0,
@@ -630,5 +630,252 @@ export const toolAssignmentService = {
         transaction.delete(assignmentRef);
       })
     );
+  },
+
+  /**
+   * Crea un lote de asignaciones múltiples en una sola transacción con un solo movimiento consolidado en inventario
+   */
+  async createBatchAssignment(dtos: CreateAssignmentDTO[], currentUser: User | null): Promise<string> {
+    if (!currentUser) throw new Error('Usuario no autenticado');
+    if (!dtos || dtos.length === 0) throw new Error('No hay artículos para asignar');
+
+    const firstDto = dtos[0];
+    if (!firstDto.recipientId || !firstDto.recipientName) throw new Error('Debe seleccionar un destinatario válido');
+
+    const movementRef = doc(collection(db, 'inventory_movements'));
+    const counterRef = doc(db, 'counters', 'movementNumber');
+    const nowIso = new Date().toISOString();
+    const batchId = `batch_${Date.now()}`;
+    let finalRequestNumber = '';
+
+    await guardedWrite(() =>
+      runTransaction(db, async (transaction) => {
+        // 1. Leer contador
+        const counterSnap = await transaction.get(counterRef);
+        let lastNumber = 0;
+        if (counterSnap.exists()) {
+          lastNumber = counterSnap.data().lastNumber || 0;
+        }
+        const newNumber = lastNumber + 1;
+        finalRequestNumber = `MOV-${String(newNumber).padStart(4, '0')}`;
+
+        // 2. Leer todos los items y validar stock
+        const itemSnaps = new Map<string, any>();
+        const vehicleSnaps = new Map<string, any>();
+
+        for (const dto of dtos) {
+          if (!dto.itemId) throw new Error('Artículo de inventario no válido');
+          if (dto.quantity <= 0) throw new Error(`La cantidad para ${dto.itemDescription} debe ser mayor a 0`);
+
+          const itemRef = doc(db, 'inventory_items', dto.itemId);
+          const itemDoc = await transaction.get(itemRef);
+          if (!itemDoc.exists()) {
+            throw new Error(`El artículo ${dto.itemDescription || dto.itemId} no existe en el inventario general.`);
+          }
+          itemSnaps.set(dto.itemId, { ref: itemRef, doc: itemDoc });
+
+          if (firstDto.recipientType === 'unidad' && firstDto.recipientId) {
+            const vRef = doc(db, 'vehicle_warehouse_items', `${firstDto.recipientId}_${dto.itemId}`);
+            const vSnap = await transaction.get(vRef);
+            vehicleSnaps.set(dto.itemId, { ref: vRef, doc: vSnap });
+          }
+        }
+
+        // 3. Validar y calcular stocks
+        const movementItems: any[] = [];
+        let totalBatchSubtotal = 0;
+        const currency = 'USD';
+
+        for (const dto of dtos) {
+          const itemInfo = itemSnaps.get(dto.itemId);
+          const itemData = itemInfo.doc.data();
+          const currentStock = Number(itemData.stock || 0);
+
+          if (currentStock < dto.quantity) {
+            throw new Error(
+              `Stock insuficiente para ${itemData.description || dto.itemDescription}. Disponible: ${currentStock}, Solicitado: ${dto.quantity}`
+            );
+          }
+
+          const newStock = currentStock - dto.quantity;
+          const itemPrice = Number(itemData.price || 0);
+          const subtotal = itemPrice * dto.quantity;
+          totalBatchSubtotal += subtotal;
+
+          // Descontar stock general
+          transaction.update(itemInfo.ref, {
+            stock: newStock,
+            updatedAt: nowIso,
+            updatedBy: currentUser.email || currentUser.name || 'Sistema'
+          });
+
+          movementItems.push({
+            inventoryItemId: dto.itemId,
+            inventoryItemCode: dto.itemCode || itemData.code || '',
+            inventoryItemName: dto.itemDescription || itemData.description || '',
+            quantity: dto.quantity,
+            previousStock: currentStock,
+            newStock: newStock,
+            unitPrice: itemPrice,
+            subtotal: subtotal,
+            total: subtotal,
+            currency: (itemData.currency as 'USD' | 'CRC') || 'USD'
+          });
+
+          // Si es unidad vehicular, actualizar almacén vehicular
+          if (firstDto.recipientType === 'unidad' && vehicleSnaps.has(dto.itemId)) {
+            const vInfo = vehicleSnaps.get(dto.itemId);
+            if (vInfo.doc.exists()) {
+              const vData = vInfo.doc.data();
+              const pStock = Number(vData.physicalStock || 0) + dto.quantity;
+              const cStock = Number(vData.committedStock || 0);
+              const aStock = pStock - cStock;
+              transaction.set(vInfo.ref, {
+                id: `${firstDto.recipientId}_${dto.itemId}`,
+                vehiculoId: firstDto.recipientId,
+                inventoryItemId: dto.itemId,
+                code: itemData.code || dto.itemCode || '',
+                description: itemData.description || dto.itemDescription || '',
+                category: itemData.category || dto.itemCategory || 'Herramientas',
+                unit: itemData.unit || dto.itemUnit || 'unid',
+                physicalStock: pStock,
+                committedStock: cStock,
+                availableStock: aStock,
+                minStockAlert: vData.minStockAlert || vData.minStock || 0,
+                updatedAt: nowIso,
+                updatedBy: currentUser.email || currentUser.name || 'Sistema',
+                // Claves de compatibilidad hacia atrás:
+                vehicleId: firstDto.recipientId,
+                itemId: dto.itemId,
+                itemCode: itemData.code || dto.itemCode || '',
+                itemDescription: itemData.description || dto.itemDescription || ''
+              }, { merge: true });
+            } else {
+              const pStock = dto.quantity;
+              const cStock = 0;
+              const aStock = pStock - cStock;
+              transaction.set(vInfo.ref, {
+                id: `${firstDto.recipientId}_${dto.itemId}`,
+                vehiculoId: firstDto.recipientId,
+                inventoryItemId: dto.itemId,
+                code: itemData.code || dto.itemCode || '',
+                description: itemData.description || dto.itemDescription || '',
+                category: itemData.category || dto.itemCategory || 'Herramientas',
+                unit: itemData.unit || dto.itemUnit || 'unid',
+                physicalStock: pStock,
+                committedStock: cStock,
+                availableStock: aStock,
+                minStockAlert: 0,
+                createdAt: nowIso,
+                updatedAt: nowIso,
+                createdBy: currentUser.email || currentUser.name || 'Sistema',
+                updatedBy: currentUser.email || currentUser.name || 'Sistema',
+                // Claves de compatibilidad hacia atrás:
+                vehicleId: firstDto.recipientId,
+                itemId: dto.itemId,
+                itemCode: dto.itemCode || itemData.code || '',
+                itemDescription: dto.itemDescription || itemData.description || ''
+              });
+            }
+          }
+
+          // Crear tool_assignment individual para trazabilidad y devolución ítem por ítem
+          const assignmentRef = doc(collection(db, 'tool_assignments'));
+          const hasProject = Boolean(firstDto.projectId && firstDto.projectName && firstDto.projectName.trim() !== '');
+          
+          const historyEntry: ToolAssignmentHistoryEntry = {
+            id: `${Date.now()}_initial`,
+            date: nowIso,
+            action: 'Asignación',
+            performedBy: firstDto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
+            details: `Asignación múltiple (${finalRequestNumber}, Lote: ${batchId}) de ${dto.quantity} ${dto.itemUnit || itemData.unit || 'unid'} a ${firstDto.recipientType === 'colaborador' ? 'Colaborador: ' : 'Unidad: '}${firstDto.recipientName}. Condición inicial: ${dto.initialCondition}.`,
+            newStatus: 'Asignado'
+          };
+
+          const assignmentData: ToolAssignment = {
+            id: assignmentRef.id,
+            requestNumber: finalRequestNumber,
+            movementId: movementRef.id,
+            itemId: dto.itemId,
+            itemCode: dto.itemCode || itemData.code || '',
+            itemDescription: dto.itemDescription || itemData.description || '',
+            itemCategory: dto.itemCategory || itemData.category || 'Herramientas',
+            itemUnit: dto.itemUnit || itemData.unit || 'unid',
+            quantity: dto.quantity,
+            recipientType: firstDto.recipientType,
+            recipientId: firstDto.recipientId,
+            recipientName: firstDto.recipientName,
+            recipientDetail: firstDto.recipientDetail || '',
+            assignedDate: firstDto.assignedDate || nowIso.split('T')[0],
+            status: 'Asignado',
+            initialCondition: dto.initialCondition || 'Bueno',
+            projectId: hasProject ? (firstDto.projectId || '') : '',
+            projectNumber: hasProject ? (firstDto.projectNumber || '') : '',
+            projectName: hasProject ? (firstDto.projectName || '') : '',
+            observations: firstDto.observations || '',
+            assignedBy: firstDto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
+            assignedByUserId: currentUser.uid,
+            history: [historyEntry],
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            createdBy: currentUser.email || currentUser.name || 'Sistema',
+            updatedBy: currentUser.email || currentUser.name || 'Sistema'
+          };
+
+          transaction.set(assignmentRef, assignmentData);
+        }
+
+        // 4. Actualizar contador
+        transaction.set(counterRef, { lastNumber: newNumber }, { merge: true });
+
+        // 5. Registrar UN SOLO movimiento consolidado en inventory_movements
+        const hasProject = Boolean(firstDto.projectId && firstDto.projectName && firstDto.projectName.trim() !== '');
+        const originLabel = hasProject ? firstDto.projectName! : 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+        const referenceLabel = hasProject
+          ? (firstDto.projectNumber ? `[${firstDto.projectNumber}] ${firstDto.projectName}` : firstDto.projectName!)
+          : 'HERRAMIENTAS Y EQUIPOS ASIGNADOS';
+
+        const firstItem = movementItems[0];
+
+        transaction.set(movementRef, {
+          type: 'Salida',
+          subtype: 'Asignación de Herramienta',
+          originType: 'herramientas_asignadas',
+          isAssignment: true,
+          requestNumber: finalRequestNumber,
+          date: firstDto.assignedDate || nowIso.split('T')[0],
+          origin: originLabel,
+          reference: referenceLabel,
+          projectId: hasProject ? firstDto.projectId : '',
+          projectNumber: hasProject ? (firstDto.projectNumber || '') : '',
+          projectName: hasProject ? firstDto.projectName : '',
+          destination: firstDto.recipientName,
+          recipientName: firstDto.recipientName,
+          recipientType: firstDto.recipientType,
+          initialCondition: 'Múltiple',
+          reason: firstDto.observations 
+            ? `Asignación múltiple a ${firstDto.recipientName} (${dtos.length} ítems): ${firstDto.observations}` 
+            : `Asignación múltiple de ${dtos.length} ítems a ${firstDto.recipientName}`,
+          observations: firstDto.observations || '',
+          userId: currentUser.uid || '',
+          userName: firstDto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
+          assignedBy: firstDto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
+          createdBy: currentUser.email || currentUser.name || 'Sistema',
+          createdAt: nowIso,
+          inventoryItemId: firstItem.inventoryItemId,
+          inventoryItemCode: firstItem.inventoryItemCode,
+          inventoryItemName: `${firstItem.inventoryItemName} (+${dtos.length - 1} más)`,
+          quantity: dtos.reduce((acc, d) => acc + d.quantity, 0),
+          unitPrice: firstItem.unitPrice,
+          subtotal: totalBatchSubtotal,
+          currency: currency,
+          previousStock: firstItem.previousStock,
+          newStock: firstItem.newStock,
+          items: movementItems
+        });
+      })
+    );
+
+    return finalRequestNumber;
   }
 };
