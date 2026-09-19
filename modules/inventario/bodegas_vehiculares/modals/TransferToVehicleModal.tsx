@@ -364,11 +364,20 @@ export const TransferToVehicleModal: React.FC<Props> = ({
                 onChange={(e) => handleOriginChange(e.target.value)}
                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
               >
-                {catalogVehicles.map(v => (
-                  <option key={v.id} value={v.id}>
-                    {v.alias} ({v.placa})
-                  </option>
-                ))}
+                <optgroup label="BODEGAS FÍSICAS">
+                  {catalogVehicles.filter(v => v.type === 'BODEGA').map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.alias}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="BODEGAS VEHICULARES">
+                  {catalogVehicles.filter(v => v.type !== 'BODEGA').map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.alias}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
               <p className="text-[10px] text-slate-400">
                 Lugar donde se restará el inventario transferido.
@@ -392,12 +401,21 @@ export const TransferToVehicleModal: React.FC<Props> = ({
                 }}
                 className="w-full p-2.5 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500 outline-none"
               >
-                <option value="" disabled>-- Seleccionar Vehículo Destino --</option>
-                {destinationVehicles.map(v => (
-                  <option key={v.id} value={v.id}>
-                    {v.alias} ({v.placa})
-                  </option>
-                ))}
+                <option value="" disabled>-- Seleccionar Bodega Destino --</option>
+                <optgroup label="BODEGAS FÍSICAS">
+                  {destinationVehicles.filter(v => v.type === 'BODEGA').map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.alias}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="BODEGAS VEHICULARES">
+                  {destinationVehicles.filter(v => v.type !== 'BODEGA').map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.alias}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
               <p className="text-[10px] text-indigo-600/80">
                 Lugar donde se sumará el inventario transferido.

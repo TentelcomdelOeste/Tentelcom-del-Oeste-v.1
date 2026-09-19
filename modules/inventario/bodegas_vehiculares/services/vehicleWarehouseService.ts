@@ -20,6 +20,30 @@ export const isVehicleDeleteAuthorized = (user?: { email?: string | null } | nul
 
 export const BODEGA_EXCLUDED_VEHICLES = ['U3', 'U7'];
 
+export interface VehicleCatalogItem {
+  id: string;
+  placa: string;
+  alias: string;
+  displayName: string;
+  label: string;
+  name: string;
+  type: 'VEHICULO' | 'BODEGA';
+  locationDetails?: string;
+  status?: string;
+}
+
+export const BODEGA_TIBAS_CONFIG: VehicleCatalogItem = {
+  id: 'BODEGA_TIBAS',
+  placa: 'Tíbas, San José',
+  alias: 'Bodega Tíbas',
+  displayName: 'Bodega Tíbas',
+  label: 'Bodega Tíbas',
+  name: 'Bodega Tíbas',
+  type: 'BODEGA',
+  locationDetails: 'Tíbas, San José',
+  status: 'Activa'
+};
+
 // Mapeo de unidad preseleccionada por correo electrónico
 export const USER_DEFAULT_VEHICLE_MAP: Record<string, string> = {
   'jonatanzetha@gmail.com': 'U4',
@@ -35,7 +59,8 @@ export const getDefaultVehicleForUser = (user?: { email?: string | null } | null
     return USER_DEFAULT_VEHICLE_MAP[email];
   }
   const catalog = getVehicleCatalog();
-  return catalog.length > 0 ? catalog[0].id : '';
+  const firstVeh = catalog.find(v => v.type === 'VEHICULO') || catalog[0];
+  return firstVeh ? firstVeh.id : '';
 };
 
 export const formatVehicleOptionLabel = (label: string): string => {
@@ -46,8 +71,8 @@ export const formatVehicleOptionLabel = (label: string): string => {
   return label;
 };
 
-export const getVehicleCatalog = () => {
-  return VEHICLES
+export const getVehicleCatalog = (): VehicleCatalogItem[] => {
+  const vehicleList: VehicleCatalogItem[] = VEHICLES
     .filter(v => !BODEGA_EXCLUDED_VEHICLES.includes(v.value))
     .map(v => {
       const displayLabel = formatVehicleOptionLabel(v.label);
@@ -57,9 +82,12 @@ export const getVehicleCatalog = () => {
         alias: displayLabel,
         displayName: displayLabel,
         label: displayLabel,
-        name: displayLabel
+        name: displayLabel,
+        type: 'VEHICULO' as const
       };
     });
+
+  return [BODEGA_TIBAS_CONFIG, ...vehicleList];
 };
 
 export const vehicleWarehouseService = {
@@ -197,8 +225,8 @@ export const vehicleWarehouseService = {
         id: movementRef.id,
         movementNumber,
         type: 'Traslado_Entre_Vehiculos',
-        origin: `${originVeh.alias} - ${originVeh.placa}`,
-        destination: `${targetVeh.alias} - ${targetVeh.placa}`,
+        origin: originVeh.type === 'BODEGA' ? originVeh.alias : `${originVeh.alias} - ${originVeh.placa}`,
+        destination: targetVeh.type === 'BODEGA' ? targetVeh.alias : `${targetVeh.alias} - ${targetVeh.placa}`,
         originVehiculoId: originVehicleId,
         originVehiculoPlaca: originVeh.placa,
         originVehiculoAlias: originVeh.alias,

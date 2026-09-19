@@ -338,6 +338,11 @@ export const useMaterialRequests = (currentUser: User | null) => {
                 });
             }
 
+            const isBodegaFisica = targetVehiculoId === 'BODEGA_TIBAS' || (targetVehiculoAlias && targetVehiculoAlias.toLowerCase().includes('bodega'));
+            const destinationName = isBodegaFisica 
+              ? targetVehiculoAlias 
+              : `${targetVehiculoAlias || 'Vehículo'} - ${targetVehiculoPlaca || ''}`;
+
             // Create single atomic VehicleMovement in vehicle_movements collection
             const vehicleMovementData: VehicleMovement = {
                 id: movementDocId,
@@ -345,7 +350,7 @@ export const useMaterialRequests = (currentUser: User | null) => {
                 reference: finalMovementRef,
                 type: 'Traslado_Entrada',
                 origin: 'Bodega Principal',
-                destination: `${targetVehiculoAlias || 'Vehículo'} - ${targetVehiculoPlaca || ''}`,
+                destination: destinationName,
                 vehiculoId: targetVehiculoId,
                 vehiculoPlaca: targetVehiculoPlaca,
                 targetVehiculoId: targetVehiculoId,

@@ -408,17 +408,20 @@ export const MaterialRequestModal = ({
           try {
               const targetVeh = getVehicleCatalog().find(v => v.id === targetVehicleId);
               if (!targetVeh) {
-                  throw new Error("El vehículo seleccionado no existe en el catálogo.");
+                  throw new Error("La ubicación seleccionada no existe en el catálogo.");
               }
 
-              // Construir payload para el registro de la solicitud/traslado hacia Bodega Vehicular
-              // La persistencia atómica en Firestore (descuento en Bodega Principal, incremento en Bodega Vehicular y registro de movimiento único)
+              const isBodega = targetVeh.type === 'BODEGA';
+              const projName = isBodega ? targetVeh.alias : `${targetVeh.alias} (${targetVeh.placa})`;
+
+              // Construir payload para el registro de la solicitud/traslado hacia Bodega Vehicular o Bodega Física
+              // La persistencia atómica en Firestore (descuento en Bodega Principal, incremento en Bodega Destino y registro de movimiento único)
               // es ejecutada íntegramente dentro de la transacción de onSubmit.
               const payload = {
                   destinationType: 'vehicle' as RequestDestinationType,
                   origin: 'BODEGA PRINCIPAL' as ProjectOrigin,
                   projectId: `VEH-${targetVehicleId}`,
-                  projectName: `${targetVeh.alias} (${targetVeh.placa})`,
+                  projectName: projName,
                   projectCode: targetVeh.placa,
                   targetVehiculoId: targetVehicleId,
                   targetVehiculoPlaca: targetVeh.placa,
@@ -623,7 +626,7 @@ export const MaterialRequestModal = ({
                                             setError(null);
                                         }}
                                         variant={destinationType === 'vehicle' ? 'primary' : 'ghost'}
-                                        label={<span className="text-[9.5px] xs:text-[10px] sm:text-xs font-black tracking-tighter sm:tracking-wider leading-none whitespace-nowrap">BODEGA VEHICULAR</span>}
+                                        label={<span className="text-[9.5px] xs:text-[10px] sm:text-xs font-black tracking-tighter sm:tracking-wider leading-none whitespace-nowrap">BODEGAS Y VEHÍCULOS</span>}
                                         fullWidth
                                         className={`!w-full !py-2 !px-1 sm:!px-3 !min-h-[40px] sm:!min-h-[44px] ${
                                             destinationType !== 'vehicle' ? '!text-slate-600 hover:!text-slate-900' : ''
@@ -643,14 +646,14 @@ export const MaterialRequestModal = ({
                                         </p>
                                     </div>
 
-                                    {/* Selector de Unidad Vehicular */}
+                                    {/* Selector de Ubicación / Unidad */}
                                     <div className="suggestions-container" onClick={e => e.stopPropagation()}>
                                         <Select
-                                            label="Unidad Vehicular Destino"
+                                            label="Ubicación Destino"
                                             options={[
-                                                { label: '-- Seleccione Unidad --', value: '' },
+                                                { label: '-- Seleccione Ubicación Destino --', value: '' },
                                                 ...getVehicleCatalog().map(v => ({
-                                                    label: `${v.alias} (${v.placa})`,
+                                                    label: v.alias,
                                                     value: v.id
                                                 }))
                                             ]}

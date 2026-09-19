@@ -8,7 +8,7 @@ import { useConfirm, DataTable, TableColumn, IconButton } from '../design-system
 import { formatCurrency } from '../utils/formatCurrency';
 import { InventoryMovement } from '../inventoryMovementTypes';
 import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2, FiChevronLeft, FiChevronRight, FiUpload, FiRefreshCw, FiLoader } from "react-icons/fi";
-import { uploadImageToStorage, deleteImageFromStorage } from '../utils/storageUtils';
+import { uploadImageToStorage, uploadProcessedImageToStorage, deleteImageFromStorage } from '../utils/storageUtils';
 import { ImageViewerModal } from '../components/ImageViewerModal';
 
 interface InventoryDetailModalProps {
@@ -16,8 +16,8 @@ interface InventoryDetailModalProps {
   onClose: () => void;
   item: InventoryItem | null;
   currentUser: User;
-  onImageUpdate?: (imageUrl: string) => void;
-  onImagesUpdate?: (imageUrls: string[]) => void;
+  onImageUpdate?: (imageUrl: string, thumbnailUrl?: string) => void;
+  onImagesUpdate?: (imageUrls: string[], thumbnailUrls?: string[]) => void;
 }
 
 export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show, onClose, item, currentUser, onImageUpdate, onImagesUpdate }) => {
@@ -56,6 +56,17 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     }
     return [];
   }, [item]);
+
+  const currentThumbnails = useMemo(() => {
+    if (!item) return [];
+    if (item.thumbnailUrls && Array.isArray(item.thumbnailUrls) && item.thumbnailUrls.length > 0) {
+      return item.thumbnailUrls.filter(Boolean);
+    }
+    if (item.thumbnailUrl) {
+      return [item.thumbnailUrl];
+    }
+    return currentImages;
+  }, [item, currentImages]);
 
   // Keep selectedIndex in bounds if currentImages length changes
   useEffect(() => {
@@ -166,11 +177,14 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     setTouchStartY(null);
   };
 
-  const emitImagesUpdate = (newImages: string[]) => {
+  const emitImagesUpdate = (newImages: string[], newThumbnails: string[]) => {
     if (onImagesUpdate) {
-      onImagesUpdate(newImages);
+      onImagesUpdate(newImages, newThumbnails);
     } else if (onImageUpdate) {
-      onImageUpdate(newImages.length > 0 ? newImages[0] : '');
+      onImageUpdate(
+        newImages.length > 0 ? newImages[0] : '',
+        newThumbnails.length > 0 ? newThumbnails[0] : ''
+      );
     }
   };
 
@@ -178,7 +192,6 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     const file = e.target.files?.[0];
     if (!file || !item) return;
 
-    // Optional: add basic validation for image types here if needed
     if (!file.type.startsWith('image/')) {
       alert("Por favor seleccione un archivo de imagen válido.");
       return;
@@ -195,27 +208,43 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
       const targetIndex = isReplacing ? replacingIndexRef.current! : currentImages.length;
       const baseFileName = `image-${targetIndex + 1}`;
       
-      // Upload the new image to Firebase Storage
-      const newImageUrl = await uploadImageToStorage(file, folderPath, baseFileName);
+      // Upload processed HD and Thumbnail images to Firebase Storage
+      const { hdUrl, thumbnailUrl } = await uploadProcessedImageToStorage(file, folderPath, baseFileName);
       
       let nextImages = [...currentImages];
+      let nextThumbnails = [...currentThumbnails];
+
+      // Ensure thumbnails array matches images array length before replacement/addition
+      while (nextThumbnails.length < nextImages.length) {
+        nextThumbnails.push(nextImages[nextThumbnails.length]);
+      }
+      
       let oldImageUrlToClean: string | null = null;
+      let oldThumbUrlToClean: string | null = null;
       
       if (isReplacing) {
-        oldImageUrlToClean = nextImages[replacingIndexRef.current!];
-        nextImages[replacingIndexRef.current!] = newImageUrl;
-        setSelectedIndex(replacingIndexRef.current!);
+        const replaceIdx = replacingIndexRef.current!;
+        oldImageUrlToClean = nextImages[replaceIdx];
+        oldThumbUrlToClean = nextThumbnails[replaceIdx];
+
+        nextImages[replaceIdx] = hdUrl;
+        nextThumbnails[replaceIdx] = thumbnailUrl;
+        setSelectedIndex(replaceIdx);
       } else if (nextImages.length < 4) {
-        nextImages.push(newImageUrl);
+        nextImages.push(hdUrl);
+        nextThumbnails.push(thumbnailUrl);
         setSelectedIndex(nextImages.length - 1);
       }
       
       // Update Firestore references
-      emitImagesUpdate(nextImages);
+      emitImagesUpdate(nextImages, nextThumbnails);
       
-      // If replacing and the old image was stored in Firebase Storage, clean it up
+      // Clean up old images if replacing
       if (oldImageUrlToClean) {
         await deleteImageFromStorage(oldImageUrlToClean).catch(console.error);
+      }
+      if (oldThumbUrlToClean && oldThumbUrlToClean !== oldImageUrlToClean) {
+        await deleteImageFromStorage(oldThumbUrlToClean).catch(console.error);
       }
 
     } catch (error) {
@@ -245,12 +274,17 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     
     try {
       const urlToDelete = currentImages[indexToDelete];
+      const thumbToDelete = currentThumbnails[indexToDelete];
       
       const nextImages = currentImages.filter((_, idx) => idx !== indexToDelete);
-      emitImagesUpdate(nextImages);
+      const nextThumbnails = currentThumbnails.filter((_, idx) => idx !== indexToDelete);
+
+      emitImagesUpdate(nextImages, nextThumbnails);
       
-      // Intentar eliminarla físicamente (no falla si es base64 gracias a storageUtils)
       await deleteImageFromStorage(urlToDelete).catch(console.error);
+      if (thumbToDelete && thumbToDelete !== urlToDelete) {
+        await deleteImageFromStorage(thumbToDelete).catch(console.error);
+      }
 
       if (nextImages.length === 0) {
         setSelectedIndex(0);

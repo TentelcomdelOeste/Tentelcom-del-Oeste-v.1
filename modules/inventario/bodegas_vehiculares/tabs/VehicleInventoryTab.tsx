@@ -372,11 +372,20 @@ export const VehicleInventoryTab: React.FC<Props> = ({
               onChange={(e) => setSelectedVehicleId(e.target.value)}
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
             >
-              {vehicles.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.alias} ({v.placa})
-                </option>
-              ))}
+              <optgroup label="BODEGAS FÍSICAS">
+                {vehicles.filter(v => v.type === 'BODEGA').map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.alias}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="BODEGAS VEHICULARES">
+                {vehicles.filter(v => v.type !== 'BODEGA').map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.alias}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
               ▼
@@ -427,11 +436,20 @@ export const VehicleInventoryTab: React.FC<Props> = ({
             onChange={(e) => setSelectedVehicleId(e.target.value)}
             className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7 truncate"
           >
-            {vehicles.map(v => (
-              <option key={v.id} value={v.id}>
-                {v.alias} ({v.placa})
-              </option>
-            ))}
+            <optgroup label="BODEGAS FÍSICAS">
+              {vehicles.filter(v => v.type === 'BODEGA').map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.alias}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="BODEGAS VEHICULARES">
+              {vehicles.filter(v => v.type !== 'BODEGA').map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.alias}
+                </option>
+              ))}
+            </optgroup>
           </select>
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
             ▼

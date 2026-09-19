@@ -935,17 +935,29 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               onClose={() => { setViewingItem(null); onClearSelectedId?.(); }}
               item={viewingItem}
               currentUser={currentUser}
-              onImagesUpdate={(imageUrls) => {
+              onImagesUpdate={(imageUrls, thumbnailUrls) => {
                 if (viewingItem) {
                   const primaryImage = imageUrls.length > 0 ? imageUrls[0] : '';
-                  updateInventoryItem(viewingItem.id, { imageUrls, imageUrl: primaryImage });
-                  setViewingItem(prev => prev ? { ...prev, imageUrls, imageUrl: primaryImage } : null);
+                  const primaryThumb = thumbnailUrls && thumbnailUrls.length > 0 ? thumbnailUrls[0] : primaryImage;
+                  updateInventoryItem(viewingItem.id, { 
+                    imageUrls, 
+                    imageUrl: primaryImage,
+                    thumbnailUrls: thumbnailUrls || [],
+                    thumbnailUrl: primaryThumb
+                  });
+                  setViewingItem(prev => prev ? { 
+                    ...prev, 
+                    imageUrls, 
+                    imageUrl: primaryImage,
+                    thumbnailUrls: thumbnailUrls || [],
+                    thumbnailUrl: primaryThumb
+                  } : null);
                 }
               }}
-              onImageUpdate={(imageUrl) => {
+              onImageUpdate={(imageUrl, thumbnailUrl) => {
                 if (viewingItem) {
-                  updateInventoryItem(viewingItem.id, { imageUrl });
-                  setViewingItem(prev => prev ? { ...prev, imageUrl } : null);
+                  updateInventoryItem(viewingItem.id, { imageUrl, thumbnailUrl });
+                  setViewingItem(prev => prev ? { ...prev, imageUrl, thumbnailUrl } : null);
                 }
               }}
           />
