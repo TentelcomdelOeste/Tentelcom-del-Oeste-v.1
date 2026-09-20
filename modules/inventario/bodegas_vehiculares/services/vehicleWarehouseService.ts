@@ -55,7 +55,9 @@ export const USER_DEFAULT_VEHICLE_MAP: Record<string, string> = {
 };
 
 export const getDefaultVehicleForUser = (user?: { email?: string | null } | null): string => {
-  const email = user?.email?.toLowerCase().trim();
+  const emailProp = user?.email?.toLowerCase().trim();
+  const emailAuth = (typeof auth !== 'undefined' && auth?.currentUser?.email) ? auth.currentUser.email.toLowerCase().trim() : '';
+  const email = emailProp || emailAuth;
   if (email && USER_DEFAULT_VEHICLE_MAP[email]) {
     return USER_DEFAULT_VEHICLE_MAP[email];
   }

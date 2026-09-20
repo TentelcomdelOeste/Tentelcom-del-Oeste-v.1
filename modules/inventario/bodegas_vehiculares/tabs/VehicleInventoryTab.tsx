@@ -96,48 +96,27 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   const getImageSetForItem = (item: VehicleWarehouseItem) => {
     const cleanInvId = item.inventoryItemId ? String(item.inventoryItemId).trim() : '';
     const cleanCode = item.code ? String(item.code).trim().toUpperCase() : '';
-    const cleanId = item.id ? String(item.id).trim() : '';
 
     const masterSet = (cleanInvId ? generalInventoryImageSets.mapById.get(cleanInvId) : null) ||
-                      (cleanCode ? generalInventoryImageSets.mapByCode.get(cleanCode) : null) ||
-                      (cleanId ? generalInventoryImageSets.mapById.get(cleanId) : null);
+                      (cleanCode ? generalInventoryImageSets.mapByCode.get(cleanCode) : null);
 
     const masterObj = (cleanInvId ? generalInventoryMap.mapById.get(cleanInvId) : null) ||
-                      (cleanCode ? generalInventoryMap.mapByCode.get(cleanCode) : null) ||
-                      (cleanId ? generalInventoryMap.mapById.get(cleanId) : null);
+                      (cleanCode ? generalInventoryMap.mapByCode.get(cleanCode) : null);
 
-    const itemImageSet = getItemImageSet(item as any);
     const masterImageSet = masterSet || (masterObj ? getItemImageSet(masterObj) : null);
+    const itemImageSet = getItemImageSet(item as any);
 
-    if (itemImageSet.hasImages && masterImageSet?.hasImages) {
-      const thumbnails = Array.from(new Set([...itemImageSet.thumbnails, ...masterImageSet.thumbnails])).filter(Boolean);
-      const hdImages = Array.from(new Set([...itemImageSet.hdImages, ...masterImageSet.hdImages])).filter(Boolean);
-      const originals = Array.from(new Set([...itemImageSet.originals, ...masterImageSet.originals])).filter(Boolean);
-
-      const primaryThumb = thumbnails[0] || hdImages[0] || '';
-      const primaryHD = hdImages[0] || primaryThumb || '';
-      const galleryImages = hdImages.length > 0 ? hdImages : (thumbnails.length > 0 ? thumbnails : []);
-
-      return {
-        thumbnails,
-        hdImages,
-        originals,
-        primaryThumb,
-        primaryHD,
-        galleryImages,
-        hasImages: Boolean(primaryThumb || primaryHD || galleryImages.length > 0)
-      };
-    }
-
-    if (itemImageSet.hasImages) {
-      return itemImageSet;
-    }
-
+    // 1. Priorizar SIEMPRE las imágenes del material maestro (inventory_items) si existen
     if (masterImageSet && masterImageSet.hasImages) {
       return masterImageSet;
     }
 
-    return itemImageSet;
+    // 2. Usar imágenes del vehicle_warehouse_item solo si no hay imágenes maestras y las del item son válidas
+    if (itemImageSet && itemImageSet.hasImages) {
+      return itemImageSet;
+    }
+
+    return masterImageSet || itemImageSet;
   };
 
   const items = useMemo(() => {
@@ -145,28 +124,32 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     return rawItems.map(item => {
       const cleanInvId = item.inventoryItemId ? String(item.inventoryItemId).trim() : '';
       const cleanCode = item.code ? String(item.code).trim().toUpperCase() : '';
-      const cleanId = item.id ? String(item.id).trim() : '';
 
       const master = (cleanInvId ? generalInventoryMap.mapById.get(cleanInvId) : null) ||
-                     (cleanCode ? generalInventoryMap.mapByCode.get(cleanCode) : null) ||
-                     (cleanId ? generalInventoryMap.mapById.get(cleanId) : null);
+                     (cleanCode ? generalInventoryMap.mapByCode.get(cleanCode) : null);
 
       if (!master) return item;
 
       const itemAny = item as any;
       return {
-        ...master,
         ...item,
         code: master.code || item.code,
         description: master.description || item.description,
         category: master.category || item.category,
         unit: master.unit || item.unit,
-        thumbnailUrl: itemAny.thumbnailUrl || master.thumbnailUrl || null,
-        thumbnailUrls: (Array.isArray(itemAny.thumbnailUrls) && itemAny.thumbnailUrls.length > 0) ? itemAny.thumbnailUrls : (master.thumbnailUrls || null),
-        imageUrl: itemAny.imageUrl || master.imageUrl || null,
-        imageUrls: (Array.isArray(itemAny.imageUrls) && itemAny.imageUrls.length > 0) ? itemAny.imageUrls : (master.imageUrls || null),
-        originalImageUrl: itemAny.originalImageUrl || master.originalImageUrl || null,
-        originalImageUrls: (Array.isArray(itemAny.originalImageUrls) && itemAny.originalImageUrls.length > 0) ? itemAny.originalImageUrls : (master.originalImageUrls || null)
+        // Priorizar imágenes maestras sobre imágenes del ítem de bodega vehicular
+        thumbnailUrl: master.thumbnailUrl || itemAny.thumbnailUrl || null,
+        thumbnailUrls: (Array.isArray(master.thumbnailUrls) && master.thumbnailUrls.length > 0)
+          ? master.thumbnailUrls
+          : ((Array.isArray(itemAny.thumbnailUrls) && itemAny.thumbnailUrls.length > 0) ? itemAny.thumbnailUrls : null),
+        imageUrl: master.imageUrl || itemAny.imageUrl || null,
+        imageUrls: (Array.isArray(master.imageUrls) && master.imageUrls.length > 0)
+          ? master.imageUrls
+          : ((Array.isArray(itemAny.imageUrls) && itemAny.imageUrls.length > 0) ? itemAny.imageUrls : null),
+        originalImageUrl: master.originalImageUrl || itemAny.originalImageUrl || null,
+        originalImageUrls: (Array.isArray(master.originalImageUrls) && master.originalImageUrls.length > 0)
+          ? master.originalImageUrls
+          : ((Array.isArray(itemAny.originalImageUrls) && itemAny.originalImageUrls.length > 0) ? itemAny.originalImageUrls : null)
       };
     });
   }, [externalItems, generalInventoryMap]);

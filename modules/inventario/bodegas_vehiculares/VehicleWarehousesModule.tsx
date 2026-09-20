@@ -27,13 +27,22 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
   
   // Shared state across the tabs - Preselección basada en el usuario autenticado
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>(() => getDefaultVehicleForUser(currentUser));
+  const hasUserManuallySelected = React.useRef<boolean>(false);
 
-  // Sincronizar si cambia el usuario currentUser
+  // Sincronizar si cambia el usuario currentUser (si el usuario no ha seleccionado manualmente otra unidad)
   useEffect(() => {
-    if (currentUser?.email) {
-      setSelectedVehicleId(getDefaultVehicleForUser(currentUser));
+    if (!hasUserManuallySelected.current) {
+      const defaultVeh = getDefaultVehicleForUser(currentUser);
+      if (defaultVeh) {
+        setSelectedVehicleId(defaultVeh);
+      }
     }
   }, [currentUser?.email]);
+
+  const handleSelectVehicleId = (newVehicleId: string) => {
+    hasUserManuallySelected.current = true;
+    setSelectedVehicleId(newVehicleId);
+  };
   const [items, setItems] = useState<VehicleWarehouseItem[]>([]);
   const [movements, setMovements] = useState<VehicleMovement[]>([]);
   const [requests, setRequests] = useState<VehicleMaterialRequest[]>([]);
@@ -307,7 +316,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
               onMultipleTransfer={handleMultipleTransfer}
               onDeleteInventoryItem={handleDeleteInventoryItem}
               selectedVehicleId={selectedVehicleId}
-              onSelectVehicleId={setSelectedVehicleId}
+              onSelectVehicleId={handleSelectVehicleId}
               activeTab={activeTab}
               onTabChange={setActiveTab}
             />
