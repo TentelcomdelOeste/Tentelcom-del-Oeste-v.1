@@ -325,8 +325,9 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     {
       header: 'Material / Descripción',
       className: 'flex-1 min-w-[200px]',
-      render: (item) => {
+      render: (item, index) => {
         const { primaryThumb, primaryHD, galleryImages, hasImages } = getImageSetForItem(item);
+        const isPriority = typeof index === 'number' && index < 8;
         return (
           <div className="flex items-center gap-2.5 min-w-0">
             <div 
@@ -341,6 +342,8 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                   src={primaryThumb} 
                   fallbackSrc={primaryHD}
                   alt={item.description} 
+                  loading={isPriority ? 'eager' : 'lazy'}
+                  fetchPriority={isPriority ? 'high' : 'auto'}
                   className="w-full h-full p-0.5 pointer-events-none"
                   referrerPolicy="no-referrer"
                   iconSize={16}
@@ -598,7 +601,9 @@ export const VehicleInventoryTab: React.FC<Props> = ({
 
           {/* VISTA MÓVIL: Tarjetas Originales Intactas */}
           <div className="grid grid-cols-1 md:hidden gap-3 sm:gap-4 animate-fade-in">
-            {filteredItems.map((item) => (
+            {filteredItems.map((item, index) => {
+              const isPriority = index < 8;
+              return (
               <div 
                 key={item.id} 
                 className="bg-white rounded-xl border border-slate-200 shadow-xs p-3 sm:p-3.5 flex flex-col justify-between hover:shadow-sm hover:border-slate-300 transition-all duration-200"
@@ -623,6 +628,8 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                               src={primaryThumb} 
                               fallbackSrc={primaryHD}
                               alt={item.description} 
+                              loading={isPriority ? 'eager' : 'lazy'}
+                              fetchPriority={isPriority ? 'high' : 'auto'}
                               className="w-full h-full p-1 pointer-events-none"
                               referrerPolicy="no-referrer"
                               iconSize={24}
@@ -740,7 +747,8 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                   </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         </>
       )}

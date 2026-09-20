@@ -6,7 +6,7 @@ import { FiLoader, FiChevronLeft, FiChevronRight, FiPlus } from "react-icons/fi"
 export interface TableColumn<T> {
   header: string;
   accessorKey?: keyof T; // Clave directa del objeto
-  render?: (item: T) => React.ReactNode; // Render personalizado
+  render?: (item: T, index?: number) => React.ReactNode; // Render personalizado
   align?: 'left' | 'center' | 'right';
   width?: string;
   className?: string;
@@ -95,7 +95,7 @@ const TableRow = React.memo(({
                 }}
             >
                 <div className={`w-full ${getAlignClass(col.align).split(' ')[0]}`}>
-                  {col.render ? col.render(item) : (
+                  {col.render ? col.render(item, index) : (
                     <span className="truncate block">
                       {item[col.accessorKey as keyof typeof item] as React.ReactNode}
                     </span>
@@ -257,7 +257,7 @@ export const DataTable = React.memo(function DataTable<T>({
           </div>
         ) : (
           <>
-            {data.map((item) => {
+            {data.map((item, index) => {
               const isHighlighted = highlightedId && keyExtractor(item) === highlightedId;
               const customClass = getRowClassName ? getRowClassName(item) : '';
               return (
@@ -283,7 +283,7 @@ export const DataTable = React.memo(function DataTable<T>({
                           {col.header}
                         </span>
                         <div className={`${UI_TOKENS.TYPOGRAPHY.body} text-blue-950 leading-tight`}>
-                          {col.render ? col.render(item) : (item[col.accessorKey as keyof typeof item] as React.ReactNode)}
+                          {col.render ? col.render(item, index) : (item[col.accessorKey as keyof typeof item] as React.ReactNode)}
                         </div>
                       </div>
                     );

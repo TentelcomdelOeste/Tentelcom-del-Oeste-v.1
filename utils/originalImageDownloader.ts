@@ -14,8 +14,103 @@ function dataURLtoBlob(dataurl: string): Blob {
 }
 
 /**
- * Downloads the exact original image file from Firebase Storage or URL without processing,
- * converting, or resizing.
+ * Inspects a Blob's headers, MIME type, and magic bytes to guarantee it is a valid image,
+ * rejecting any HTML, script, plain text, or JSON payload.
+ */
+async function inspectAndValidateImageBlob(
+  blob: Blob,
+  fallbackExt: string = 'jpg'
+): Promise<{ valid: boolean; normalizedBlob: Blob; extension: string }> {
+  if (!blob || blob.size === 0) {
+    return { valid: false, normalizedBlob: blob, extension: '' };
+  }
+
+  const rawMime = (blob.type || '').toLowerCase();
+
+  // Instant rejection of web documents / HTML / scripts / JSON
+  if (
+    rawMime.startsWith('text/') ||
+    rawMime.includes('html') ||
+    rawMime.includes('javascript') ||
+    rawMime.includes('json') ||
+    (rawMime.includes('xml') && !rawMime.includes('svg'))
+  ) {
+    return { valid: false, normalizedBlob: blob, extension: '' };
+  }
+
+  // Inspect binary header bytes (magic numbers)
+  try {
+    const headerSlice = blob.slice(0, 16);
+    const buffer = await headerSlice.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+
+    if (bytes.length >= 3) {
+      // Rejection of HTML tags or JSON structures at raw byte level
+      const firstChar = String.fromCharCode(bytes[0]);
+      if (firstChar === '<' || firstChar === '{') {
+        return { valid: false, normalizedBlob: blob, extension: '' };
+      }
+
+      // JPEG: FF D8 FF
+      if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+        const normalizedBlob = rawMime === 'image/jpeg' || rawMime === 'image/jpg'
+          ? blob
+          : new Blob([blob], { type: 'image/jpeg' });
+        return { valid: true, normalizedBlob, extension: 'jpg' };
+      }
+
+      // PNG: 89 50 4E 47 (0x89 'P' 'N' 'G')
+      if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+        const normalizedBlob = rawMime === 'image/png'
+          ? blob
+          : new Blob([blob], { type: 'image/png' });
+        return { valid: true, normalizedBlob, extension: 'png' };
+      }
+
+      // WebP: RIFF .... WEBP
+      if (
+        bytes.length >= 12 &&
+        bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+      ) {
+        const normalizedBlob = rawMime === 'image/webp'
+          ? blob
+          : new Blob([blob], { type: 'image/webp' });
+        return { valid: true, normalizedBlob, extension: 'webp' };
+      }
+
+      // GIF: 47 49 46 38 ('G' 'I' 'F' '8')
+      if (bytes.length >= 4 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+        const normalizedBlob = rawMime === 'image/gif'
+          ? blob
+          : new Blob([blob], { type: 'image/gif' });
+        return { valid: true, normalizedBlob, extension: 'gif' };
+      }
+    }
+  } catch (err) {
+    console.warn('No se pudieron leer los magic bytes del archivo:', err);
+  }
+
+  // If MIME type explicitly starts with image/ and is not on the reject list
+  if (rawMime.startsWith('image/')) {
+    let ext = fallbackExt;
+    if (rawMime.includes('jpeg') || rawMime.includes('jpg')) ext = 'jpg';
+    else if (rawMime.includes('png')) ext = 'png';
+    else if (rawMime.includes('webp')) ext = 'webp';
+    else if (rawMime.includes('gif')) ext = 'gif';
+    else if (rawMime.includes('svg')) ext = 'svg';
+    else if (rawMime.includes('avif')) ext = 'avif';
+    else if (rawMime.includes('bmp')) ext = 'bmp';
+    return { valid: true, normalizedBlob: blob, extension: ext };
+  }
+
+  return { valid: false, normalizedBlob: blob, extension: '' };
+}
+
+/**
+ * Downloads the exact original image file from Firebase Storage without processing,
+ * converting, or resizing. Validates that the returned payload is a genuine image
+ * before saving.
  */
 export async function downloadOriginalImage(
   originalUrl?: string | null,
@@ -30,77 +125,85 @@ export async function downloadOriginalImage(
 
   const cleanCode = fileNamePrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-  // Handle base64 Data URLs directly
+  // 1. Handle base64 Data URLs directly
   if (originalUrl.startsWith('data:')) {
     try {
       const blob = dataURLtoBlob(originalUrl);
-      let extension = 'jpg';
-      if (blob.type.includes('png')) extension = 'png';
-      else if (blob.type.includes('webp')) extension = 'webp';
-      else if (blob.type.includes('jpeg') || blob.type.includes('jpg')) extension = 'jpg';
+      const validation = await inspectAndValidateImageBlob(blob);
+      if (!validation.valid) {
+        console.error('Data URL no contiene una imagen válida:', { type: blob.type, size: blob.size });
+        return {
+          success: false,
+          message: 'El archivo de imagen no es válido o está dañado.'
+        };
+      }
 
-      const finalFileName = `${cleanCode}_original.${extension}`;
-      await triggerFileDownload(blob, finalFileName);
+      const finalFileName = `${cleanCode}_original.${validation.extension}`;
+      await triggerFileDownload(validation.normalizedBlob, finalFileName);
       return { success: true };
     } catch (e: any) {
       console.error('Error procesando Data URL:', e);
+      return {
+        success: false,
+        message: 'Ocurrió un error al procesar la imagen local.'
+      };
     }
   }
 
-  // Derive default extension from URL
+  // 2. Derive fallback extension from URL if available
   let urlExtension = 'jpg';
   const urlWithoutQuery = originalUrl.split('?')[0];
   const extMatch = urlWithoutQuery.match(/\.([a-zA-Z0-9]+)$/);
   if (extMatch && extMatch[1] && extMatch[1].length <= 5) {
-    urlExtension = extMatch[1].toLowerCase();
+    const ext = extMatch[1].toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif', 'bmp'].includes(ext)) {
+      urlExtension = ext === 'jpeg' ? 'jpg' : ext;
+    }
   }
 
-  // Attempt direct client-side fetch to download as blob
+  // 3. Direct fetch from Firebase Storage or media server
   try {
     const response = await fetch(originalUrl);
     if (!response.ok) {
-      throw new Error(`HTTP error ${response.status}`);
+      throw new Error(`Error HTTP ${response.status}: ${response.statusText || 'No se pudo obtener el archivo'}`);
     }
-    const blob = await response.blob();
 
-    let extension = urlExtension;
-    if (blob.type.includes('png')) extension = 'png';
-    else if (blob.type.includes('webp')) extension = 'webp';
-    else if (blob.type.includes('jpeg') || blob.type.includes('jpg')) extension = 'jpg';
-    else if (blob.type.includes('pdf')) extension = 'pdf';
+    // Check response Content-Type header
+    const responseContentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (
+      responseContentType.startsWith('text/') ||
+      responseContentType.includes('html') ||
+      responseContentType.includes('json')
+    ) {
+      throw new Error(`El servidor devolvió un tipo de contenido no válido (${responseContentType}) en lugar de una imagen.`);
+    }
 
-    const finalFileName = `${cleanCode}_original.${extension}`;
-    await triggerFileDownload(blob, finalFileName);
-    return { success: true };
-  } catch (err: any) {
-    console.warn('Fetch directo de la imagen falló por CORS/red, usando proxy de servidor:', err);
-    
-    // Fallback: Fetch via server proxy endpoint `/api/download-proxy`
-    try {
-      const defaultFileName = `${cleanCode}_original.${urlExtension}`;
-      const proxyUrl = `/api/download-proxy?url=${encodeURIComponent(originalUrl)}&filename=${encodeURIComponent(defaultFileName)}`;
-      const proxyResponse = await fetch(proxyUrl);
-      if (!proxyResponse.ok) {
-        throw new Error(`Proxy error ${proxyResponse.status}`);
-      }
-      const blob = await proxyResponse.blob();
+    const rawBlob = await response.blob();
 
-      let extension = urlExtension;
-      if (blob.type.includes('png')) extension = 'png';
-      else if (blob.type.includes('webp')) extension = 'webp';
-      else if (blob.type.includes('jpeg') || blob.type.includes('jpg')) extension = 'jpg';
-      else if (blob.type.includes('pdf')) extension = 'pdf';
-
-      const finalFileName = `${cleanCode}_original.${extension}`;
-      await triggerFileDownload(blob, finalFileName);
-      return { success: true };
-    } catch (fallbackErr: any) {
-      console.error('Error en descarga vía proxy:', fallbackErr);
+    // Deep validation of the blob (size, MIME, magic numbers)
+    const validation = await inspectAndValidateImageBlob(rawBlob, urlExtension);
+    if (!validation.valid) {
+      console.error('El archivo descargado no es una imagen válida:', {
+        mime: rawBlob.type,
+        size: rawBlob.size,
+        url: originalUrl
+      });
       return {
         success: false,
-        message: `No se pudo descargar la imagen original: ${fallbackErr?.message || err?.message || 'Error de descarga'}`
+        message: 'No se pudo obtener la imagen original. El archivo recibido no es una imagen válida.'
       };
     }
+
+    const finalFileName = `${cleanCode}_original.${validation.extension}`;
+    await triggerFileDownload(validation.normalizedBlob, finalFileName);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error descargando imagen original desde Firebase Storage:', err);
+    return {
+      success: false,
+      message: `No se pudo descargar la imagen original: ${err?.message || 'Error de conexión'}`
+    };
   }
 }
+
 

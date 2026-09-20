@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { FiImage } from 'react-icons/fi';
 
+/**
+ * In-memory session cache for URLs that have loaded successfully in the current session.
+ * Prevents skeleton flicker on component remounts (filtering, tab switches, vehicle changes).
+ */
+const LOADED_IMAGE_URLS = new Set<string>();
+
 interface OptimizedImageProps {
   src?: string;
   fallbackSrc?: string;
@@ -9,6 +15,7 @@ interface OptimizedImageProps {
   style?: React.CSSProperties;
   loading?: 'lazy' | 'eager';
   decoding?: 'async' | 'sync' | 'auto';
+  fetchPriority?: 'high' | 'low' | 'auto';
   objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
   onClick?: (e: React.MouseEvent<HTMLImageElement>) => void;
   onLoad?: () => void;
@@ -25,6 +32,7 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = React.memo(({
   style,
   loading = 'lazy',
   decoding = 'async',
+  fetchPriority,
   objectFit = 'cover',
   onClick,
   onLoad,
@@ -36,19 +44,21 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = React.memo(({
   const cleanFallback = typeof fallbackSrc === 'string' ? fallbackSrc.trim() : '';
   const primarySrc = cleanSrc || cleanFallback || '';
 
+  const initialLoaded = Boolean(primarySrc && LOADED_IMAGE_URLS.has(primarySrc));
   const [currentSrc, setCurrentSrc] = useState<string>(primarySrc);
   const [hasTriedFallback, setHasTriedFallback] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(!primarySrc);
-  const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  const [isLoaded, setIsLoaded] = useState<boolean>(initialLoaded);
 
   useEffect(() => {
     const cSrc = typeof src === 'string' ? src.trim() : '';
     const cFallback = typeof fallbackSrc === 'string' ? fallbackSrc.trim() : '';
     const nextSrc = cSrc || cFallback || '';
+    const isAlreadyLoaded = Boolean(nextSrc && LOADED_IMAGE_URLS.has(nextSrc));
     setCurrentSrc(nextSrc);
     setHasTriedFallback(false);
     setHasError(!nextSrc);
-    setIsLoaded(false);
+    setIsLoaded(isAlreadyLoaded);
   }, [src, fallbackSrc]);
 
   const handleImageError = () => {
@@ -56,6 +66,7 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = React.memo(({
     if (!hasTriedFallback && cFallback && currentSrc !== cFallback) {
       setHasTriedFallback(true);
       setCurrentSrc(cFallback);
+      setIsLoaded(LOADED_IMAGE_URLS.has(cFallback));
     } else {
       setHasError(true);
       if (onError) onError();
@@ -63,6 +74,9 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = React.memo(({
   };
 
   const handleImageLoad = () => {
+    if (currentSrc) {
+      LOADED_IMAGE_URLS.add(currentSrc);
+    }
     setIsLoaded(true);
     setHasError(false);
     if (onLoad) onLoad();
@@ -97,6 +111,7 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = React.memo(({
         alt={alt}
         loading={loading}
         decoding={decoding}
+        {...(fetchPriority ? { fetchPriority } : {})}
         onError={handleImageError}
         onLoad={handleImageLoad}
         onClick={onClick}

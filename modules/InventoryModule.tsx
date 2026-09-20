@@ -416,7 +416,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
         className: 'flex-1 min-w-[200px]',
         mobileGrid: 'full',
         mobileOrder: 3,
-        render: (item) => {
+        render: (item, index) => {
           const {
             thumbnails,
             hdImages,
@@ -426,6 +426,8 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
             galleryImages,
             hasImages
           } = getItemImageSet(item);
+
+          const isPriority = typeof index === 'number' && index < 8;
 
           return (
             <div className="flex items-center gap-2.5 min-w-0">
@@ -452,6 +454,8 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                     src={primaryThumb} 
                     fallbackSrc={primaryHD}
                     alt={item.description}
+                    loading={isPriority ? 'eager' : 'lazy'}
+                    fetchPriority={isPriority ? 'high' : 'auto'}
                     className="w-full h-full p-0.5 pointer-events-none"
                     referrerPolicy="no-referrer"
                     iconSize={16}
@@ -751,7 +755,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                     No se encontraron materiales que coincidan con la búsqueda.
                   </div>
                 ) : (
-                  filteredItems.map((item) => {
+                  filteredItems.map((item, index) => {
                     const isHighlighted = selectedId && item.id === selectedId;
                     const {
                       thumbnails,
@@ -762,6 +766,8 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                       galleryImages,
                       hasImages
                     } = getItemImageSet(item);
+
+                    const isPriority = index < 8;
 
                     const actualReserved = Math.max(0, item.reserved || 0);
                     const available = (item.stock || 0) - actualReserved;
@@ -811,6 +817,8 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                                 src={primaryThumb} 
                                 fallbackSrc={primaryHD}
                                 alt={item.description}
+                                loading={isPriority ? 'eager' : 'lazy'}
+                                fetchPriority={isPriority ? 'high' : 'auto'}
                                 className="w-full h-full p-0.5 pointer-events-none"
                                 referrerPolicy="no-referrer"
                                 iconSize={20}
