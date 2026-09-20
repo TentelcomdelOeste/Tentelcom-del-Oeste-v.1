@@ -50,6 +50,7 @@ export const USER_DEFAULT_VEHICLE_MAP: Record<string, string> = {
   'ronaldporras4@gmail.com': 'U2',
   'joseluissequeira1126@gmail.com': 'U6',
   'loncho2886@gmail.com': 'U2',
+  'jenamorado@tentelcom.com': 'U2',
   'piedravialesjose@gmail.com': 'U8'
 };
 

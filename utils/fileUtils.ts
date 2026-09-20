@@ -24,7 +24,6 @@ export const triggerFileDownload = async (blob: Blob, fileName: string) => {
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
-    link.target = '_blank'; // Ensuring it can be opened
     document.body.appendChild(link);
     console.log("triggerFileDownload: Link appendido y clickeando");
     link.click();

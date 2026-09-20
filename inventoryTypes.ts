@@ -18,8 +18,10 @@ export interface InventoryItem {
   currency: 'USD' | 'CRC';
   imageUrl?: string; // URL o base64 de la imagen de referencia del material (legacy/retrocompatibilidad)
   imageUrls?: string[]; // Lista de URLs o base64 de imágenes de referencia (hasta 4)
-  thumbnailUrl?: string; // URL de miniatura optimizada (~150px WebP)
+  thumbnailUrl?: string; // URL de miniatura optimizada (~200px WebP)
   thumbnailUrls?: string[]; // Lista de URLs de miniaturas optimizadas (hasta 4)
+  originalImageUrl?: string; // URL de la imagen original sin comprimir/modificar
+  originalImageUrls?: string[]; // Lista de URLs de imágenes originales sin comprimir/modificar (hasta 4)
   providers?: ProductProvider[]; // Lista de precios por proveedor
   deleted?: boolean; // Marca de eliminación lógica
   updatedAt: string;

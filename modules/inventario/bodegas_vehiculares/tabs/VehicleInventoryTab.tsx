@@ -8,6 +8,8 @@ import { VehicleWarehouseItem, VehicleMovement } from '../../../../types/vehicle
 import { TransferToVehicleModal } from '../modals/TransferToVehicleModal';
 import { VehicleInventoryDetailModal } from '../modals/VehicleInventoryDetailModal';
 import { ImageViewerModal } from '../../../../components/ImageViewerModal';
+import { OptimizedImage } from '../../../../components/OptimizedImage';
+import { getItemImageSet } from '../../../../utils/imageUtils';
 import { format } from 'date-fns';
 
 interface Props {
@@ -52,21 +54,24 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   // Fetch general inventory items for visual mapping
   const { items: generalInventoryItems } = useInventory(currentUser || null, { fetchAll: true });
 
-  const itemImagesMap = useMemo(() => {
-    const map = new Map<string, string[]>();
+  const generalInventoryImageSets = useMemo(() => {
+    const mapById = new Map<string, ReturnType<typeof getItemImageSet>>();
+    const mapByCode = new Map<string, ReturnType<typeof getItemImageSet>>();
     if (Array.isArray(generalInventoryItems)) {
       generalInventoryItems.forEach(item => {
-        if (item && item.id) {
-          const imgs: string[] = item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0
-            ? item.imageUrls.filter(Boolean)
-            : (item.imageUrl ? [item.imageUrl] : []);
-          if (imgs.length > 0) {
-            map.set(item.id, imgs);
+        if (item) {
+          const imageSet = getItemImageSet(item);
+          if (item.id) {
+            mapById.set(String(item.id).trim(), imageSet);
+          }
+          if (item.code) {
+            const normCode = String(item.code).trim().toUpperCase();
+            if (normCode) mapByCode.set(normCode, imageSet);
           }
         }
       });
     }
-    return map;
+    return { mapById, mapByCode };
   }, [generalInventoryItems]);
 
   const generalInventoryMap = useMemo(() => {
@@ -75,25 +80,93 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     if (Array.isArray(generalInventoryItems)) {
       generalInventoryItems.forEach(item => {
         if (item) {
-          if (item.id) mapById.set(item.id, item);
-          if (item.code) mapByCode.set(item.code, item);
+          if (item.id) {
+            mapById.set(String(item.id).trim(), item);
+          }
+          if (item.code) {
+            const normCode = String(item.code).trim().toUpperCase();
+            if (normCode) mapByCode.set(normCode, item);
+          }
         }
       });
     }
     return { mapById, mapByCode };
   }, [generalInventoryItems]);
 
+  const getImageSetForItem = (item: VehicleWarehouseItem) => {
+    const cleanInvId = item.inventoryItemId ? String(item.inventoryItemId).trim() : '';
+    const cleanCode = item.code ? String(item.code).trim().toUpperCase() : '';
+    const cleanId = item.id ? String(item.id).trim() : '';
+
+    const masterSet = (cleanInvId ? generalInventoryImageSets.mapById.get(cleanInvId) : null) ||
+                      (cleanCode ? generalInventoryImageSets.mapByCode.get(cleanCode) : null) ||
+                      (cleanId ? generalInventoryImageSets.mapById.get(cleanId) : null);
+
+    const masterObj = (cleanInvId ? generalInventoryMap.mapById.get(cleanInvId) : null) ||
+                      (cleanCode ? generalInventoryMap.mapByCode.get(cleanCode) : null) ||
+                      (cleanId ? generalInventoryMap.mapById.get(cleanId) : null);
+
+    const itemImageSet = getItemImageSet(item as any);
+    const masterImageSet = masterSet || (masterObj ? getItemImageSet(masterObj) : null);
+
+    if (itemImageSet.hasImages && masterImageSet?.hasImages) {
+      const thumbnails = Array.from(new Set([...itemImageSet.thumbnails, ...masterImageSet.thumbnails])).filter(Boolean);
+      const hdImages = Array.from(new Set([...itemImageSet.hdImages, ...masterImageSet.hdImages])).filter(Boolean);
+      const originals = Array.from(new Set([...itemImageSet.originals, ...masterImageSet.originals])).filter(Boolean);
+
+      const primaryThumb = thumbnails[0] || hdImages[0] || '';
+      const primaryHD = hdImages[0] || primaryThumb || '';
+      const galleryImages = hdImages.length > 0 ? hdImages : (thumbnails.length > 0 ? thumbnails : []);
+
+      return {
+        thumbnails,
+        hdImages,
+        originals,
+        primaryThumb,
+        primaryHD,
+        galleryImages,
+        hasImages: Boolean(primaryThumb || primaryHD || galleryImages.length > 0)
+      };
+    }
+
+    if (itemImageSet.hasImages) {
+      return itemImageSet;
+    }
+
+    if (masterImageSet && masterImageSet.hasImages) {
+      return masterImageSet;
+    }
+
+    return itemImageSet;
+  };
+
   const items = useMemo(() => {
     const rawItems = externalItems || [];
     return rawItems.map(item => {
-      const master = generalInventoryMap.mapById.get(item.inventoryItemId) || generalInventoryMap.mapByCode.get(item.code);
+      const cleanInvId = item.inventoryItemId ? String(item.inventoryItemId).trim() : '';
+      const cleanCode = item.code ? String(item.code).trim().toUpperCase() : '';
+      const cleanId = item.id ? String(item.id).trim() : '';
+
+      const master = (cleanInvId ? generalInventoryMap.mapById.get(cleanInvId) : null) ||
+                     (cleanCode ? generalInventoryMap.mapByCode.get(cleanCode) : null) ||
+                     (cleanId ? generalInventoryMap.mapById.get(cleanId) : null);
+
       if (!master) return item;
+
+      const itemAny = item as any;
       return {
+        ...master,
         ...item,
         code: master.code || item.code,
         description: master.description || item.description,
         category: master.category || item.category,
-        unit: master.unit || item.unit
+        unit: master.unit || item.unit,
+        thumbnailUrl: itemAny.thumbnailUrl || master.thumbnailUrl || null,
+        thumbnailUrls: (Array.isArray(itemAny.thumbnailUrls) && itemAny.thumbnailUrls.length > 0) ? itemAny.thumbnailUrls : (master.thumbnailUrls || null),
+        imageUrl: itemAny.imageUrl || master.imageUrl || null,
+        imageUrls: (Array.isArray(itemAny.imageUrls) && itemAny.imageUrls.length > 0) ? itemAny.imageUrls : (master.imageUrls || null),
+        originalImageUrl: itemAny.originalImageUrl || master.originalImageUrl || null,
+        originalImageUrls: (Array.isArray(itemAny.originalImageUrls) && itemAny.originalImageUrls.length > 0) ? itemAny.originalImageUrls : (master.originalImageUrls || null)
       };
     });
   }, [externalItems, generalInventoryMap]);
@@ -106,17 +179,23 @@ export const VehicleInventoryTab: React.FC<Props> = ({
   const [detailItem, setDetailItem] = useState<VehicleWarehouseItem | null>(null);
   const [previewGallery, setPreviewGallery] = useState<{
     images: string[];
+    originalImages?: string[];
     currentIndex: number;
     title: string;
     code: string;
   } | null>(null);
   const [lastTap, setLastTap] = useState<{ id: string; time: number }>({ id: '', time: 0 });
 
+  const getOriginalsForItem = (item: VehicleWarehouseItem): string[] => {
+    return getImageSetForItem(item).originals;
+  };
+
   const handleImageDoubleClick = (item: VehicleWarehouseItem, images: string[], e: React.SyntheticEvent) => {
     e.stopPropagation();
     if (images && images.length > 0) {
       setPreviewGallery({
         images,
+        originalImages: getOriginalsForItem(item),
         currentIndex: 0,
         title: item.description,
         code: item.code
@@ -131,6 +210,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
       e.stopPropagation();
       setPreviewGallery({
         images,
+        originalImages: getOriginalsForItem(item),
         currentIndex: 0,
         title: item.description,
         code: item.code
@@ -217,24 +297,24 @@ export const VehicleInventoryTab: React.FC<Props> = ({
       header: 'Material / Descripción',
       className: 'flex-1 min-w-[200px]',
       render: (item) => {
-        const images = itemImagesMap.get(item.inventoryItemId) || [];
-        const primaryImage = images.length > 0 ? images[0] : '';
-        const hasImages = images.length > 0;
+        const { primaryThumb, primaryHD, galleryImages, hasImages } = getImageSetForItem(item);
         return (
           <div className="flex items-center gap-2.5 min-w-0">
             <div 
               className={`w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center shrink-0 overflow-hidden ${
                 hasImages ? 'cursor-pointer select-none hover:border-blue-400 transition-colors' : 'text-slate-400'
               }`}
-              onDoubleClick={(e) => handleImageDoubleClick(item, images, e)}
+              onDoubleClick={(e) => handleImageDoubleClick(item, galleryImages, e)}
               title={hasImages ? "Doble clic para ampliar imagen" : undefined}
             >
               {hasImages ? (
-                <img 
-                  src={primaryImage} 
+                <OptimizedImage 
+                  src={primaryThumb} 
+                  fallbackSrc={primaryHD}
                   alt={item.description} 
-                  className="w-full h-full object-contain p-0.5 pointer-events-none"
+                  className="w-full h-full p-0.5 pointer-events-none"
                   referrerPolicy="no-referrer"
+                  iconSize={16}
                 />
               ) : (
                 <FiBox className="w-4 h-4" />
@@ -372,20 +452,11 @@ export const VehicleInventoryTab: React.FC<Props> = ({
               onChange={(e) => setSelectedVehicleId(e.target.value)}
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
             >
-              <optgroup label="BODEGAS FÍSICAS">
-                {vehicles.filter(v => v.type === 'BODEGA').map(v => (
-                  <option key={v.id} value={v.id}>
-                    {v.alias}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="BODEGAS VEHICULARES">
-                {vehicles.filter(v => v.type !== 'BODEGA').map(v => (
-                  <option key={v.id} value={v.id}>
-                    {v.alias}
-                  </option>
-                ))}
-              </optgroup>
+              {vehicles.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.alias}
+                </option>
+              ))}
             </select>
             <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
               ▼
@@ -436,20 +507,11 @@ export const VehicleInventoryTab: React.FC<Props> = ({
             onChange={(e) => setSelectedVehicleId(e.target.value)}
             className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-7 truncate"
           >
-            <optgroup label="BODEGAS FÍSICAS">
-              {vehicles.filter(v => v.type === 'BODEGA').map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.alias}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="BODEGAS VEHICULARES">
-              {vehicles.filter(v => v.type !== 'BODEGA').map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.alias}
-                </option>
-              ))}
-            </optgroup>
+            {vehicles.map(v => (
+              <option key={v.id} value={v.id}>
+                {v.alias}
+              </option>
+            ))}
           </select>
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
             ▼
@@ -515,29 +577,29 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                 <div className="flex gap-3 items-start">
                   {/* Espacio reservado para la imagen (limpio/neutral) */}
                   {(() => {
-                    const images = itemImagesMap.get(item.inventoryItemId) || [];
-                    const primaryImage = images.length > 0 ? images[0] : '';
-                    const hasImages = images.length > 0;
+                    const { primaryThumb, primaryHD, galleryImages, hasImages } = getImageSetForItem(item);
                     return (
                       <div 
                         className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center shrink-0 overflow-hidden ${
                           hasImages ? 'cursor-pointer select-none active:scale-95 transition-transform' : ''
                         }`}
-                        onDoubleClick={(e) => handleImageDoubleClick(item, images, e)}
-                        onClick={(e) => handleImageDoubleClick(item, images, e)}
+                        onDoubleClick={(e) => handleImageDoubleClick(item, galleryImages, e)}
+                        onClick={(e) => handleImageDoubleClick(item, galleryImages, e)}
                         title={hasImages ? "Clic para ampliar imágenes" : undefined}
                       >
                         {hasImages ? (
                           <>
-                            <img 
-                              src={primaryImage} 
+                            <OptimizedImage 
+                              src={primaryThumb} 
+                              fallbackSrc={primaryHD}
                               alt={item.description} 
-                              className="w-full h-full object-contain p-1 pointer-events-none"
+                              className="w-full h-full p-1 pointer-events-none"
                               referrerPolicy="no-referrer"
+                              iconSize={24}
                             />
-                            {images.length > 1 && (
+                            {galleryImages.length > 1 && (
                               <span className="absolute bottom-0.5 right-0.5 bg-slate-900/80 text-white text-[8px] font-black px-1 py-0.2 rounded leading-none backdrop-blur-xs">
-                                1/{images.length}
+                                1/{galleryImages.length}
                               </span>
                             )}
                           </>
@@ -701,6 +763,8 @@ export const VehicleInventoryTab: React.FC<Props> = ({
       {previewGallery && (
         <ImageViewerModal
           images={previewGallery.images}
+          originalImages={previewGallery.originalImages}
+          currentUser={currentUser}
           initialIndex={previewGallery.currentIndex}
           title={previewGallery.title}
           code={previewGallery.code}

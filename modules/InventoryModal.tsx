@@ -8,6 +8,7 @@ import useLockBodyScroll from '../hooks/useLockBodyScroll';
 import { addInventoryProvider } from '../services/inventoryProviderService';
 import { ActionButton, IconButton, Select } from '../design-system';
 import { ProviderCombobox } from './inventario/components/ProviderCombobox';
+import { isHistoricalItem, optimizeHistoricalItemImages } from '../utils/historicalImageOptimizer';
 
 interface InventoryModalProps {
   show: boolean;
@@ -158,7 +159,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
       }
 
       // Convert empty strings to 0 before submitting
-      const dataToSubmit = {
+      let dataToSubmit: any = {
         ...formData,
         category: formData.category?.toUpperCase(),
         description: formData.description?.toUpperCase(),
@@ -173,6 +174,21 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email
       };
+
+      // Si el material editado tiene imágenes históricas sin miniatura, generarla de forma segura
+      if (initialData && isHistoricalItem(initialData)) {
+        try {
+          const optResult = await optimizeHistoricalItemImages(initialData);
+          if (optResult.success && optResult.updatedFields && Object.keys(optResult.updatedFields).length > 0) {
+            dataToSubmit = {
+              ...dataToSubmit,
+              ...optResult.updatedFields
+            };
+          }
+        } catch (optErr) {
+          console.warn("[InventoryModal] No se pudo optimizar la imagen histórica durante el guardado:", optErr);
+        }
+      }
 
       await onSubmit(dataToSubmit, { skipCodeCheck: true });
       onClose();

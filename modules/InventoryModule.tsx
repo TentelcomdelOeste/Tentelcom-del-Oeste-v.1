@@ -16,6 +16,8 @@ import autoTable from 'jspdf-autotable';
 import { LOGO_BASE64 } from '../utils/logoBase64';
 import { FiBox } from 'react-icons/fi';
 import { ImageViewerModal } from '../components/ImageViewerModal';
+import { OptimizedImage } from '../components/OptimizedImage';
+import { getItemImageSet } from '../utils/imageUtils';
 import { 
   useConfirm, 
   DataTable, 
@@ -55,6 +57,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
   const [editingItem, setEditingItem] = useState<InvItemType | null>(null);
   const [previewGallery, setPreviewGallery] = useState<{
     images: string[];
+    originalImages?: string[];
     currentIndex: number;
     title: string;
     code: string;
@@ -414,18 +417,16 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
         mobileGrid: 'full',
         mobileOrder: 3,
         render: (item) => {
-          const images = (() => {
-            if (!item) return [];
-            if (item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
-              return item.imageUrls.filter(Boolean);
-            }
-            if (item.imageUrl) {
-              return [item.imageUrl];
-            }
-            return [];
-          })();
-          const primaryImage = images.length > 0 ? images[0] : '';
-          const hasImages = images.length > 0;
+          const {
+            thumbnails,
+            hdImages,
+            originals,
+            primaryThumb,
+            primaryHD,
+            galleryImages,
+            hasImages
+          } = getItemImageSet(item);
+
           return (
             <div className="flex items-center gap-2.5 min-w-0">
               <div 
@@ -436,7 +437,8 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                   e.stopPropagation();
                   if (hasImages) {
                     setPreviewGallery({
-                      images,
+                      images: galleryImages,
+                      originalImages: originals,
                       currentIndex: 0,
                       title: item.description,
                       code: item.code
@@ -446,11 +448,13 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                 title={hasImages ? "Doble clic para ampliar imagen" : undefined}
               >
                 {hasImages ? (
-                  <img 
-                    src={primaryImage} 
+                  <OptimizedImage 
+                    src={primaryThumb} 
+                    fallbackSrc={primaryHD}
                     alt={item.description}
-                    className="w-full h-full object-contain p-0.5 pointer-events-none"
+                    className="w-full h-full p-0.5 pointer-events-none"
                     referrerPolicy="no-referrer"
+                    iconSize={16}
                   />
                 ) : (
                   <FiBox className="w-4 h-4" />
@@ -749,18 +753,15 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                 ) : (
                   filteredItems.map((item) => {
                     const isHighlighted = selectedId && item.id === selectedId;
-                    const images = (() => {
-                      if (!item) return [];
-                      if (item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
-                        return item.imageUrls.filter(Boolean);
-                      }
-                      if (item.imageUrl) {
-                        return [item.imageUrl];
-                      }
-                      return [];
-                    })();
-                    const primaryImage = images.length > 0 ? images[0] : '';
-                    const hasImages = images.length > 0;
+                    const {
+                      thumbnails,
+                      hdImages,
+                      originals,
+                      primaryThumb,
+                      primaryHD,
+                      galleryImages,
+                      hasImages
+                    } = getItemImageSet(item);
 
                     const actualReserved = Math.max(0, item.reserved || 0);
                     const available = (item.stock || 0) - actualReserved;
@@ -795,21 +796,24 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                             onClick={() => {
                               if (hasImages) {
                                 setPreviewGallery({
-                                  images,
-                                    currentIndex: 0,
-                                    title: item.description,
-                                    code: item.code
+                                  images: galleryImages,
+                                  originalImages: originals,
+                                  currentIndex: 0,
+                                  title: item.description,
+                                  code: item.code
                                 });
                               }
                             }}
                             title={hasImages ? "Tocar para ampliar imagen" : undefined}
                           >
                             {hasImages ? (
-                              <img 
-                                src={primaryImage} 
+                              <OptimizedImage 
+                                src={primaryThumb} 
+                                fallbackSrc={primaryHD}
                                 alt={item.description}
-                                className="w-full h-full object-contain p-0.5 pointer-events-none"
+                                className="w-full h-full p-0.5 pointer-events-none"
                                 referrerPolicy="no-referrer"
+                                iconSize={20}
                               />
                             ) : (
                               <FiBox className="w-5 h-5 text-slate-300" />
@@ -935,29 +939,34 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               onClose={() => { setViewingItem(null); onClearSelectedId?.(); }}
               item={viewingItem}
               currentUser={currentUser}
-              onImagesUpdate={(imageUrls, thumbnailUrls) => {
+              onImagesUpdate={(imageUrls, thumbnailUrls, originalImageUrls) => {
                 if (viewingItem) {
                   const primaryImage = imageUrls.length > 0 ? imageUrls[0] : '';
                   const primaryThumb = thumbnailUrls && thumbnailUrls.length > 0 ? thumbnailUrls[0] : primaryImage;
+                  const primaryOriginal = originalImageUrls && originalImageUrls.length > 0 ? originalImageUrls[0] : primaryImage;
                   updateInventoryItem(viewingItem.id, { 
                     imageUrls, 
                     imageUrl: primaryImage,
                     thumbnailUrls: thumbnailUrls || [],
-                    thumbnailUrl: primaryThumb
+                    thumbnailUrl: primaryThumb,
+                    originalImageUrls: originalImageUrls || [],
+                    originalImageUrl: primaryOriginal
                   });
                   setViewingItem(prev => prev ? { 
                     ...prev, 
                     imageUrls, 
                     imageUrl: primaryImage,
                     thumbnailUrls: thumbnailUrls || [],
-                    thumbnailUrl: primaryThumb
+                    thumbnailUrl: primaryThumb,
+                    originalImageUrls: originalImageUrls || [],
+                    originalImageUrl: primaryOriginal
                   } : null);
                 }
               }}
-              onImageUpdate={(imageUrl, thumbnailUrl) => {
+              onImageUpdate={(imageUrl, thumbnailUrl, originalImageUrl) => {
                 if (viewingItem) {
-                  updateInventoryItem(viewingItem.id, { imageUrl, thumbnailUrl });
-                  setViewingItem(prev => prev ? { ...prev, imageUrl, thumbnailUrl } : null);
+                  updateInventoryItem(viewingItem.id, { imageUrl, thumbnailUrl, originalImageUrl });
+                  setViewingItem(prev => prev ? { ...prev, imageUrl, thumbnailUrl, originalImageUrl } : null);
                 }
               }}
           />
@@ -965,6 +974,8 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
           {previewGallery && (
             <ImageViewerModal
               images={previewGallery.images}
+              originalImages={previewGallery.originalImages}
+              currentUser={currentUser}
               initialIndex={previewGallery.currentIndex}
               title={previewGallery.title}
               code={previewGallery.code}

@@ -2,23 +2,38 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { ZoomViewer } from './ZoomViewer';
+import { OriginalImageContextMenu, useImageContextMenu } from './OriginalImageContextMenu';
+import { User } from '../utils/types';
 
 interface ImageViewerModalProps {
   images: string[];
+  originalImages?: string[];
   initialIndex?: number;
   title?: string;
   code?: string;
+  currentUser?: User | null;
   onClose: (lastIndex: number) => void;
 }
 
 export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   images,
+  originalImages = [],
   initialIndex = 0,
   title,
   code,
+  currentUser,
   onClose
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+
+  const currentOriginalUrl = originalImages[currentIndex] || (originalImages.length === 1 ? originalImages[0] : null);
+
+  const { menuPosition, closeMenu, bindEvents } = useImageContextMenu(
+    currentUser,
+    currentOriginalUrl,
+    code,
+    currentIndex
+  );
 
   useEffect(() => {
     setCurrentIndex(initialIndex);
@@ -56,7 +71,13 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
       <div 
         className="relative bg-white rounded-2xl shadow-2xl overflow-hidden w-[95vw] md:w-[90vw] lg:w-[85vw] max-w-6xl h-[85vh] md:h-[90vh] flex flex-col p-4 md:p-6 border border-slate-200"
         onClick={(e) => e.stopPropagation()}
+        {...bindEvents}
       >
+        <OriginalImageContextMenu 
+          position={menuPosition} 
+          onClose={closeMenu} 
+          currentUser={currentUser} 
+        />
         {/* Header del Modal */}
         <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100 shrink-0">
           <div className="min-w-0 pr-2">

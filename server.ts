@@ -42,6 +42,54 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Proxy endpoint to download original files cleanly bypassing cross-origin restrictions
+  app.get("/api/download-proxy", async (req, res) => {
+    try {
+      const fileUrl = req.query.url as string;
+      const requestedName = (req.query.filename as string) || "imagen_original.jpg";
+
+      if (!fileUrl) {
+        res.status(400).json({ error: "URL is required" });
+        return;
+      }
+
+      if (fileUrl.startsWith("data:")) {
+        const matches = fileUrl.match(/^data:(.+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          res.setHeader("Content-Type", mimeType);
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${encodeURIComponent(requestedName)}"`
+          );
+          res.send(buffer);
+          return;
+        }
+      }
+
+      const response = await fetch(fileUrl);
+      if (!response.ok) {
+        res.status(response.status).json({ error: `Failed to fetch file: ${response.statusText}` });
+        return;
+      }
+
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${encodeURIComponent(requestedName)}"`
+      );
+      res.send(buffer);
+    } catch (error: any) {
+      console.error("Error in download-proxy:", error);
+      res.status(500).json({ error: error?.message || "Error proxying download" });
+    }
+  });
+
   app.post("/api/openai", async (req, res) => {
     try {
       const openai = getOpenAI();

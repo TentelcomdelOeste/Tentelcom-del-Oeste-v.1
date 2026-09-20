@@ -3,13 +3,17 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import { processImageForStorage } from "./imageCompression";
 
 export interface UploadResult {
+  originalUrl: string;
   hdUrl: string;
   thumbnailUrl: string;
 }
 
 /**
- * Processes a raw image file into optimized HD (max 1200px) and Thumbnail (max 200px) WebP versions
- * and uploads both to Firebase Storage with Cache-Control headers.
+ * Uploads:
+ * 1. Raw intact original file selected by user
+ * 2. Optimized HD version (max 1200px WebP 80%)
+ * 3. Lightweight Thumbnail version (max 200px WebP 75%)
+ * All to Firebase Storage with Cache-Control headers.
  */
 export const uploadProcessedImageToStorage = async (
   file: File,
@@ -19,31 +23,43 @@ export const uploadProcessedImageToStorage = async (
   if (!file) throw new Error("No file provided");
 
   const timestamp = Date.now();
+  const rawExtension = file.name && file.name.includes('.') ? file.name.split('.').pop()! : 'jpg';
+  
+  // Generate optimized HD and Thumbnail Blobs
   const { hdBlob, thumbBlob, mimeType, extension } = await processImageForStorage(file);
 
-  const hdStoragePath = `${folderPath}/original_${baseFileName}-${timestamp}.${extension}`;
+  const originalStoragePath = `${folderPath}/original_${baseFileName}-${timestamp}.${rawExtension}`;
+  const hdStoragePath = `${folderPath}/optimized_${baseFileName}-${timestamp}.${extension}`;
   const thumbStoragePath = `${folderPath}/thumb_${baseFileName}-${timestamp}.${extension}`;
 
+  const originalStorageRef = ref(storage, originalStoragePath);
   const hdStorageRef = ref(storage, hdStoragePath);
   const thumbStorageRef = ref(storage, thumbStoragePath);
 
-  const metadata = {
+  const rawMetadata = {
+    contentType: file.type || 'image/jpeg',
+    cacheControl: 'public, max-age=31536000, immutable'
+  };
+
+  const processedMetadata = {
     contentType: mimeType,
     cacheControl: 'public, max-age=31536000, immutable'
   };
 
   try {
-    const [hdSnapshot, thumbSnapshot] = await Promise.all([
-      uploadBytes(hdStorageRef, hdBlob, metadata),
-      uploadBytes(thumbStorageRef, thumbBlob, metadata)
+    const [origSnapshot, hdSnapshot, thumbSnapshot] = await Promise.all([
+      uploadBytes(originalStorageRef, file, rawMetadata),
+      uploadBytes(hdStorageRef, hdBlob, processedMetadata),
+      uploadBytes(thumbStorageRef, thumbBlob, processedMetadata)
     ]);
 
-    const [hdUrl, thumbnailUrl] = await Promise.all([
+    const [originalUrl, hdUrl, thumbnailUrl] = await Promise.all([
+      getDownloadURL(origSnapshot.ref),
       getDownloadURL(hdSnapshot.ref),
       getDownloadURL(thumbSnapshot.ref)
     ]);
 
-    return { hdUrl, thumbnailUrl };
+    return { originalUrl, hdUrl, thumbnailUrl };
   } catch (error) {
     console.error("Error uploading processed images to storage:", error);
     throw error;

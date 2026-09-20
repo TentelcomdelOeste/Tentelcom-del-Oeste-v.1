@@ -94,6 +94,79 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
 }
 
 /**
+ * Loads an image from a URL or data URL asynchronously into an HTMLImageElement.
+ */
+export function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    if (!url) {
+      reject(new Error('URL de imagen vacía'));
+      return;
+    }
+
+    if (url.startsWith('data:image/')) {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Error al cargar la imagen en formato base64'));
+      img.src = url;
+      return;
+    }
+
+    // Try fetch first to avoid canvas taint issues with CORS
+    fetch(url, { mode: 'cors' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.blob();
+      })
+      .then(blob => {
+        const objectUrl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(img);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('Error al decodificar el Blob de la imagen'));
+        };
+        img.src = objectUrl;
+      })
+      .catch(() => {
+        // Fallback to direct Image load
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Error al cargar la imagen por URL'));
+        img.src = url;
+      });
+  });
+}
+
+/**
+ * Processes an existing image URL / data URL:
+ * Generates an optimized HD version and a Thumbnail version.
+ */
+export async function processImageUrlForStorage(imageUrl: string): Promise<ProcessedImages & { width: number; height: number }> {
+  const img = await loadImageFromUrl(imageUrl);
+  const width = img.naturalWidth || img.width;
+  const height = img.naturalHeight || img.height;
+
+  const hdResult = await resizeImageToBlob(img, 1200, 0.8, 'image/webp');
+  const thumbResult = await resizeImageToBlob(img, 200, 0.75, 'image/webp');
+
+  const mimeType = hdResult.mimeType.includes('webp') ? 'image/webp' : hdResult.mimeType;
+  const extension = mimeType === 'image/webp' ? 'webp' : 'jpg';
+
+  return {
+    hdBlob: hdResult.blob,
+    thumbBlob: thumbResult.blob,
+    mimeType,
+    extension,
+    width,
+    height
+  };
+}
+
+/**
  * Processes a raw image File:
  * 1. Generates an optimized HD version (max 1200px, quality 80%)
  * 2. Generates a lightweight Thumbnail version (max 200px, quality 75-80%)

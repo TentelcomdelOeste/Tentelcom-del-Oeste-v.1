@@ -10,14 +10,18 @@ import { InventoryMovement } from '../inventoryMovementTypes';
 import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2, FiChevronLeft, FiChevronRight, FiUpload, FiRefreshCw, FiLoader } from "react-icons/fi";
 import { uploadImageToStorage, uploadProcessedImageToStorage, deleteImageFromStorage } from '../utils/storageUtils';
 import { ImageViewerModal } from '../components/ImageViewerModal';
+import { OptimizedImage } from '../components/OptimizedImage';
+import { isHistoricalItem, optimizeHistoricalItemImages } from '../utils/historicalImageOptimizer';
+import { OriginalImageContextMenu, useImageContextMenu } from '../components/OriginalImageContextMenu';
+import { getItemImageSet } from '../utils/imageUtils';
 
 interface InventoryDetailModalProps {
   show: boolean;
   onClose: () => void;
   item: InventoryItem | null;
   currentUser: User;
-  onImageUpdate?: (imageUrl: string, thumbnailUrl?: string) => void;
-  onImagesUpdate?: (imageUrls: string[], thumbnailUrls?: string[]) => void;
+  onImageUpdate?: (imageUrl: string, thumbnailUrl?: string, originalImageUrl?: string) => void;
+  onImagesUpdate?: (imageUrls: string[], thumbnailUrls?: string[], originalImageUrls?: string[]) => void;
 }
 
 export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show, onClose, item, currentUser, onImageUpdate, onImagesUpdate }) => {
@@ -29,7 +33,35 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [isOptimizingHistorical, setIsOptimizingHistorical] = useState<boolean>(false);
   const replacingIndexRef = useRef<number | null>(null);
+
+  const handleOptimizeHistorical = async () => {
+    if (!item) return;
+    setIsOptimizingHistorical(true);
+    try {
+      const res = await optimizeHistoricalItemImages(item);
+      if (res.success && res.updatedFields && Object.keys(res.updatedFields).length > 0) {
+        if (onImagesUpdate && res.updatedFields.imageUrls && res.updatedFields.thumbnailUrls) {
+          onImagesUpdate(
+            res.updatedFields.imageUrls,
+            res.updatedFields.thumbnailUrls,
+            res.updatedFields.originalImageUrls
+          );
+        } else if (onImageUpdate && res.updatedFields.imageUrl && res.updatedFields.thumbnailUrl) {
+          onImageUpdate(
+            res.updatedFields.imageUrl,
+            res.updatedFields.thumbnailUrl,
+            res.updatedFields.originalImageUrl
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Error al optimizar imagen histórica:", err);
+    } finally {
+      setIsOptimizingHistorical(false);
+    }
+  };
 
   // Estado previewGallery igual al de Bodegas Vehiculares (VehicleInventoryTab.tsx)
   const [previewGallery, setPreviewGallery] = useState<{
@@ -46,27 +78,24 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     replacingIndexRef.current = replacingIndex;
   }, [replacingIndex]);
 
-  const currentImages = useMemo(() => {
-    if (!item) return [];
-    if (item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
-      return item.imageUrls.filter(Boolean);
-    }
-    if (item.imageUrl) {
-      return [item.imageUrl];
-    }
-    return [];
-  }, [item]);
+  const imageSet = useMemo(() => getItemImageSet(item), [item]);
+  const currentImages = imageSet.hdImages.length > 0 ? imageSet.hdImages : imageSet.thumbnails;
+  const currentThumbnails = imageSet.thumbnails.length > 0 ? imageSet.thumbnails : currentImages;
+  const currentOriginals = imageSet.originals;
 
-  const currentThumbnails = useMemo(() => {
-    if (!item) return [];
-    if (item.thumbnailUrls && Array.isArray(item.thumbnailUrls) && item.thumbnailUrls.length > 0) {
-      return item.thumbnailUrls.filter(Boolean);
-    }
-    if (item.thumbnailUrl) {
-      return [item.thumbnailUrl];
-    }
-    return currentImages;
-  }, [item, currentImages]);
+  const selectedOriginalUrl =
+    currentOriginals[selectedIndex] ||
+    currentOriginals[0] ||
+    currentImages[selectedIndex] ||
+    currentImages[0] ||
+    null;
+
+  const { menuPosition, closeMenu, bindEvents } = useImageContextMenu(
+    currentUser,
+    selectedOriginalUrl,
+    item?.code,
+    selectedIndex
+  );
 
   // Keep selectedIndex in bounds if currentImages length changes
   useEffect(() => {
@@ -177,13 +206,14 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     setTouchStartY(null);
   };
 
-  const emitImagesUpdate = (newImages: string[], newThumbnails: string[]) => {
+  const emitImagesUpdate = (newImages: string[], newThumbnails: string[], newOriginals: string[]) => {
     if (onImagesUpdate) {
-      onImagesUpdate(newImages, newThumbnails);
+      onImagesUpdate(newImages, newThumbnails, newOriginals);
     } else if (onImageUpdate) {
       onImageUpdate(
         newImages.length > 0 ? newImages[0] : '',
-        newThumbnails.length > 0 ? newThumbnails[0] : ''
+        newThumbnails.length > 0 ? newThumbnails[0] : '',
+        newOriginals.length > 0 ? newOriginals[0] : ''
       );
     }
   };
@@ -208,43 +238,49 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
       const targetIndex = isReplacing ? replacingIndexRef.current! : currentImages.length;
       const baseFileName = `image-${targetIndex + 1}`;
       
-      // Upload processed HD and Thumbnail images to Firebase Storage
-      const { hdUrl, thumbnailUrl } = await uploadProcessedImageToStorage(file, folderPath, baseFileName);
+      // Upload raw original, processed HD, and Thumbnail images to Firebase Storage
+      const { originalUrl, hdUrl, thumbnailUrl } = await uploadProcessedImageToStorage(file, folderPath, baseFileName);
       
       let nextImages = [...currentImages];
       let nextThumbnails = [...currentThumbnails];
+      let nextOriginals = [...currentOriginals];
 
-      // Ensure thumbnails array matches images array length before replacement/addition
+      // Ensure thumbnails and originals arrays match images array length before replacement/addition
       while (nextThumbnails.length < nextImages.length) {
         nextThumbnails.push(nextImages[nextThumbnails.length]);
+      }
+      while (nextOriginals.length < nextImages.length) {
+        nextOriginals.push(nextImages[nextOriginals.length]);
       }
       
       let oldImageUrlToClean: string | null = null;
       let oldThumbUrlToClean: string | null = null;
+      let oldOriginalUrlToClean: string | null = null;
       
       if (isReplacing) {
         const replaceIdx = replacingIndexRef.current!;
         oldImageUrlToClean = nextImages[replaceIdx];
         oldThumbUrlToClean = nextThumbnails[replaceIdx];
+        oldOriginalUrlToClean = nextOriginals[replaceIdx];
 
         nextImages[replaceIdx] = hdUrl;
         nextThumbnails[replaceIdx] = thumbnailUrl;
+        nextOriginals[replaceIdx] = originalUrl;
         setSelectedIndex(replaceIdx);
       } else if (nextImages.length < 4) {
         nextImages.push(hdUrl);
         nextThumbnails.push(thumbnailUrl);
+        nextOriginals.push(originalUrl);
         setSelectedIndex(nextImages.length - 1);
       }
       
       // Update Firestore references
-      emitImagesUpdate(nextImages, nextThumbnails);
+      emitImagesUpdate(nextImages, nextThumbnails, nextOriginals);
       
       // Clean up old images if replacing
-      if (oldImageUrlToClean) {
-        await deleteImageFromStorage(oldImageUrlToClean).catch(console.error);
-      }
-      if (oldThumbUrlToClean && oldThumbUrlToClean !== oldImageUrlToClean) {
-        await deleteImageFromStorage(oldThumbUrlToClean).catch(console.error);
+      const urlsToClean = new Set([oldImageUrlToClean, oldThumbUrlToClean, oldOriginalUrlToClean].filter(Boolean) as string[]);
+      for (const url of urlsToClean) {
+        await deleteImageFromStorage(url).catch(console.error);
       }
 
     } catch (error) {
@@ -275,15 +311,17 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     try {
       const urlToDelete = currentImages[indexToDelete];
       const thumbToDelete = currentThumbnails[indexToDelete];
+      const originalToDelete = currentOriginals[indexToDelete];
       
       const nextImages = currentImages.filter((_, idx) => idx !== indexToDelete);
       const nextThumbnails = currentThumbnails.filter((_, idx) => idx !== indexToDelete);
+      const nextOriginals = currentOriginals.filter((_, idx) => idx !== indexToDelete);
 
-      emitImagesUpdate(nextImages, nextThumbnails);
+      emitImagesUpdate(nextImages, nextThumbnails, nextOriginals);
       
-      await deleteImageFromStorage(urlToDelete).catch(console.error);
-      if (thumbToDelete && thumbToDelete !== urlToDelete) {
-        await deleteImageFromStorage(thumbToDelete).catch(console.error);
+      const urlsToClean = new Set([urlToDelete, thumbToDelete, originalToDelete].filter(Boolean) as string[]);
+      for (const url of urlsToClean) {
+        await deleteImageFromStorage(url).catch(console.error);
       }
 
       if (nextImages.length === 0) {
@@ -513,7 +551,28 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                     Visor de imágenes del material. Utiliza los botones inferiores para subir, reemplazar o eliminar imágenes.
                                 </p>
                             </div>
-                            <div className="shrink-0">
+                            <div className="shrink-0 flex items-center gap-2">
+                                {isHistoricalItem(item) && (
+                                    <button
+                                        type="button"
+                                        onClick={handleOptimizeHistorical}
+                                        disabled={isOptimizingHistorical || isUploading}
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 border border-amber-300 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                                        title="Esta imagen fue subida con el formato antiguo. Haz clic para generar su miniatura optimizada de forma segura sin modificar el archivo original."
+                                    >
+                                        {isOptimizingHistorical ? (
+                                            <>
+                                                <FiLoader className="w-3.5 h-3.5 animate-spin" />
+                                                <span>Optimizando...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FiRefreshCw className="w-3.5 h-3.5" />
+                                                <span>Optimizar Imagen Histórica</span>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
                                 <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
                                     currentImages.length >= 4 
                                         ? 'bg-amber-50 text-amber-700 border-amber-200' 
@@ -527,11 +586,24 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                         {/* VISOR DE IMÁGENES (Exclusivo para visualización y navegación) */}
                         <div 
                             className="relative w-full aspect-video sm:aspect-[21/9] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-4 border border-slate-800 shadow-inner select-none touch-pan-y cursor-pointer sm:cursor-default"
-                            onTouchStart={handleTouchStart}
-                            onTouchEnd={handleTouchEnd}
+                            onTouchStart={(e) => {
+                              handleTouchStart(e);
+                              bindEvents.onTouchStart(e);
+                            }}
+                            onTouchMove={bindEvents.onTouchMove}
+                            onTouchEnd={(e) => {
+                              handleTouchEnd(e);
+                              bindEvents.onTouchEnd(e);
+                            }}
+                            onContextMenu={bindEvents.onContextMenu}
                             onClick={handleImageClick}
                             onDoubleClick={handleImageDoubleClick}
                         >
+                            <OriginalImageContextMenu 
+                              position={menuPosition} 
+                              onClose={closeMenu} 
+                              currentUser={currentUser} 
+                            />
                             {currentImages.length > 0 ? (
                                 <>
                                     {/* Flecha Izquierda (Anterior) */}
@@ -549,12 +621,17 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                         </button>
                                     )}
 
-                                    {/* Imagen activa centrada sin deformar */}
-                                    <img 
+                                    {/* Imagen activa centrada sin deformar (HD con fallback a Thumbnail) */}
+                                    <OptimizedImage 
                                         src={currentImages[selectedIndex] || currentImages[0]} 
+                                        fallbackSrc={currentThumbnails[selectedIndex] || currentThumbnails[0]}
                                         alt={`${item.description} - Imagen ${selectedIndex + 1}`} 
-                                        className="max-w-full max-h-full object-contain rounded-lg transition-all duration-200 pointer-events-none"
+                                        loading="eager"
+                                        decoding="async"
+                                        className="w-full h-full p-1 pointer-events-none flex items-center justify-center"
+                                        objectFit="contain"
                                         referrerPolicy="no-referrer"
+                                        iconSize={32}
                                     />
 
                                     {/* Flecha Derecha (Siguiente) */}
@@ -590,6 +667,38 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                 </div>
                             )}
                         </div>
+
+                        {/* GALERÍA DE MINIATURAS (utiliza thumbnails para hasta 4 fotos) */}
+                        {currentImages.length > 1 && (
+                            <div className="flex items-center justify-center gap-2.5 pt-1">
+                                {currentImages.map((_, idx) => {
+                                    const thumbUrl = currentThumbnails[idx] || currentImages[idx];
+                                    const isSelected = idx === selectedIndex;
+                                    return (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => setSelectedIndex(idx)}
+                                            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 overflow-hidden transition-all cursor-pointer shrink-0 ${
+                                                isSelected 
+                                                    ? 'border-blue-600 ring-2 ring-blue-400/50 scale-105 shadow-sm' 
+                                                    : 'border-slate-200 hover:border-slate-400 opacity-70 hover:opacity-100'
+                                            }`}
+                                            title={`Ver foto ${idx + 1}`}
+                                        >
+                                            <OptimizedImage
+                                                src={thumbUrl}
+                                                fallbackSrc={currentImages[idx]}
+                                                alt={`Miniatura ${idx + 1}`}
+                                                className="w-full h-full p-0.5"
+                                                referrerPolicy="no-referrer"
+                                                iconSize={16}
+                                            />
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
 
                         {/* BOTONES ACCIONES FUERA DEL VISOR */}
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
@@ -701,6 +810,8 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
         {previewGallery && (
           <ImageViewerModal
             images={previewGallery.images}
+            originalImages={currentOriginals}
+            currentUser={currentUser}
             initialIndex={previewGallery.currentIndex}
             title={previewGallery.title}
             code={previewGallery.code}

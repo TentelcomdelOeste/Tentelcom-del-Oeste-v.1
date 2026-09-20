@@ -620,16 +620,9 @@ export const VehicleRequestModal: React.FC<Props> = ({
                 onChange={(e) => handleVehicleChange(e.target.value)}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               >
-                <optgroup label="BODEGAS FÍSICAS">
-                  {vehicles.filter(v => v.type === 'BODEGA').map(v => (
-                    <option key={v.id} value={v.id}>{v.alias}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="BODEGAS VEHICULARES">
-                  {vehicles.filter(v => v.type !== 'BODEGA').map(v => (
-                    <option key={v.id} value={v.id}>{v.alias}</option>
-                  ))}
-                </optgroup>
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.id}>{v.alias}</option>
+                ))}
               </select>
             </div>
 
@@ -894,16 +887,9 @@ export const VehicleRequestModal: React.FC<Props> = ({
                     onChange={(e) => handleVehicleChange(e.target.value)}
                     className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-10"
                   >
-                    <optgroup label="BODEGAS FÍSICAS">
-                      {vehicles.filter(v => v.type === 'BODEGA').map(v => (
-                        <option key={v.id} value={v.id}>{v.alias}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="BODEGAS VEHICULARES">
-                      {vehicles.filter(v => v.type !== 'BODEGA').map(v => (
-                        <option key={v.id} value={v.id}>{v.alias}</option>
-                      ))}
-                    </optgroup>
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.alias}</option>
+                    ))}
                   </select>
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                     <FiChevronDown />
