@@ -44,26 +44,113 @@ export const BODEGA_TIBAS_CONFIG: VehicleCatalogItem = {
   status: 'Activa'
 };
 
-// Mapeo de unidad preseleccionada por correo electrónico
+// Mapeo de unidad preseleccionada por correo electrónico o identificador
 export const USER_DEFAULT_VEHICLE_MAP: Record<string, string> = {
   'jonatanzetha@gmail.com': 'U4',
+  'jonatanzetha': 'U4',
   'ronaldporras4@gmail.com': 'U2',
+  'ronaldporras4': 'U2',
   'joseluissequeira1126@gmail.com': 'U6',
+  'joseluissequeira1126': 'U6',
   'loncho2886@gmail.com': 'U2',
+  'loncho2886': 'U2',
   'jenamorado@tentelcom.com': 'U2',
-  'piedravialesjose@gmail.com': 'U8'
+  'jenamorado': 'U2',
+  'piedravialesjose@gmail.com': 'U8',
+  'piedravialesjose': 'U8'
 };
 
-export const getDefaultVehicleForUser = (user?: { email?: string | null } | null): string => {
-  const emailProp = user?.email?.toLowerCase().trim();
-  const emailAuth = (typeof auth !== 'undefined' && auth?.currentUser?.email) ? auth.currentUser.email.toLowerCase().trim() : '';
-  const email = emailProp || emailAuth;
-  if (email && USER_DEFAULT_VEHICLE_MAP[email]) {
-    return USER_DEFAULT_VEHICLE_MAP[email];
+export const getDefaultVehicleForUser = (user?: { email?: string | null; name?: string | null; username?: string | null } | null): string => {
+  const candidates: string[] = [];
+
+  if (user?.email) candidates.push(user.email);
+  if ((user as any)?.username) candidates.push((user as any).username);
+  if ((user as any)?.correo) candidates.push((user as any).correo);
+  if (user?.name) candidates.push(user.name);
+
+  // Check auth.currentUser de Firebase
+  try {
+    if (typeof auth !== 'undefined' && auth?.currentUser) {
+      if (auth.currentUser.email) candidates.push(auth.currentUser.email);
+      if (auth.currentUser.displayName) candidates.push(auth.currentUser.displayName);
+    }
+  } catch (e) {
+    // Silent catch
   }
-  const catalog = getVehicleCatalog();
-  const firstVeh = catalog.find(v => v.type === 'VEHICULO') || catalog[0];
-  return firstVeh ? firstVeh.id : '';
+
+  // Check LocalStorage session cache
+  try {
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      const sessionRaw = localStorage.getItem('tentelcom_user_session');
+      if (sessionRaw) {
+        const sessionData = JSON.parse(sessionRaw);
+        if (sessionData?.email) candidates.push(sessionData.email);
+        if (sessionData?.username) candidates.push(sessionData.username);
+        if (sessionData?.name) candidates.push(sessionData.name);
+      }
+
+      // Check Firebase auth keys in localStorage
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('firebase:authUser:')) {
+          const authRaw = localStorage.getItem(key);
+          if (authRaw) {
+            const authData = JSON.parse(authRaw);
+            if (authData?.email) candidates.push(authData.email);
+            if (authData?.displayName) candidates.push(authData.displayName);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Silent catch
+  }
+
+  // Evaluate candidates
+  for (const rawCandidate of candidates) {
+    if (!rawCandidate || typeof rawCandidate !== 'string') continue;
+    const lower = rawCandidate.toLowerCase().trim();
+
+    // 1. Exact match in map
+    if (USER_DEFAULT_VEHICLE_MAP[lower]) {
+      return USER_DEFAULT_VEHICLE_MAP[lower];
+    }
+
+    // 2. Email prefix match
+    const prefix = lower.split('@')[0];
+    if (USER_DEFAULT_VEHICLE_MAP[prefix]) {
+      return USER_DEFAULT_VEHICLE_MAP[prefix];
+    }
+
+    // 3. Substring heuristics (por usuario o nombre)
+    if (lower.includes('loncho2886') || lower.includes('loncho') || lower.includes('alonso')) {
+      return 'U2';
+    }
+    if (lower.includes('jenamorado') || lower.includes('enamorado')) {
+      return 'U2';
+    }
+    if (lower.includes('ronaldporras4') || lower.includes('ronaldporras') || lower.includes('ronald porras')) {
+      return 'U2';
+    }
+    if (lower.includes('joseluissequeira1126') || lower.includes('joseluissequeira') || lower.includes('sequeira')) {
+      return 'U6';
+    }
+    if (lower.includes('jonatanzetha') || lower.includes('jonatan') || lower.includes('jonathan')) {
+      return 'U4';
+    }
+    if (lower.includes('piedravialesjose') || lower.includes('piedraviales') || lower.includes('piedra viales') || lower.includes('jose piedra')) {
+      return 'U8';
+    }
+  }
+
+  // Si hay datos de usuario pero no corresponde a ninguno específico, usar primer vehículo
+  if (candidates.length > 0) {
+    const catalog = getVehicleCatalog();
+    const firstVeh = catalog.find(v => v.type === 'VEHICULO') || catalog[0];
+    return firstVeh ? firstVeh.id : 'U2';
+  }
+  
+  return 'U2';
 };
 
 export const formatVehicleOptionLabel = (label: string): string => {

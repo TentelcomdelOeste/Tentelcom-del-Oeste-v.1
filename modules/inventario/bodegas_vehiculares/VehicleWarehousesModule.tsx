@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ModulePage } from '../../../components/ui/ModulePage';
 import { ActionButton } from '../../../design-system';
-import { FiBox, FiClipboard, FiRefreshCw, FiPieChart } from 'react-icons/fi';
+import { FiBox, FiTool, FiClipboard, FiRefreshCw, FiPieChart } from 'react-icons/fi';
 import { User } from '../../../types';
-import { db } from '../../../firebase';
+import { useUserContext } from '../../../contexts/UserContext';
+import { db, auth } from '../../../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 import { VehicleInventoryTab } from './tabs/VehicleInventoryTab';
@@ -23,21 +24,39 @@ interface VehicleWarehousesModuleProps {
 }
 
 const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'inventory' | 'requests' | 'movements' | 'reports'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'tools' | 'requests' | 'movements' | 'reports'>('inventory');
+  const userContext = useUserContext();
+  const effectiveUser = currentUser || userContext?.currentUser || null;
   
   // Shared state across the tabs - Preselección basada en el usuario autenticado
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(() => getDefaultVehicleForUser(currentUser));
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(() => getDefaultVehicleForUser(effectiveUser));
   const hasUserManuallySelected = React.useRef<boolean>(false);
 
-  // Sincronizar si cambia el usuario currentUser (si el usuario no ha seleccionado manualmente otra unidad)
+  // Sincronizar si cambia el usuario o el estado de autenticación (si el usuario no ha seleccionado manualmente otra unidad)
   useEffect(() => {
     if (!hasUserManuallySelected.current) {
-      const defaultVeh = getDefaultVehicleForUser(currentUser);
+      const defaultVeh = getDefaultVehicleForUser(effectiveUser);
       if (defaultVeh) {
         setSelectedVehicleId(defaultVeh);
       }
     }
-  }, [currentUser?.email]);
+  }, [effectiveUser?.email, (effectiveUser as any)?.username, effectiveUser?.name]);
+
+  useEffect(() => {
+    try {
+      const unsub = auth.onAuthStateChanged((fbUser) => {
+        if (fbUser && !hasUserManuallySelected.current) {
+          const defaultVeh = getDefaultVehicleForUser(fbUser);
+          if (defaultVeh) {
+            setSelectedVehicleId(defaultVeh);
+          }
+        }
+      });
+      return () => unsub();
+    } catch (e) {
+      // Ignorar
+    }
+  }, []);
 
   const handleSelectVehicleId = (newVehicleId: string) => {
     hasUserManuallySelected.current = true;
@@ -283,33 +302,57 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
             onClick={() => setActiveTab('inventory')}
             className={`whitespace-nowrap ${activeTab !== 'inventory' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
           />
-            <ActionButton
-              label="Solicitudes de Proyecto"
-              icon={<FiClipboard />}
-              variant={activeTab === 'requests' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('requests')}
-              className={`whitespace-nowrap ${activeTab !== 'requests' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
-            />
-            <ActionButton
-              label="Historial de Movimientos"
-              icon={<FiRefreshCw />}
-              variant={activeTab === 'movements' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('movements')}
-              className={`whitespace-nowrap ${activeTab !== 'movements' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
-            />
-            <ActionButton
-              label="Reportes y Consumos"
-              icon={<FiPieChart />}
-              variant={activeTab === 'reports' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('reports')}
-              className={`whitespace-nowrap ${activeTab !== 'reports' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
-            />
-          </div>
+          <ActionButton
+            label="Herramientas y Equipos"
+            icon={<FiTool />}
+            variant={activeTab === 'tools' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('tools')}
+            className={`whitespace-nowrap ${activeTab !== 'tools' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+          />
+          <ActionButton
+            label="Solicitudes de Proyecto"
+            icon={<FiClipboard />}
+            variant={activeTab === 'requests' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('requests')}
+            className={`whitespace-nowrap ${activeTab !== 'requests' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+          />
+          <ActionButton
+            label="Historial de Movimientos"
+            icon={<FiRefreshCw />}
+            variant={activeTab === 'movements' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('movements')}
+            className={`whitespace-nowrap ${activeTab !== 'movements' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+          />
+          <ActionButton
+            label="Reportes y Consumos"
+            icon={<FiPieChart />}
+            variant={activeTab === 'reports' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('reports')}
+            className={`whitespace-nowrap ${activeTab !== 'reports' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+          />
+        </div>
 
         <div>
           {activeTab === 'inventory' && (
             <VehicleInventoryTab
-              currentUser={currentUser}
+              currentUser={effectiveUser}
+              mode="materials"
+              items={items}
+              movements={movements}
+              onTransfer={handleTransfer}
+              onMultipleTransfer={handleMultipleTransfer}
+              onDeleteInventoryItem={handleDeleteInventoryItem}
+              selectedVehicleId={selectedVehicleId}
+              onSelectVehicleId={handleSelectVehicleId}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+            />
+          )}
+
+          {activeTab === 'tools' && (
+            <VehicleInventoryTab
+              currentUser={effectiveUser}
+              mode="tools"
               items={items}
               movements={movements}
               onTransfer={handleTransfer}
@@ -324,7 +367,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
 
           {activeTab === 'requests' && (
             <VehicleRequestsTab
-              currentUser={currentUser}
+              currentUser={effectiveUser}
               selectedVehicleId={selectedVehicleId}
               requests={requests}
               items={items}
@@ -340,7 +383,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
 
           {activeTab === 'movements' && (
             <VehicleMovementsTab
-              currentUser={currentUser}
+              currentUser={effectiveUser}
               movements={movements}
               onDeleteMovement={handleDeleteMovement}
               activeTab={activeTab}
@@ -350,7 +393,7 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
 
           {activeTab === 'reports' && (
             <VehicleReportsTab
-              currentUser={currentUser}
+              currentUser={effectiveUser}
               consumptions={consumptions}
               onDeleteConsumption={handleDeleteConsumption}
               activeTab={activeTab}

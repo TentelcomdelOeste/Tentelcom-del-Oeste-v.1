@@ -11,8 +11,8 @@ interface Props {
   currentUser?: User | null;
   consumptions?: VehicleProjectConsumption[];
   onDeleteConsumption?: (consumptionId: string) => Promise<void> | void;
-  activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
-  onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
+  activeTab?: 'inventory' | 'tools' | 'requests' | 'movements' | 'reports';
+  onTabChange?: (tab: 'inventory' | 'tools' | 'requests' | 'movements' | 'reports') => void;
 }
 
 const MONTH_NAMES = [
@@ -188,6 +188,7 @@ export const VehicleReportsTab: React.FC<Props> = ({
                 className="w-full p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 sm:pr-7 truncate"
               >
                 <option value="inventory">📦 Inventario</option>
+                <option value="tools">🛠️ Herramientas y Equipos</option>
                 <option value="requests">📋 Solicitudes</option>
                 <option value="movements">🔄 Movimientos</option>
                 <option value="reports">📊 Reportes</option>

@@ -12,8 +12,33 @@ import { OptimizedImage } from '../../../../components/OptimizedImage';
 import { getItemImageSet } from '../../../../utils/imageUtils';
 import { format } from 'date-fns';
 
+/**
+ * Normaliza y determina de forma robusta si una categoría corresponde
+ * a Herramientas o Equipos (insensible a mayúsculas, acentos o espacios).
+ */
+export const isToolOrEquipmentCategory = (cat?: string | null): boolean => {
+  if (!cat || typeof cat !== 'string') return false;
+  const clean = cat
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return (
+    clean === 'HERRAMIENTAS' ||
+    clean === 'HERRAMIENTA' ||
+    clean === 'EQUIPOS' ||
+    clean === 'EQUIPO' ||
+    clean === 'EQUIPOS ACTIVOS' ||
+    clean === 'EQUIPO ACTIVO' ||
+    clean.includes('HERRAMIENTA') ||
+    clean.includes('EQUIPO')
+  );
+};
+
 interface Props {
   currentUser?: User | null;
+  mode?: 'materials' | 'tools';
   items?: VehicleWarehouseItem[];
   movements?: VehicleMovement[];
   setItems?: React.Dispatch<React.SetStateAction<VehicleWarehouseItem[]>>;
@@ -32,12 +57,13 @@ interface Props {
   onDeleteInventoryItem?: (itemId: string) => Promise<void> | void;
   selectedVehicleId?: string;
   onSelectVehicleId?: (id: string) => void;
-  activeTab?: 'inventory' | 'requests' | 'movements' | 'reports';
-  onTabChange?: (tab: 'inventory' | 'requests' | 'movements' | 'reports') => void;
+  activeTab?: 'inventory' | 'tools' | 'requests' | 'movements' | 'reports';
+  onTabChange?: (tab: 'inventory' | 'tools' | 'requests' | 'movements' | 'reports') => void;
 }
 
 export const VehicleInventoryTab: React.FC<Props> = ({
   currentUser,
+  mode = 'materials',
   items: externalItems,
   movements = [],
   onTransfer,
@@ -154,7 +180,9 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     });
   }, [externalItems, generalInventoryMap]);
   const vehicles = getVehicleCatalog();
-  const selectedVehicleId = externalSelectedVehicleId || getDefaultVehicleForUser(currentUser);
+  const selectedVehicleId = (externalSelectedVehicleId !== undefined && externalSelectedVehicleId !== '')
+    ? externalSelectedVehicleId
+    : (getDefaultVehicleForUser(currentUser) || 'U2');
 
   const setSelectedVehicleId = onSelectVehicleId || (() => {});
 
@@ -239,6 +267,15 @@ export const VehicleInventoryTab: React.FC<Props> = ({
     let result = items.filter(item => {
       if (item.vehiculoId !== selectedVehicleId) return false;
 
+      // Filtrado por sección: Herramientas/Equipos vs Materiales de Inventario
+      const isToolOrEquip = isToolOrEquipmentCategory(item.category);
+      if (mode === 'tools') {
+        if (!isToolOrEquip) return false;
+      } else {
+        // mode === 'materials' (por defecto)
+        if (isToolOrEquip) return false;
+      }
+
       const stock = Number(item.physicalStock) || 0;
       const committed = Number(item.committedStock) || 0;
       const available = item.availableStock !== undefined 
@@ -257,9 +294,18 @@ export const VehicleInventoryTab: React.FC<Props> = ({
         item.category.toLowerCase().includes(lower)
       );
     }
+
+    // Orden alfabético por descripción (A → Z)
+    result.sort((a, b) =>
+      String(a.description || '').localeCompare(
+        String(b.description || ''),
+        'es',
+        { sensitivity: 'base' }
+      )
+    );
     
     return result;
-  }, [items, selectedVehicleId, searchTerm]);
+  }, [items, selectedVehicleId, searchTerm, mode]);
 
   // Modal state for multiple transfer
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -419,6 +465,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-6 truncate"
             >
               <option value="inventory">📦 Inventario</option>
+              <option value="tools">🛠️ Herramientas y Equipos</option>
               <option value="requests">📋 Solicitudes</option>
               <option value="movements">🔄 Movimientos</option>
               <option value="reports">📊 Reportes</option>
