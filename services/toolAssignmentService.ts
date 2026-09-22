@@ -186,10 +186,11 @@ export const toolAssignmentService = {
           destination: dto.recipientName,
           recipientName: dto.recipientName,
           recipientType: dto.recipientType,
+          isExternalRecipient: Boolean(dto.isExternalRecipient),
           initialCondition: dto.initialCondition || 'Bueno',
           reason: dto.observations 
-            ? `Asignación a ${dto.recipientName} (${dto.recipientType === 'colaborador' ? 'Colaborador' : 'Unidad Vehicular'}): ${dto.observations}` 
-            : `Asignación de herramienta a ${dto.recipientName} (${dto.recipientType === 'colaborador' ? 'Colaborador' : 'Unidad Vehicular'})`,
+            ? `Asignación a ${dto.recipientName} (${dto.recipientType === 'colaborador' ? (dto.isExternalRecipient ? 'Destinatario Externo' : 'Colaborador') : 'Unidad Vehicular'}): ${dto.observations}` 
+            : `Asignación de herramienta a ${dto.recipientName} (${dto.recipientType === 'colaborador' ? (dto.isExternalRecipient ? 'Destinatario Externo' : 'Colaborador') : 'Unidad Vehicular'})`,
           observations: dto.observations || '',
           userId: currentUser.uid || '',
           userName: dto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
@@ -238,6 +239,7 @@ export const toolAssignmentService = {
           recipientId: dto.recipientId,
           recipientName: dto.recipientName,
           recipientDetail: dto.recipientDetail || '',
+          isExternalRecipient: Boolean(dto.isExternalRecipient),
           assignedDate: dto.assignedDate || nowIso.split('T')[0],
           status: 'Asignado',
           initialCondition: dto.initialCondition || 'Bueno',
@@ -806,6 +808,7 @@ export const toolAssignmentService = {
             recipientId: firstDto.recipientId,
             recipientName: firstDto.recipientName,
             recipientDetail: firstDto.recipientDetail || '',
+            isExternalRecipient: Boolean(firstDto.isExternalRecipient),
             assignedDate: firstDto.assignedDate || nowIso.split('T')[0],
             status: 'Asignado',
             initialCondition: dto.initialCondition || 'Bueno',
@@ -852,6 +855,7 @@ export const toolAssignmentService = {
           destination: firstDto.recipientName,
           recipientName: firstDto.recipientName,
           recipientType: firstDto.recipientType,
+          isExternalRecipient: Boolean(firstDto.isExternalRecipient),
           initialCondition: 'Múltiple',
           reason: firstDto.observations 
             ? `Asignación múltiple a ${firstDto.recipientName} (${dtos.length} ítems): ${firstDto.observations}` 

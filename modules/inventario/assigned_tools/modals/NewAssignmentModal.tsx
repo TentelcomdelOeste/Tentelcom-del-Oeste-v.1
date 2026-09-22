@@ -72,6 +72,7 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
   
   // Custom dropdown states
   const [recipientSearchText, setRecipientSearchText] = useState<string>('');
+  const [isExternalRecipient, setIsExternalRecipient] = useState<boolean>(false);
   const [showRecipientDropdown, setShowRecipientDropdown] = useState<boolean>(false);
   
   const [itemSearchText, setItemSearchText] = useState<string>('');
@@ -138,6 +139,7 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
       setShowAssignedByDropdown(false);
       
       setRecipientSearchText('');
+      setIsExternalRecipient(false);
       setShowRecipientDropdown(false);
       setItemSearchText('');
       setShowItemDropdown(false);
@@ -282,6 +284,9 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
   const handleRecipientTypeChange = (type: RecipientType) => {
     setRecipientType(type);
     setRecipientId('');
+    setRecipientSearchText('');
+    setIsExternalRecipient(false);
+    setShowRecipientDropdown(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -301,11 +306,6 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
       }
     }
 
-    if (!recipientId) {
-      setError(`Por favor selecciona el ${recipientType === 'colaborador' ? 'colaborador' : 'vehículo/unidad'} destinatario.`);
-      return;
-    }
-
     if (!assignedBy || !assignedBy.trim()) {
       setError('Por favor selecciona el responsable que entrega o registra.');
       return;
@@ -313,16 +313,47 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
 
     let recipientName = '';
     let recipientDetail = '';
+    let finalRecipientId = recipientId;
+    let finalIsExternal = isExternalRecipient;
 
     if (recipientType === 'colaborador') {
-      const emp = activeEmployees.find((e) => e.id === recipientId);
-      if (!emp) {
-        setError('Colaborador seleccionado no válido.');
+      const trimmedSearch = recipientSearchText.trim();
+      if (!trimmedSearch) {
+        setError('Por favor ingresa o selecciona el colaborador o destinatario.');
         return;
       }
-      recipientName = emp.name;
-      recipientDetail = 'Colaborador';
+
+      // Check if matches an existing employee
+      const emp = activeEmployees.find((e) => e.id === recipientId);
+      if (emp && emp.name.toLowerCase() === trimmedSearch.toLowerCase()) {
+        recipientName = emp.name;
+        recipientDetail = emp.position || 'Colaborador';
+        finalRecipientId = emp.id || '';
+        finalIsExternal = false;
+      } else {
+        // Check if trimmedSearch exactly matches any active employee name (if not explicitly marked external)
+        const matchedByName = !isExternalRecipient
+          ? activeEmployees.find((e) => e.name.toLowerCase() === trimmedSearch.toLowerCase())
+          : null;
+
+        if (matchedByName) {
+          recipientName = matchedByName.name;
+          recipientDetail = matchedByName.position || 'Colaborador';
+          finalRecipientId = matchedByName.id || '';
+          finalIsExternal = false;
+        } else {
+          // External recipient (contratista, tercero, etc.)
+          recipientName = trimmedSearch;
+          recipientDetail = 'Destinatario Externo';
+          finalRecipientId = 'externo';
+          finalIsExternal = true;
+        }
+      }
     } else {
+      if (!recipientId) {
+        setError('Por favor selecciona la unidad vehicular destinataria.');
+        return;
+      }
       const veh = vehicles.find((v) => v.id === recipientId);
       if (!veh) {
         setError('Unidad vehicular seleccionada no válida.');
@@ -330,6 +361,8 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
       }
       recipientName = veh.displayName || veh.name || veh.id;
       recipientDetail = `Placa: ${veh.placa || 'N/A'}`;
+      finalRecipientId = veh.id;
+      finalIsExternal = false;
     }
 
     const selectedProj = projects.find((p) => p.id === selectedProjectId);
@@ -344,9 +377,10 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
         itemUnit: entry.itemUnit || 'unid',
         quantity: Number(entry.quantity),
         recipientType,
-        recipientId,
+        recipientId: finalRecipientId,
         recipientName,
         recipientDetail,
+        isExternalRecipient: finalIsExternal,
         assignedDate,
         initialCondition: entry.initialCondition,
         projectId: selectedProj?.id,
@@ -438,74 +472,125 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
                   {recipientType === 'colaborador' ? 'Seleccionar Colaborador' : 'Seleccionar Unidad Vehicular'}
                 </label>
                 {recipientType === 'colaborador' ? (
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <FiUser />
-                    </div>
-                    <input
-                      type="text"
-                      value={recipientSearchText}
-                      onChange={(e) => {
-                        setRecipientSearchText(e.target.value);
-                        setRecipientId('');
-                        setShowRecipientDropdown(true);
-                      }}
-                      onFocus={() => setShowRecipientDropdown(true)}
-                      placeholder="Buscar colaborador por nombre..."
-                      className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-white border border-slate-200 font-bold text-xs text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                    />
-                    {recipientSearchText && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRecipientSearchText('');
+                  <>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <FiUser />
+                      </div>
+                      <input
+                        type="text"
+                        value={recipientSearchText}
+                        onChange={(e) => {
+                          setRecipientSearchText(e.target.value);
                           setRecipientId('');
+                          setIsExternalRecipient(false);
                           setShowRecipientDropdown(true);
-                          // Needs a small delay to avoid focus loss immediately closing it
-                          setTimeout(() => {
-                             const input = document.activeElement as HTMLInputElement;
-                             if(input) input.focus();
-                          }, 10);
                         }}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                      >
-                        <FiX className="text-sm" />
-                      </button>
-                    )}
-                    {showRecipientDropdown && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => setShowRecipientDropdown(false)}
-                        />
-                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar min-w-[280px]">
-                          {filteredEmployeesForRecipient.length === 0 ? (
-                            <div className="px-4 py-3 text-xs text-slate-500 text-center">
-                              No se encontraron colaboradores
-                            </div>
-                          ) : (
-                            filteredEmployeesForRecipient.map((emp) => (
+                        onFocus={() => setShowRecipientDropdown(true)}
+                        placeholder="Buscar colaborador o escribir nombre..."
+                        className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-white border border-slate-200 font-bold text-xs text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      />
+                      {recipientSearchText && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecipientSearchText('');
+                            setRecipientId('');
+                            setIsExternalRecipient(false);
+                            setShowRecipientDropdown(true);
+                            // Needs a small delay to avoid focus loss immediately closing it
+                            setTimeout(() => {
+                               const input = document.activeElement as HTMLInputElement;
+                               if(input) input.focus();
+                            }, 10);
+                          }}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                        >
+                          <FiX className="text-sm" />
+                        </button>
+                      )}
+                      {showRecipientDropdown && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setShowRecipientDropdown(false)}
+                          />
+                          <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto custom-scrollbar min-w-[280px]">
+                            {/* Empleados existentes */}
+                            {filteredEmployeesForRecipient.map((emp) => (
                               <button
                                 key={emp.id}
                                 type="button"
                                 onClick={() => {
                                   setRecipientId(emp.id!);
                                   setRecipientSearchText(emp.name);
+                                  setIsExternalRecipient(false);
                                   setShowRecipientDropdown(false);
                                 }}
-                                className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors focus:bg-slate-50 outline-none ${recipientId === emp.id ? 'bg-blue-50' : ''}`}
+                                className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors focus:bg-slate-50 outline-none flex items-center justify-between ${
+                                  recipientId === emp.id && !isExternalRecipient ? 'bg-blue-50' : ''
+                                }`}
                               >
-                                <div className="font-bold text-xs text-slate-900">{emp.name}</div>
-                                {emp.position && (
-                                  <div className="text-[10px] text-slate-500 mt-0.5">{emp.position}</div>
-                                )}
+                                <div>
+                                  <div className="font-bold text-xs text-slate-900">{emp.name}</div>
+                                  {emp.position && (
+                                    <div className="text-[10px] text-slate-500 mt-0.5">{emp.position}</div>
+                                  )}
+                                </div>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                  Colaborador
+                                </span>
                               </button>
-                            ))
-                          )}
+                            ))}
+
+                            {/* Opción para registrar como destinatario externo */}
+                            {recipientSearchText.trim() && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRecipientId('externo');
+                                  setRecipientSearchText(recipientSearchText.trim());
+                                  setIsExternalRecipient(true);
+                                  setShowRecipientDropdown(false);
+                                }}
+                                className="w-full text-left px-4 py-2.5 bg-blue-50/70 hover:bg-blue-100/70 border-t border-slate-100 transition-colors flex items-center justify-between gap-2 outline-none"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-xs text-blue-900 truncate flex items-center gap-1.5">
+                                    <FiUser className="text-blue-600 shrink-0" />
+                                    <span>Usar &quot;{recipientSearchText.trim()}&quot;</span>
+                                  </div>
+                                  <div className="text-[10px] text-blue-700 font-medium">
+                                    Registrar como destinatario externo (no colaborador)
+                                  </div>
+                                </div>
+                                <span className="text-[10px] bg-blue-200 text-blue-900 font-bold px-2 py-0.5 rounded shrink-0">
+                                  Externo
+                                </span>
+                              </button>
+                            )}
+
+                            {filteredEmployeesForRecipient.length === 0 && !recipientSearchText.trim() && (
+                              <div className="px-4 py-3 text-xs text-slate-500 text-center">
+                                No se encontraron colaboradores
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {isExternalRecipient && recipientSearchText.trim() && (
+                      <div className="mt-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200/80 rounded-lg flex items-center justify-between gap-2 animate-in fade-in duration-200">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                          <span>Destinatario Externo: &quot;{recipientSearchText.trim()}&quot;</span>
                         </div>
-                      </>
+                        <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-200/80 px-1.5 py-0.5 rounded">
+                          Externo
+                        </span>
+                      </div>
                     )}
-                  </div>
+                  </>
                 ) : (
                   <Select
                     options={[

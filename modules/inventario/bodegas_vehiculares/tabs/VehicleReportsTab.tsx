@@ -6,6 +6,8 @@ import { ActionButtons } from '../../../../components/ui/ActionButtons';
 import { VehicleProjectConsumption } from '../../../../types/vehicleWarehouse.types';
 import { isVehicleDeleteAuthorized, vehicleWarehouseService } from '../services/vehicleWarehouseService';
 import { format } from 'date-fns';
+import { VehicleConsumptionDetailModal } from '../modals/VehicleConsumptionDetailModal';
+import { exportVehicleConsumptionPdf } from '../../../../utils/pdf/generateConsumptionPdf';
 
 interface Props {
   currentUser?: User | null;
@@ -44,6 +46,22 @@ export const VehicleReportsTab: React.FC<Props> = ({
 
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
   const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+
+  const [selectedConsumptionForModal, setSelectedConsumptionForModal] = useState<VehicleProjectConsumption | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
+
+  const handleViewConsumption = (cons: VehicleProjectConsumption) => {
+    setSelectedConsumptionForModal(cons);
+    setShowDetailModal(true);
+  };
+
+  const handleExportPdf = async (cons: VehicleProjectConsumption) => {
+    try {
+      await exportVehicleConsumptionPdf(cons);
+    } catch (err) {
+      console.error('Error al generar PDF de consumo:', err);
+    }
+  };
 
   const handleDeleteConsumption = async (cons: VehicleProjectConsumption) => {
     const confirmed = await confirm({
@@ -162,9 +180,9 @@ export const VehicleReportsTab: React.FC<Props> = ({
       render: (cons) => (
         <div className="flex justify-center items-center w-full">
           <ActionButtons
-            onView={() => {}}
+            onView={() => handleViewConsumption(cons)}
             viewTitle="Visualizar reporte"
-            onPdf={() => {}}
+            onPdf={() => handleExportPdf(cons)}
             pdfTitle="Generar PDF"
             onDelete={canDelete ? () => handleDeleteConsumption(cons) : undefined}
             deleteTitle="Eliminar reporte de consumo"
@@ -283,9 +301,9 @@ export const VehicleReportsTab: React.FC<Props> = ({
                 {/* Acciones */}
                 <div className="flex items-center justify-end pt-3 mt-3 border-t border-slate-100">
                   <ActionButtons
-                    onView={() => {}}
+                    onView={() => handleViewConsumption(cons)}
                     viewTitle="Visualizar reporte"
-                    onPdf={() => {}}
+                    onPdf={() => handleExportPdf(cons)}
                     pdfTitle="Generar PDF"
                     onDelete={canDelete ? () => handleDeleteConsumption(cons) : undefined}
                     deleteTitle="Eliminar reporte de consumo"
@@ -296,6 +314,21 @@ export const VehicleReportsTab: React.FC<Props> = ({
           </div>
         </>
       )}
+
+      {/* Detail Modal */}
+      <VehicleConsumptionDetailModal
+        show={showDetailModal}
+        consumption={selectedConsumptionForModal}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedConsumptionForModal(null);
+        }}
+        onPdf={() => {
+          if (selectedConsumptionForModal) {
+            handleExportPdf(selectedConsumptionForModal);
+          }
+        }}
+      />
     </div>
   );
 };

@@ -625,6 +625,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                     <OptimizedImage 
                                         src={currentImages[selectedIndex] || currentImages[0]} 
                                         fallbackSrc={currentThumbnails[selectedIndex] || currentThumbnails[0]}
+                                        fallbackSrcs={[currentOriginals[selectedIndex], ...currentOriginals, ...currentImages].filter(Boolean) as string[]}
                                         alt={`${item.description} - Imagen ${selectedIndex + 1}`} 
                                         loading="eager"
                                         decoding="async"
@@ -689,6 +690,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                                             <OptimizedImage
                                                 src={thumbUrl}
                                                 fallbackSrc={currentImages[idx]}
+                                                fallbackSrcs={[currentOriginals[idx], ...currentImages].filter(Boolean) as string[]}
                                                 alt={`Miniatura ${idx + 1}`}
                                                 className="w-full h-full p-0.5"
                                                 referrerPolicy="no-referrer"

@@ -172,7 +172,7 @@ export const RecipientDetailModal: React.FC<RecipientDetailModalProps> = ({
                   ASIGNACIONES — {recipientName}
                 </h3>
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-white/10 text-slate-200 px-2.5 py-0.5 rounded-full">
-                  {isColaborador ? 'Colaborador' : 'Unidad Vehicular'}
+                  {isColaborador ? (recipientDetail?.toLowerCase().includes('externo') ? 'Destinatario Externo' : 'Colaborador') : 'Unidad Vehicular'}
                 </span>
               </div>
               <p className="text-xs text-slate-300 font-medium mt-0.5">

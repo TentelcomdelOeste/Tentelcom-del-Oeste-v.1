@@ -424,6 +424,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
             primaryThumb,
             primaryHD,
             galleryImages,
+            fallbackCandidates,
             hasImages
           } = getItemImageSet(item);
 
@@ -453,6 +454,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                   <OptimizedImage 
                     src={primaryThumb} 
                     fallbackSrc={primaryHD}
+                    fallbackSrcs={fallbackCandidates}
                     alt={item.description}
                     loading={isPriority ? 'eager' : 'lazy'}
                     fetchPriority={isPriority ? 'high' : 'auto'}
@@ -764,6 +766,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                       primaryThumb,
                       primaryHD,
                       galleryImages,
+                      fallbackCandidates,
                       hasImages
                     } = getItemImageSet(item);
 
@@ -816,6 +819,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                               <OptimizedImage 
                                 src={primaryThumb} 
                                 fallbackSrc={primaryHD}
+                                fallbackSrcs={fallbackCandidates}
                                 alt={item.description}
                                 loading={isPriority ? 'eager' : 'lazy'}
                                 fetchPriority={isPriority ? 'high' : 'auto'}

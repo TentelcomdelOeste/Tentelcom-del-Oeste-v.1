@@ -196,8 +196,19 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       }
 
       // 3. Destinatario específico
-      if (filterRecipientId !== 'all' && item.recipientId !== filterRecipientId) {
-        return false;
+      if (filterRecipientId !== 'all') {
+        const itemKey = item.recipientId === 'externo' 
+          ? `colaborador_${item.recipientName}` 
+          : (item.recipientId || `${item.recipientType}_${item.recipientName}`);
+        
+        if (
+          item.recipientId !== filterRecipientId &&
+          item.recipientName !== filterRecipientId &&
+          itemKey !== filterRecipientId &&
+          `ext_${item.recipientName}` !== filterRecipientId
+        ) {
+          return false;
+        }
       }
 
       // 4. Estado
@@ -214,12 +225,15 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
     });
   }, [enrichedAssignments, searchTerm, filterType, filterRecipientId, filterStatus, filterCategory]);
 
-  // Agrupación por Destinatario (una fila por colaborador o unidad vehicular)
+  // Agrupación por Destinatario (una fila por colaborador, unidad vehicular o destinatario externo)
   const groupedRecipients = useMemo(() => {
     const groupsMap = new Map<string, GroupedRecipient>();
 
     filteredAssignments.forEach((item) => {
-      const key = item.recipientId || `${item.recipientType}_${item.recipientName}`;
+      const key = item.recipientId === 'externo' 
+        ? `colaborador_${item.recipientName}` 
+        : (item.recipientId || `${item.recipientType}_${item.recipientName}`);
+
       if (!groupsMap.has(key)) {
         groupsMap.set(key, {
           id: key,
@@ -247,17 +261,32 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
   const recipientAllAssignments = useMemo(() => {
     if (!selectedRecipientGroupId) return [];
     return enrichedAssignments.filter((item) => {
-      const key = item.recipientId || `${item.recipientType}_${item.recipientName}`;
+      const key = item.recipientId === 'externo' 
+        ? `colaborador_${item.recipientName}` 
+        : (item.recipientId || `${item.recipientType}_${item.recipientName}`);
       return key === selectedRecipientGroupId;
     });
   }, [selectedRecipientGroupId, enrichedAssignments]);
 
   // Opciones de destinatarios dinámicos según el tipo seleccionado
   const recipientOptions = useMemo(() => {
+    const externalRecipients = Array.from(
+      new Set(
+        enrichedAssignments
+          .filter(
+            (a) =>
+              a.recipientType === 'colaborador' &&
+              (a.isExternalRecipient || !a.recipientId || a.recipientId === 'externo' || !activeEmployees.some((e) => e.id === a.recipientId))
+          )
+          .map((a) => a.recipientName)
+      )
+    ).filter(Boolean);
+
     if (filterType === 'colaborador') {
       return [
         { label: 'Todos los colaboradores', value: 'all' },
-        ...activeEmployees.map((e) => ({ label: e.name, value: e.id }))
+        ...activeEmployees.map((e) => ({ label: e.name, value: e.id })),
+        ...externalRecipients.map((name) => ({ label: `👤 ${name} (Externo)`, value: `ext_${name}` }))
       ];
     }
     if (filterType === 'unidad') {
@@ -269,9 +298,10 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
     return [
       { label: 'Todos los destinatarios', value: 'all' },
       ...activeEmployees.map((e) => ({ label: `👤 ${e.name}`, value: e.id })),
+      ...externalRecipients.map((name) => ({ label: `👤 ${name} (Externo)`, value: `ext_${name}` })),
       ...vehicles.map((v) => ({ label: `🚚 ${v.displayName || v.name || v.id}`, value: v.id }))
     ];
-  }, [filterType, activeEmployees, vehicles]);
+  }, [filterType, activeEmployees, vehicles, enrichedAssignments]);
 
   // Manejo de exportación a Excel
   const handleExportExcel = () => {

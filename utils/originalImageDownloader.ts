@@ -108,9 +108,9 @@ async function inspectAndValidateImageBlob(
 }
 
 /**
- * Downloads the exact original image file from Firebase Storage without processing,
- * converting, or resizing. Validates that the returned payload is a genuine image
- * before saving.
+ * Downloads the exact original image file from Firebase Storage via server proxy / Netlify Function
+ * without processing, converting, or resizing. Validates that the returned payload is a genuine image
+ * before saving to disk.
  */
 export async function downloadOriginalImage(
   originalUrl?: string | null,
@@ -125,7 +125,7 @@ export async function downloadOriginalImage(
 
   const cleanCode = fileNamePrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-  // 1. Handle base64 Data URLs directly
+  // 1. Handle base64 Data URLs directly on client
   if (originalUrl.startsWith('data:')) {
     try {
       const blob = dataURLtoBlob(originalUrl);
@@ -156,54 +156,95 @@ export async function downloadOriginalImage(
   const extMatch = urlWithoutQuery.match(/\.([a-zA-Z0-9]+)$/);
   if (extMatch && extMatch[1] && extMatch[1].length <= 5) {
     const ext = extMatch[1].toLowerCase();
-    if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif', 'bmp'].includes(ext)) {
+    if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif', 'bmp', 'heic'].includes(ext)) {
       urlExtension = ext === 'jpeg' ? 'jpg' : ext;
     }
   }
 
-  // 3. Direct fetch from Firebase Storage or media server
+  const defaultFileName = `${cleanCode}_original.${urlExtension}`;
+
+  // 3. Download via server proxy / Netlify Function to avoid CORS blocks on PWA & Android
+  const candidateProxyEndpoints = [
+    `/api/download-proxy?url=${encodeURIComponent(originalUrl)}&filename=${encodeURIComponent(defaultFileName)}`,
+    `/.netlify/functions/download-proxy?url=${encodeURIComponent(originalUrl)}&filename=${encodeURIComponent(defaultFileName)}`
+  ];
+
+  let lastErrorMsg = '';
+
+  for (const proxyUrl of candidateProxyEndpoints) {
+    try {
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        if (response.status === 403) {
+          const errJson = await response.json().catch(() => null);
+          throw new Error(errJson?.error || 'Descarga no autorizada para este dominio de almacenamiento.');
+        }
+        if (response.status === 404) {
+          // Endpoint not found on this path, try next candidate
+          continue;
+        }
+        throw new Error(`Error en el servidor de descarga (${response.status})`);
+      }
+
+      const responseContentType = (response.headers.get('content-type') || '').toLowerCase();
+      if (
+        responseContentType.startsWith('text/') ||
+        responseContentType.includes('html') ||
+        responseContentType.includes('json')
+      ) {
+        // If server returned HTML (SPA fallback), skip and try direct/fallback
+        continue;
+      }
+
+      const rawBlob = await response.blob();
+      const validation = await inspectAndValidateImageBlob(rawBlob, urlExtension);
+
+      if (!validation.valid) {
+        console.error('[originalImageDownloader] Respuesta del proxy no es una imagen válida:', {
+          mime: rawBlob.type,
+          size: rawBlob.size
+        });
+        continue;
+      }
+
+      const finalFileName = `${cleanCode}_original.${validation.extension}`;
+      await triggerFileDownload(validation.normalizedBlob, finalFileName);
+      return { success: true };
+    } catch (proxyErr: any) {
+      lastErrorMsg = proxyErr?.message || '';
+      console.warn(`[originalImageDownloader] Falló intento en ${proxyUrl}:`, proxyErr);
+    }
+  }
+
+  // 4. Fallback: Direct fetch (in case proxy is unreachable but direct CORS works)
   try {
     const response = await fetch(originalUrl);
-    if (!response.ok) {
-      throw new Error(`Error HTTP ${response.status}: ${response.statusText || 'No se pudo obtener el archivo'}`);
+    if (response.ok) {
+      const responseContentType = (response.headers.get('content-type') || '').toLowerCase();
+      if (
+        !responseContentType.startsWith('text/') &&
+        !responseContentType.includes('html') &&
+        !responseContentType.includes('json')
+      ) {
+        const rawBlob = await response.blob();
+        const validation = await inspectAndValidateImageBlob(rawBlob, urlExtension);
+        if (validation.valid) {
+          const finalFileName = `${cleanCode}_original.${validation.extension}`;
+          await triggerFileDownload(validation.normalizedBlob, finalFileName);
+          return { success: true };
+        }
+      }
     }
-
-    // Check response Content-Type header
-    const responseContentType = (response.headers.get('content-type') || '').toLowerCase();
-    if (
-      responseContentType.startsWith('text/') ||
-      responseContentType.includes('html') ||
-      responseContentType.includes('json')
-    ) {
-      throw new Error(`El servidor devolvió un tipo de contenido no válido (${responseContentType}) en lugar de una imagen.`);
-    }
-
-    const rawBlob = await response.blob();
-
-    // Deep validation of the blob (size, MIME, magic numbers)
-    const validation = await inspectAndValidateImageBlob(rawBlob, urlExtension);
-    if (!validation.valid) {
-      console.error('El archivo descargado no es una imagen válida:', {
-        mime: rawBlob.type,
-        size: rawBlob.size,
-        url: originalUrl
-      });
-      return {
-        success: false,
-        message: 'No se pudo obtener la imagen original. El archivo recibido no es una imagen válida.'
-      };
-    }
-
-    const finalFileName = `${cleanCode}_original.${validation.extension}`;
-    await triggerFileDownload(validation.normalizedBlob, finalFileName);
-    return { success: true };
-  } catch (err: any) {
-    console.error('Error descargando imagen original desde Firebase Storage:', err);
-    return {
-      success: false,
-      message: `No se pudo descargar la imagen original: ${err?.message || 'Error de conexión'}`
-    };
+  } catch (directErr: any) {
+    console.warn('[originalImageDownloader] Falló fetch directo:', directErr);
   }
+
+  // If we reach here, download could not be completed safely
+  console.error('[originalImageDownloader] No se pudo obtener la imagen original de forma segura.');
+  return {
+    success: false,
+    message: lastErrorMsg || 'No se pudo descargar la imagen original. Verifique su conexión a internet.'
+  };
 }
 
 

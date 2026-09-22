@@ -3,6 +3,14 @@
   publish = "dist"
   command = "npm run build"
 
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/download-proxy"
+  to = "/.netlify/functions/download-proxy"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

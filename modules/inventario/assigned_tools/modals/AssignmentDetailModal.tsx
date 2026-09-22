@@ -275,8 +275,10 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
               </span>
               <p className="text-sm font-black text-blue-950">{assignment.recipientName}</p>
               <p className="text-[11px] text-blue-700 font-medium">
-                {assignment.recipientType === 'colaborador' ? 'Colaborador de la empresa' : 'Unidad Vehicular'}
-                {assignment.recipientDetail ? ` • ${assignment.recipientDetail}` : ''}
+                {assignment.recipientType === 'colaborador' 
+                  ? (assignment.isExternalRecipient || assignment.recipientDetail?.toLowerCase().includes('externo') ? 'Destinatario Externo (No colaborador)' : 'Colaborador de la empresa')
+                  : 'Unidad Vehicular'}
+                {assignment.recipientDetail && !assignment.recipientDetail.toLowerCase().includes('externo') ? ` • ${assignment.recipientDetail}` : ''}
               </p>
             </div>
 

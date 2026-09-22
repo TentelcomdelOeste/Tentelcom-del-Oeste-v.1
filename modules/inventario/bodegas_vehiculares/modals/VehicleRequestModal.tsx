@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ActionButton, IconButton } from '../../../../design-system';
+import { ActionButton, IconButton, ConfirmModal } from '../../../../design-system';
 import { FiX, FiCheck, FiTrash2, FiSearch, FiChevronDown, FiTruck, FiFolder, FiBox } from 'react-icons/fi';
 import { getVehicleCatalog, getDefaultVehicleForUser } from '../services/vehicleWarehouseService';
 import { subscribeToProjects } from '../../../project_management/services/projectService';
@@ -226,6 +226,9 @@ export const VehicleRequestModal: React.FC<Props> = ({
     quantity: number;
   }[]>([]);
 
+  // State for material deletion confirmation
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; code: string; description: string } | null>(null);
+
   // State for Material Adder
   const [adderMaterialId, setAdderMaterialId] = useState<string>('');
   const [adderQuantity, setAdderQuantity] = useState<number>(1);
@@ -413,9 +416,23 @@ export const VehicleRequestModal: React.FC<Props> = ({
     setIsAdderDropdownOpen(false);
   };
 
-  // Remove material item from request
+  // Remove material item from request (opens confirmation modal)
   const handleRemoveItem = (id: string) => {
-    setItems(prev => prev.filter(i => i.id !== id));
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    const mat = availableMaterials.find(m => m.inventoryItemId === item.inventoryItemId);
+    setItemToDelete({
+      id,
+      code: mat?.code || 'MATERIAL',
+      description: mat?.description || 'Material asignado'
+    });
+  };
+
+  const handleConfirmRemoveItem = () => {
+    if (itemToDelete) {
+      setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
+      setItemToDelete(null);
+    }
   };
 
   // Update item quantity in list
@@ -1183,6 +1200,33 @@ export const VehicleRequestModal: React.FC<Props> = ({
           />
         </div>
       </div>
+
+      {/* Modal de confirmación de eliminación de material con fondo azul translúcido */}
+      <ConfirmModal
+        show={!!itemToDelete}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={handleConfirmRemoveItem}
+        title="¿Eliminar material?"
+        confirmLabel="ELIMINAR"
+        variant="danger"
+        description={
+          itemToDelete ? (
+            <div className="space-y-3 text-left sm:text-center">
+              <p className="text-slate-600 text-xs sm:text-sm font-medium">
+                ¿Está seguro de que desea eliminar este material de la solicitud?
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-left font-normal text-xs space-y-1">
+                <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 text-[11px] inline-block mb-1">
+                  {itemToDelete.code}
+                </span>
+                <p className="font-bold text-slate-800 leading-snug">
+                  {itemToDelete.description}
+                </p>
+              </div>
+            </div>
+          ) : null
+        }
+      />
     </div>
   );
 };

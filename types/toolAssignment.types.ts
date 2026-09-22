@@ -40,6 +40,7 @@ export interface ToolAssignment {
   recipientId: string;
   recipientName: string;
   recipientDetail?: string; // Cargo del colaborador o placa del vehículo
+  isExternalRecipient?: boolean; // Indica si el destinatario es un tercero/externo y no un empleado del catálogo
 
   // Fechas y estados
   assignedDate: string; // YYYY-MM-DD
@@ -94,6 +95,7 @@ export interface CreateAssignmentDTO {
   recipientId: string;
   recipientName: string;
   recipientDetail?: string;
+  isExternalRecipient?: boolean;
   assignedDate: string;
   initialCondition: ItemCondition;
   projectId?: string;

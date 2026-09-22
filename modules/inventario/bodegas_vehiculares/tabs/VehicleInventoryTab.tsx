@@ -326,7 +326,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
       header: 'Material / Descripción',
       className: 'flex-1 min-w-[200px]',
       render: (item, index) => {
-        const { primaryThumb, primaryHD, galleryImages, hasImages } = getImageSetForItem(item);
+        const { primaryThumb, primaryHD, galleryImages, fallbackCandidates, hasImages } = getImageSetForItem(item);
         const isPriority = typeof index === 'number' && index < 8;
         return (
           <div className="flex items-center gap-2.5 min-w-0">
@@ -341,6 +341,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                 <OptimizedImage 
                   src={primaryThumb} 
                   fallbackSrc={primaryHD}
+                  fallbackSrcs={fallbackCandidates}
                   alt={item.description} 
                   loading={isPriority ? 'eager' : 'lazy'}
                   fetchPriority={isPriority ? 'high' : 'auto'}
@@ -612,7 +613,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                 <div className="flex gap-3 items-start">
                   {/* Espacio reservado para la imagen (limpio/neutral) */}
                   {(() => {
-                    const { primaryThumb, primaryHD, galleryImages, hasImages } = getImageSetForItem(item);
+                    const { primaryThumb, primaryHD, galleryImages, fallbackCandidates, hasImages } = getImageSetForItem(item);
                     return (
                       <div 
                         className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center shrink-0 overflow-hidden ${
@@ -627,6 +628,7 @@ export const VehicleInventoryTab: React.FC<Props> = ({
                             <OptimizedImage 
                               src={primaryThumb} 
                               fallbackSrc={primaryHD}
+                              fallbackSrcs={fallbackCandidates}
                               alt={item.description} 
                               loading={isPriority ? 'eager' : 'lazy'}
                               fetchPriority={isPriority ? 'high' : 'auto'}

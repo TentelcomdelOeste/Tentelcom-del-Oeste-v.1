@@ -294,41 +294,41 @@ const VehicleWarehousesModule: React.FC<VehicleWarehousesModuleProps> = ({ curre
         title="Bodegas Vehiculares"
         subtitle="Gestión de inventario de flota y solicitudes por vehículo."
       >
-        <div className="hidden md:flex items-center gap-2 mb-3 sm:mb-4">
+        <div className="hidden md:flex items-center gap-2 mb-3 sm:mb-4 w-full max-w-full overflow-x-auto custom-scrollbar pb-1">
           <ActionButton
             label="Inventario por Vehículo"
             icon={<FiBox />}
             variant={activeTab === 'inventory' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('inventory')}
-            className={`whitespace-nowrap ${activeTab !== 'inventory' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+            className={`whitespace-nowrap shrink-0 ${activeTab !== 'inventory' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
           />
           <ActionButton
             label="Herramientas y Equipos"
             icon={<FiTool />}
             variant={activeTab === 'tools' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('tools')}
-            className={`whitespace-nowrap ${activeTab !== 'tools' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+            className={`whitespace-nowrap shrink-0 ${activeTab !== 'tools' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
           />
           <ActionButton
             label="Solicitudes de Proyecto"
             icon={<FiClipboard />}
             variant={activeTab === 'requests' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('requests')}
-            className={`whitespace-nowrap ${activeTab !== 'requests' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+            className={`whitespace-nowrap shrink-0 ${activeTab !== 'requests' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
           />
           <ActionButton
             label="Historial de Movimientos"
             icon={<FiRefreshCw />}
             variant={activeTab === 'movements' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('movements')}
-            className={`whitespace-nowrap ${activeTab !== 'movements' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+            className={`whitespace-nowrap shrink-0 ${activeTab !== 'movements' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
           />
           <ActionButton
             label="Reportes y Consumos"
             icon={<FiPieChart />}
             variant={activeTab === 'reports' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('reports')}
-            className={`whitespace-nowrap ${activeTab !== 'reports' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
+            className={`whitespace-nowrap shrink-0 ${activeTab !== 'reports' ? 'text-slate-500 bg-transparent hover:bg-slate-100 border-transparent shadow-none' : ''}`}
           />
         </div>
 
