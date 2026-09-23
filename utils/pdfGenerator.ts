@@ -1868,39 +1868,65 @@ export const exportAssignmentActaPDF = (assignment: ToolAssignment, allAssignmen
     item.itemCode || '---',
     item.itemDescription || '---',
     item.itemCategory || 'Herramientas',
-    `${item.quantity} ${item.itemUnit || 'unid'}`,
+    item.itemUnit || 'Unidad',
+    item.quantity,
     item.initialCondition || 'Bueno'
   ]);
 
   autoTable(doc, {
     startY: y,
-    head: [['#', 'CÓDIGO', 'DESCRIPCIÓN / ARTÍCULO', 'CATEGORÍA', 'CANTIDAD', 'CONDICIÓN']],
+    head: [['#', 'CÓDIGO', 'DESCRIPCIÓN / ARTÍCULO', 'CATEGORÍA', 'MEDIDA', 'CANTIDAD', 'CONDICIÓN']],
     body: tableBody,
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 5 },
     headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
     columnStyles: {
-      0: { halign: 'center', cellWidth: 25 },
-      1: { halign: 'center', cellWidth: 60 },
+      0: { halign: 'center', cellWidth: 22 },
+      1: { halign: 'center', cellWidth: 55 },
       2: { cellWidth: 'auto' },
-      3: { cellWidth: 80 },
-      4: { halign: 'center', cellWidth: 60 },
-      5: { halign: 'center', cellWidth: 70 }
+      3: { cellWidth: 75 },
+      4: { halign: 'center', cellWidth: 45 },
+      5: { halign: 'center', cellWidth: 40 },
+      6: { halign: 'center', cellWidth: 55 }
     }
   });
 
-  y = (doc as any).lastAutoTable.finalY + 25;
+  y = (doc as any).lastAutoTable.finalY + 20;
 
-  if (assignment.observations) {
+  const allObservations = Array.from(
+    new Set(
+      batchItems
+        .map((i) => i.observations?.trim())
+        .filter((obs): obs is string => Boolean(obs && obs !== ''))
+    )
+  );
+
+  if (allObservations.length > 0) {
+    if (y + 60 > pageHeight - margin - 80) {
+      doc.addPage();
+      y = margin + 20;
+    }
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text("OBSERVACIONES:", margin, y);
+    doc.setTextColor(30, 58, 138);
+    doc.text("NOTAS Y OBSERVACIONES DE LA ASIGNACIÓN:", margin, y);
     y += 12;
+
+    const notesText = allObservations.join('\n\n');
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
-    const obsLines = doc.splitTextToSize(assignment.observations, pageWidth - (margin * 2));
-    doc.text(obsLines, margin, y);
-    y += (obsLines.length * 12) + 20;
+    doc.setTextColor(51, 65, 85);
+
+    const obsLines = doc.splitTextToSize(notesText, pageWidth - (margin * 2) - 16);
+    const boxHeight = (obsLines.length * 11) + 16;
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, pageWidth - (margin * 2), boxHeight, 4, 4, 'FD');
+
+    doc.text(obsLines, margin + 8, y + 12);
+    y += boxHeight + 20;
   } else {
     y += 10;
   }
@@ -1923,13 +1949,67 @@ export const exportAssignmentActaPDF = (assignment: ToolAssignment, allAssignmen
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.5);
-  doc.text("ENTREGADO POR (BODEGA)", leftX + (sigWidth / 2), y + 55, { align: 'center' });
-  doc.text("RECIBIDO DE CONFORMIDAD", rightX + (sigWidth / 2), y + 55, { align: 'center' });
+  doc.text("FIRMA RESPONSABLE DE ENTREGA", leftX + (sigWidth / 2), y + 55, { align: 'center' });
+  doc.text("FIRMA CONFORMIDAD DE RECEPCIÓN", rightX + (sigWidth / 2), y + 55, { align: 'center' });
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(assignment.assignedBy || 'Responsable', leftX + (sigWidth / 2), y + 68, { align: 'center' });
+  doc.text(assignment.assignedBy || 'Responsable de Entrega', leftX + (sigWidth / 2), y + 68, { align: 'center' });
   doc.text(assignment.recipientName, rightX + (sigWidth / 2), y + 68, { align: 'center' });
+
+  // Renderizar fotos de evidencia de entrega si existen
+  const evidencePhotos: string[] = [];
+  batchItems.forEach((item) => {
+    if (item.evidencePhotos && Array.isArray(item.evidencePhotos)) {
+      item.evidencePhotos.forEach((photo) => {
+        if (photo && typeof photo === 'string' && !evidencePhotos.includes(photo)) {
+          evidencePhotos.push(photo);
+        }
+      });
+    }
+  });
+
+  if (evidencePhotos.length > 0) {
+    let photosY = y + 85;
+    if (photosY + 120 > pageHeight - margin) {
+      doc.addPage();
+      photosY = margin + 20;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(30, 58, 138);
+    doc.text("FOTOS DE EVIDENCIA DE ENTREGA", margin, photosY);
+    photosY += 15;
+
+    const imgWidth = 150;
+    const imgHeight = 100;
+    const gap = 15;
+    let currentX = margin;
+
+    evidencePhotos.forEach((photo) => {
+      if (photosY + imgHeight > pageHeight - margin) {
+        doc.addPage();
+        photosY = margin + 20;
+        currentX = margin;
+      }
+
+      try {
+        const format = photo.includes('data:image/png') ? 'PNG' : 'JPEG';
+        doc.addImage(photo, format, currentX, photosY, imgWidth, imgHeight);
+        doc.setDrawColor(203, 213, 225);
+        doc.rect(currentX, photosY, imgWidth, imgHeight);
+      } catch (e) {
+        console.warn('Error displaying evidence image in PDF', e);
+      }
+
+      currentX += imgWidth + gap;
+      if (currentX + imgWidth > pageWidth - margin) {
+        currentX = margin;
+        photosY += imgHeight + gap;
+      }
+    });
+  }
 
   const fileName = `Acta_Asignacion_${assignment.requestNumber || 'MOV'}_${assignment.recipientName.replace(/\s+/g, '_')}.pdf`;
   const blob = doc.output('blob');

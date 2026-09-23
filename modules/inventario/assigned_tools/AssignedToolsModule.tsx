@@ -39,6 +39,7 @@ import { ReturnAssignmentModal } from './modals/ReturnAssignmentModal';
 import { IncidentReportModal } from './modals/IncidentReportModal';
 import { AssignmentDetailModal } from './modals/AssignmentDetailModal';
 import { RecipientDetailModal } from './modals/RecipientDetailModal';
+import { TransferAssignmentModal } from './modals/TransferAssignmentModal';
 
 export interface GroupedRecipient {
   id: string;
@@ -85,6 +86,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
   const [showReturnModal, setShowReturnModal] = useState<boolean>(false);
   const [showIncidentModal, setShowIncidentModal] = useState<boolean>(false);
   const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
+  const [showTransferModal, setShowTransferModal] = useState<boolean>(false);
   const [selectedAssignment, setSelectedAssignment] = useState<ToolAssignment | null>(null);
   const [selectedRecipientGroupId, setSelectedRecipientGroupId] = useState<string | null>(null);
 
@@ -340,6 +342,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       { header: 'Herramienta / Equipo', dataKey: 'itemDescription', width: 140 },
       { header: 'Tipo', dataKey: 'recipientTypeFormatted', width: 60 },
       { header: 'Destinatario', dataKey: 'recipientName', width: 120 },
+      { header: 'Unidad de Medida', dataKey: 'itemUnit', width: 70, align: 'center' as const },
       { header: 'Cant.', dataKey: 'quantity', width: 40, align: 'center' as const },
       { header: 'Fecha Asig.', dataKey: 'assignedDate', width: 60, align: 'center' as const },
       { header: 'Condición', dataKey: 'initialCondition', width: 70, align: 'center' as const }
@@ -350,7 +353,8 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
       itemDescription: a.itemDescription,
       recipientTypeFormatted: a.recipientType === 'colaborador' ? 'Colaborador' : 'Unidad',
       recipientName: a.recipientName,
-      quantity: `${a.quantity} ${a.itemUnit || 'unid'}`,
+      itemUnit: a.itemUnit || 'Unidad',
+      quantity: a.quantity,
       assignedDate: a.assignedDate,
       initialCondition: a.initialCondition
     }));
@@ -403,6 +407,11 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
   const handleOpenIncident = (assignment: ToolAssignment) => {
     setSelectedAssignment(assignment);
     setShowIncidentModal(true);
+  };
+
+  const handleOpenTransfer = (assignment: ToolAssignment) => {
+    setSelectedAssignment(assignment);
+    setShowTransferModal(true);
   };
 
   // Definición de columnas de la tabla principal agrupada por Destinatario
@@ -767,6 +776,17 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
         onSelectAssignment={(a) => setSelectedAssignment(a)}
         onOpenReturn={handleOpenReturn}
         onOpenIncident={handleOpenIncident}
+        onOpenTransfer={handleOpenTransfer}
+      />
+
+      <TransferAssignmentModal
+        show={showTransferModal}
+        onClose={() => {
+          setShowTransferModal(false);
+          setSelectedAssignment(null);
+        }}
+        assignment={selectedAssignment}
+        currentUser={currentUser}
       />
 
       {activeGroup && (
@@ -781,6 +801,7 @@ export const AssignedToolsModule: React.FC<AssignedToolsModuleProps> = ({ curren
           onOpenIndividualDetail={handleOpenDetail}
           onOpenReturn={handleOpenReturn}
           onOpenIncident={handleOpenIncident}
+          onOpenTransfer={handleOpenTransfer}
           onDeleteAssignment={handleDelete}
         />
       )}

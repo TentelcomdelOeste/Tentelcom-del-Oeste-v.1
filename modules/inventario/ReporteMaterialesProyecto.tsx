@@ -62,7 +62,7 @@ const ReporteMaterialesProyecto: React.FC<ReporteMaterialesProyectoProps> = ({
   const { currentUser } = useAuth();
   const confirm = useConfirm();
   const { allQuotes } = useAllQuotes(currentUser);
-  const { items: inventoryItems } = useInventory(currentUser);
+  const { items: inventoryItems } = useInventory(currentUser, { fetchAll: true });
   const { reports, saveReport, deleteReport } = useMaterialReports(currentUser);
   
   // Estado del Formulario

@@ -11,7 +11,8 @@ import {
   FiTag,
   FiFileText,
   FiPlus,
-  FiTrash2
+  FiTrash2,
+  FiCamera
 } from 'react-icons/fi';
 import { User } from '@/utils/types';
 import { InventoryItem } from '@/inventoryTypes';
@@ -62,6 +63,9 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
   const [observations, setObservations] = useState<string>('');
   const [assignedBy, setAssignedBy] = useState<string>('');
   const [hasInitializedAssignedBy, setHasInitializedAssignedBy] = useState<boolean>(false);
+
+  // Fotos de evidencia
+  const [evidencePhotos, setEvidencePhotos] = useState<string[]>([]);
 
   // Multi-item entry state
   const [assignedItems, setAssignedItems] = useState<AssignmentItemEntry[]>([]);
@@ -127,6 +131,7 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
       setAssignedDate(new Date().toISOString().split('T')[0]);
       setSelectedProjectId('');
       setObservations('');
+      setEvidencePhotos([]);
       
       const defaultName = currentUser?.name || currentUser?.displayName || '';
       setAssignedBy(defaultName);
@@ -281,6 +286,37 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
     setAssignedItems((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (evidencePhotos.length + files.length > 5) {
+      setError('Puedes adjuntar un máximo de 5 fotos de evidencia por asignación.');
+      return;
+    }
+
+    Array.from(files).forEach((file) => {
+      if (file.size > 8 * 1024 * 1024) {
+        setError(`El archivo ${file.name} supera el tamaño máximo permitido de 8MB.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        setEvidencePhotos((prev) => [...prev, result]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    e.target.value = '';
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setEvidencePhotos((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleRecipientTypeChange = (type: RecipientType) => {
     setRecipientType(type);
     setRecipientId('');
@@ -387,7 +423,8 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
         projectNumber: selectedProj?.projectNumber,
         projectName: selectedProj?.name,
         observations: observations.trim(),
-        assignedBy: assignedBy.trim()
+        assignedBy: assignedBy.trim(),
+        evidencePhotos: evidencePhotos
       }));
 
       if (onSubmitBatch) {
@@ -881,28 +918,59 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
                     className="fixed inset-0 z-10"
                     onClick={() => setShowAssignedByDropdown(false)}
                   />
-                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar min-w-[280px]">
-                    {filteredEmployeesForAssignedBy.length === 0 ? (
-                      <div className="px-4 py-3 text-xs text-slate-500 text-center">
-                        No se encontraron responsables
-                      </div>
-                    ) : (
-                      filteredEmployeesForAssignedBy.map((emp) => (
-                        <button
-                          key={emp.id}
-                          type="button"
-                          onClick={() => {
-                            setAssignedBy(emp.name);
-                            setShowAssignedByDropdown(false);
-                          }}
-                          className="w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors focus:bg-slate-50 outline-none"
-                        >
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto custom-scrollbar min-w-[280px]">
+                    {/* Lista de colaboradores filtrados */}
+                    {filteredEmployeesForAssignedBy.map((emp) => (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        onClick={() => {
+                          setAssignedBy(emp.name);
+                          setShowAssignedByDropdown(false);
+                        }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors focus:bg-slate-50 outline-none flex items-center justify-between"
+                      >
+                        <div>
                           <div className="font-bold text-xs text-slate-900">{emp.name}</div>
                           {emp.position && (
                             <div className="text-[10px] text-slate-500 mt-0.5">{emp.position}</div>
                           )}
-                        </button>
-                      ))
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                          Colaborador
+                        </span>
+                      </button>
+                    ))}
+
+                    {/* Opción para ingresar un nombre personalizado/externo */}
+                    {assignedBy.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssignedBy(assignedBy.trim());
+                          setShowAssignedByDropdown(false);
+                        }}
+                        className="w-full text-left px-4 py-2.5 bg-blue-50/70 hover:bg-blue-100/70 border-t border-slate-100 transition-colors flex items-center justify-between gap-2 outline-none"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-xs text-blue-900 truncate flex items-center gap-1.5">
+                            <FiUser className="text-blue-600 shrink-0" />
+                            <span>Usar &quot;{assignedBy.trim()}&quot;</span>
+                          </div>
+                          <div className="text-[10px] text-blue-700 font-medium">
+                            Registrar como responsable de entrega personalizado
+                          </div>
+                        </div>
+                        <span className="text-[10px] bg-blue-200 text-blue-900 font-bold px-2 py-0.5 rounded shrink-0">
+                          Personalizado
+                        </span>
+                      </button>
+                    )}
+
+                    {filteredEmployeesForAssignedBy.length === 0 && !assignedBy.trim() && (
+                      <div className="px-4 py-3 text-xs text-slate-500 text-center">
+                        No se encontraron responsables
+                      </div>
                     )}
                   </div>
                 </>
@@ -921,6 +989,58 @@ export const NewAssignmentModal: React.FC<NewAssignmentModalProps> = ({
                 placeholder="Detalles sobre el uso, accesorios incluidos, número de serie o condición especial..."
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-medium text-xs text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all resize-none"
               />
+            </div>
+
+            {/* 4. FOTOS DE EVIDENCIA DE ENTREGA */}
+            <div className="bg-slate-50 p-4 md:p-5 rounded-2xl border border-slate-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <FiCamera className="text-blue-600 text-sm" /> 4. Fotos de Evidencia (Opcional)
+                </label>
+                <span className="text-[10px] font-bold text-slate-400">
+                  {evidencePhotos.length} / 5 fotos
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-xl bg-white hover:bg-blue-50/50 cursor-pointer transition-all text-xs font-bold text-slate-600 hover:text-blue-700 shadow-xs">
+                  <FiCamera className="text-base text-blue-600" />
+                  <span>Adjuntar Fotos o Capturas de Evidencia</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                    disabled={evidencePhotos.length >= 5}
+                  />
+                </label>
+
+                {evidencePhotos.length > 0 && (
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5 pt-1">
+                    {evidencePhotos.map((photo, idx) => (
+                      <div
+                        key={idx}
+                        className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-square bg-slate-900 shadow-2xs"
+                      >
+                        <img
+                          src={photo}
+                          alt={`Evidencia ${idx + 1}`}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(idx)}
+                          className="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded-full hover:bg-red-700 transition-colors shadow-sm"
+                          title="Eliminar foto"
+                        >
+                          <FiX className="text-xs" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {error && (

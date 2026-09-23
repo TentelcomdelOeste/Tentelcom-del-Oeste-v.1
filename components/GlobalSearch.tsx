@@ -130,7 +130,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ currentUser, setActi
   }, [searchTerm]);
 
   const { quotes = [] } = useQuotes(currentUser) || {};
-  const { items: inventory = [] } = useInventory(currentUser) || {};
+  const { items: inventory = [] } = useInventory(currentUser, { fetchAll: true }) || {};
   const { savedClients: clients = [] } = useClients(currentUser) || {};
   const { entries: cashflowEntries = [], allEntries: cashflowAll = [] } = useCashflow(currentUser, 'all') || {};
   const { requests = [] } = useMaterialRequests(currentUser) || {};

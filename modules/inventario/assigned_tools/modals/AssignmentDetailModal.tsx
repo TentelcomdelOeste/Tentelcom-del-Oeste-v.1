@@ -15,9 +15,13 @@ import {
   FiInfo,
   FiFileText,
   FiCornerDownLeft,
-  FiLayers
+  FiLayers,
+  FiCamera,
+  FiDownload,
+  FiRepeat
 } from 'react-icons/fi';
 import { ToolAssignment } from '@/types/toolAssignment.types';
+import { exportAssignmentActaPDF } from '@/utils/pdfGenerator';
 import useLockBodyScroll from '@/hooks/useLockBodyScroll';
 import { ActionButton, IconButton, StatusBadge } from '@/design-system';
 import { getAssignmentBatchId } from './RecipientDetailModal';
@@ -30,6 +34,7 @@ interface AssignmentDetailModalProps {
   onSelectAssignment?: (assignment: ToolAssignment) => void;
   onOpenReturn?: (assignment: ToolAssignment) => void;
   onOpenIncident?: (assignment: ToolAssignment) => void;
+  onOpenTransfer?: (assignment: ToolAssignment) => void;
 }
 
 export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
@@ -39,7 +44,8 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
   allAssignments = [],
   onSelectAssignment,
   onOpenReturn,
-  onOpenIncident
+  onOpenIncident,
+  onOpenTransfer
 }) => {
   useLockBodyScroll(show);
 
@@ -384,6 +390,42 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
             </div>
           )}
 
+          {/* FOTOS DE EVIDENCIA DE ENTREGA */}
+          {((assignment.evidencePhotos && assignment.evidencePhotos.length > 0) ||
+            relatedBatchAssignments.some((a) => a.evidencePhotos && a.evidencePhotos.length > 0)) && (
+            <div className="space-y-2 pt-2">
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                <FiCamera className="text-blue-600 text-sm" /> Fotos de Evidencia de Entrega
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {Array.from(
+                  new Set([
+                    ...(assignment.evidencePhotos || []),
+                    ...relatedBatchAssignments.flatMap((a) => a.evidencePhotos || [])
+                  ])
+                ).map((photo, idx) => (
+                  <a
+                    key={idx}
+                    href={photo}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group relative rounded-xl overflow-hidden border border-slate-200 aspect-square bg-slate-900 shadow-2xs hover:ring-2 hover:ring-blue-500 transition-all block"
+                    title="Ver imagen completa"
+                  >
+                    <img
+                      src={photo}
+                      alt={`Evidencia ${idx + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    />
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
+                      Ampliar
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* LÍNEA DE TIEMPO / TRAZABILIDAD */}
           <div className="space-y-3 pt-2">
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
@@ -399,6 +441,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                   if (h.action === 'Devolución') badgeColor = 'bg-emerald-600 text-white';
                   if (h.action === 'Incidencia') badgeColor = 'bg-rose-600 text-white';
                   if (h.action === 'Resolución') badgeColor = 'bg-amber-600 text-white';
+                  if (h.action === 'Transferencia') badgeColor = 'bg-indigo-600 text-white';
 
                   const dateFormatted = new Date(h.date).toLocaleString('es-CR', {
                     year: 'numeric',
@@ -433,7 +476,28 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
 
         {/* Footer */}
         <div className="p-5 md:p-6 bg-slate-50 border-t border-slate-100 flex flex-wrap gap-2.5 justify-between items-center flex-none">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <ActionButton
+              type="button"
+              variant="secondary"
+              label="Descargar Acta PDF"
+              icon={<FiDownload />}
+              onClick={() => exportAssignmentActaPDF(assignment, allAssignments || [])}
+              className="!py-2.5 !text-xs !font-bold !bg-blue-50 !text-blue-700 hover:!bg-blue-100 !border-blue-200 !rounded-xl"
+            />
+            {!isReturned && onOpenTransfer && (
+              <ActionButton
+                type="button"
+                variant="secondary"
+                label="Transferir / Reasignar"
+                icon={<FiRepeat />}
+                onClick={() => {
+                  onClose();
+                  onOpenTransfer(assignment);
+                }}
+                className="!py-2.5 !text-xs !font-bold !bg-indigo-50 !text-indigo-700 hover:!bg-indigo-100 !border-indigo-200 !rounded-xl"
+              />
+            )}
             {!isReturned && onOpenReturn && (
               <ActionButton
                 type="button"

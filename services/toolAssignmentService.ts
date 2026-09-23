@@ -13,6 +13,7 @@ import {
   CreateAssignmentDTO,
   ReturnAssignmentDTO,
   IncidentReportDTO,
+  TransferAssignmentDTO,
   ToolAssignmentHistoryEntry
 } from '@/types/toolAssignment.types';
 import { User } from '@/utils/types';
@@ -251,6 +252,7 @@ export const toolAssignmentService = {
           observations: dto.observations || '',
           assignedBy: dto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
           assignedByUserId: currentUser.uid,
+          evidencePhotos: dto.evidencePhotos || [],
           history: [historyEntry],
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -818,6 +820,7 @@ export const toolAssignmentService = {
             observations: firstDto.observations || '',
             assignedBy: firstDto.assignedBy || currentUser.name || currentUser.email || 'Sistema',
             assignedByUserId: currentUser.uid,
+            evidencePhotos: firstDto.evidencePhotos || dto.evidencePhotos || [],
             history: [historyEntry],
             createdAt: nowIso,
             updatedAt: nowIso,
@@ -881,5 +884,104 @@ export const toolAssignmentService = {
     );
 
     return finalRequestNumber;
+  },
+
+  /**
+   * Realiza la transferencia/traspaso directo de una herramienta a otro destinatario/custodio
+   */
+  async transferAssignment(dto: TransferAssignmentDTO, currentUser: User | null): Promise<void> {
+    if (!currentUser) throw new Error('Usuario no autenticado');
+    if (!dto.assignmentId) throw new Error('Identificador de asignación no válido');
+    if (!dto.newRecipientName || dto.newRecipientName.trim() === '') {
+      throw new Error('Debe especificar un nuevo destinatario para la transferencia');
+    }
+
+    const assignmentRef = doc(db, 'tool_assignments', dto.assignmentId);
+    const movementRef = doc(collection(db, 'inventory_movements'));
+    const nowIso = new Date().toISOString();
+
+    await guardedWrite(() =>
+      runTransaction(db, async (transaction) => {
+        const assignmentSnap = await transaction.get(assignmentRef);
+        if (!assignmentSnap.exists()) {
+          throw new Error('La asignación especificada no existe.');
+        }
+
+        const currentData = assignmentSnap.data() as ToolAssignment;
+        if (currentData.status === 'Devuelto') {
+          throw new Error('No se puede transferir un artículo que ya ha sido devuelto.');
+        }
+
+        const oldRecipient = currentData.recipientName;
+        const newRecipient = dto.newRecipientName.trim();
+        const deliverer = dto.assignedBy?.trim() || currentUser.name || currentUser.email || 'Sistema';
+
+        // Combinar fotos de evidencia de traspaso
+        const existingPhotos = Array.isArray(currentData.evidencePhotos) ? currentData.evidencePhotos : [];
+        const newEvidence = Array.isArray(dto.evidencePhotos) ? dto.evidencePhotos : [];
+        const mergedPhotos = Array.from(new Set([...newEvidence, ...existingPhotos]));
+
+        // Crear entrada en el historial
+        const historyEntry: ToolAssignmentHistoryEntry = {
+          id: `${Date.now()}_transfer`,
+          date: nowIso,
+          action: 'Transferencia',
+          performedBy: deliverer,
+          details: `Transferencia / Traspaso directo de custodia de "${oldRecipient}" a "${newRecipient}" (${dto.newRecipientType === 'colaborador' ? (dto.isExternalRecipient ? 'Tercero/Externo' : 'Colaborador') : 'Unidad Vehicular'}). Entregado por: ${deliverer}.${dto.observations ? ` Notas: ${dto.observations}` : ''}`,
+          newStatus: currentData.status || 'Asignado'
+        };
+
+        const existingHistory = Array.isArray(currentData.history) ? currentData.history : [];
+
+        // Construir actualización de observaciones
+        const updatedObservations = dto.observations ? dto.observations.trim() : '';
+
+        // 1. Actualizar documento de asignación en Firestore
+        transaction.update(assignmentRef, {
+          recipientType: dto.newRecipientType,
+          recipientId: dto.newRecipientId || '',
+          recipientName: newRecipient,
+          recipientDetail: dto.newRecipientDetail || '',
+          isExternalRecipient: Boolean(dto.isExternalRecipient),
+          assignedDate: dto.transferDate || nowIso.split('T')[0],
+          assignedBy: deliverer,
+          assignedByUserId: currentUser.uid || '',
+          projectId: dto.projectId ?? currentData.projectId ?? '',
+          projectNumber: dto.projectNumber ?? currentData.projectNumber ?? '',
+          projectName: dto.projectName ?? currentData.projectName ?? '',
+          observations: updatedObservations,
+          evidencePhotos: mergedPhotos,
+          history: [historyEntry, ...existingHistory],
+          updatedAt: nowIso,
+          updatedBy: currentUser.email || currentUser.name || 'Sistema'
+        });
+
+        // 2. Registrar movimiento en el historial de movimientos de inventario
+        transaction.set(movementRef, {
+          type: 'Movimiento',
+          subtype: 'Transferencia de Custodia',
+          originType: 'herramientas_asignadas',
+          isAssignment: true,
+          requestNumber: currentData.requestNumber || `TRF-${Date.now().toString().slice(-4)}`,
+          date: dto.transferDate || nowIso.split('T')[0],
+          origin: `Anterior custodio: ${oldRecipient}`,
+          destination: `Nuevo custodio: ${newRecipient}`,
+          recipientName: newRecipient,
+          recipientType: dto.newRecipientType,
+          isExternalRecipient: Boolean(dto.isExternalRecipient),
+          reason: `Traspaso directo de herramienta de ${oldRecipient} a ${newRecipient}. ${dto.observations || ''}`,
+          observations: dto.observations || '',
+          userId: currentUser.uid || '',
+          userName: deliverer,
+          assignedBy: deliverer,
+          createdBy: currentUser.email || currentUser.name || 'Sistema',
+          createdAt: nowIso,
+          inventoryItemId: currentData.itemId,
+          inventoryItemCode: currentData.itemCode,
+          inventoryItemName: currentData.itemDescription,
+          quantity: currentData.quantity || 1
+        });
+      })
+    );
   }
 };

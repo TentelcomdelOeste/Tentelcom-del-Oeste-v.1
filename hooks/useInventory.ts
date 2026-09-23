@@ -161,10 +161,11 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
       setIsLoading(true);
     }
     
-    // 2) Fetch from Firestore with limit using onSnapshot for real-time updates
+    // 2) Fetch from Firestore with onSnapshot for real-time updates
     const inventoryCollectionName = "inventory_items";
     const baseRef = collection(db, inventoryCollectionName);
-    const q = options?.fetchAll 
+    const shouldFetchAll = options?.fetchAll !== false;
+    const q = shouldFetchAll 
       ? query(baseRef, orderBy("description"))
       : query(baseRef, orderBy("description"), limit(currentLimit));
     

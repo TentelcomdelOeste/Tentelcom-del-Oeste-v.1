@@ -64,7 +64,7 @@ const ProjectAnalysisModule: React.FC<ProjectAnalysisModuleProps> = ({ currentUs
 
   const { entries, loadMore: loadMoreCashflow, hasMore: hasMoreCashflow, isLoadingMore: isLoadingMoreCashflow } = useCashflow(currentUser, filterYear, filterMonth);
   const { quotes, updateQuoteExchangeRate, saveQuote, loadMore: loadMoreQuotes, hasMore: hasMoreQuotes, loading: isLoadingQuotes } = useQuotes(currentUser);
-  const { items: inventoryItems } = useInventory(currentUser);
+  const { items: inventoryItems } = useInventory(currentUser, { fetchAll: true });
   const { movements: inventoryMovements, loadMore: loadMoreMovements, hasMore: hasMoreMovements, loadingMore: isLoadingMoreMovements } = useInventoryMovements(currentUser);
   const { reports } = useMaterialReports(currentUser);
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);

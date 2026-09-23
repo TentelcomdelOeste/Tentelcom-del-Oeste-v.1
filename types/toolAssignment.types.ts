@@ -18,7 +18,7 @@ export interface IncidentReport {
 export interface ToolAssignmentHistoryEntry {
   id: string;
   date: string;
-  action: 'Asignación' | 'Devolución' | 'Incidencia' | 'Resolución' | 'Edición';
+  action: 'Asignación' | 'Devolución' | 'Incidencia' | 'Resolución' | 'Edición' | 'Transferencia';
   performedBy: string;
   details: string;
   previousStatus?: AssignmentStatus;
@@ -65,10 +65,11 @@ export interface ToolAssignment {
   requestNumber?: string;
   movementId?: string;
 
-  // Observaciones y responsables
+  // Observaciones, fotos de evidencia y responsables
   observations?: string;
   assignedBy: string; // Nombre de quien entrega
   assignedByUserId?: string;
+  evidencePhotos?: string[]; // URLs o fotos en formato Base64 de evidencia de entrega
 
   // Incidencias
   incidentReport?: IncidentReport;
@@ -105,6 +106,7 @@ export interface CreateAssignmentDTO {
   otCode?: string;
   observations?: string;
   assignedBy: string;
+  evidencePhotos?: string[];
 }
 
 export interface ReturnAssignmentDTO {
@@ -122,4 +124,20 @@ export interface IncidentReportDTO {
   reportedBy: string;
   description: string;
   severity: 'Baja' | 'Media' | 'Alta';
+}
+
+export interface TransferAssignmentDTO {
+  assignmentId: string;
+  newRecipientType: RecipientType;
+  newRecipientId: string;
+  newRecipientName: string;
+  newRecipientDetail?: string;
+  isExternalRecipient?: boolean;
+  transferDate: string; // YYYY-MM-DD
+  assignedBy: string; // Nombre de quien realiza o autoriza el traspaso
+  projectId?: string;
+  projectNumber?: string;
+  projectName?: string;
+  observations?: string;
+  evidencePhotos?: string[]; // Fotos nuevas de evidencia del traspaso
 }

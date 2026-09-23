@@ -13,14 +13,19 @@ import {
   FiClock,
   FiSearch,
   FiLayers,
-  FiArchive
+  FiArchive,
+  FiRepeat,
+  FiFileText
 } from 'react-icons/fi';
 import { ToolAssignment, RecipientType } from '@/types/toolAssignment.types';
 import { User } from '@/utils/types';
 import useLockBodyScroll from '@/hooks/useLockBodyScroll';
 import { IconButton, StatusBadge, ACTION_ICONS } from '@/design-system';
 import { isAdmin } from '@/utils/permissions';
-import { exportRecipientAssignmentsPDF } from '@/utils/export/recipientAssignmentsExport';
+import {
+  exportRecipientAssignmentsPDF,
+  exportSingleAssignmentPDF
+} from '@/utils/export/recipientAssignmentsExport';
 
 interface RecipientDetailModalProps {
   show: boolean;
@@ -33,6 +38,7 @@ interface RecipientDetailModalProps {
   onOpenIndividualDetail: (assignment: ToolAssignment) => void;
   onOpenReturn: (assignment: ToolAssignment) => void;
   onOpenIncident: (assignment: ToolAssignment) => void;
+  onOpenTransfer?: (assignment: ToolAssignment) => void;
   onDeleteAssignment: (assignment: ToolAssignment) => void;
 }
 
@@ -62,6 +68,7 @@ export const RecipientDetailModal: React.FC<RecipientDetailModalProps> = ({
   onOpenIndividualDetail,
   onOpenReturn,
   onOpenIncident,
+  onOpenTransfer,
   onDeleteAssignment
 }) => {
   useLockBodyScroll(show);
@@ -73,11 +80,30 @@ export const RecipientDetailModal: React.FC<RecipientDetailModalProps> = ({
   const isColaborador = recipientType === 'colaborador';
 
   const handleExportPDF = async () => {
+    const delivererName =
+      assignments.find((a) => a.assignedBy && a.assignedBy.trim() !== '')?.assignedBy ||
+      currentUser?.name ||
+      'Responsable de Entrega';
     await exportRecipientAssignmentsPDF(
       recipientName,
       recipientType,
       recipientDetail,
-      assignments
+      assignments,
+      delivererName
+    );
+  };
+
+  const handleExportSinglePDF = async (assignment: ToolAssignment) => {
+    const delivererName =
+      assignment.assignedBy ||
+      currentUser?.name ||
+      'Responsable de Entrega';
+    await exportSingleAssignmentPDF(
+      recipientName,
+      recipientType,
+      recipientDetail,
+      assignment,
+      delivererName
     );
   };
 
@@ -155,7 +181,7 @@ export const RecipientDetailModal: React.FC<RecipientDetailModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[200] p-2 md:p-4 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl md:rounded-[28px] shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh] border border-slate-100 animate-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-2xl md:rounded-[28px] shadow-2xl w-full max-w-[96vw] xl:max-w-[1400px] overflow-hidden flex flex-col max-h-[92vh] border border-slate-100 animate-in zoom-in-95 duration-200">
         {/* Header Principal */}
         <div className="p-4 md:p-5 bg-slate-900 text-white flex justify-between items-center flex-none">
           <div className="flex items-center gap-3">
@@ -351,120 +377,299 @@ export const RecipientDetailModal: React.FC<RecipientDetailModalProps> = ({
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-xs">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                    <th className="py-3 px-3">Código</th>
-                    <th className="py-3 px-3">Descripción</th>
-                    <th className="py-3 px-3">Tipo / Categoría</th>
-                    <th className="py-3 px-3 text-center">N° Mov. / Lote</th>
-                    <th className="py-3 px-3 text-center">Cantidad</th>
-                    <th className="py-3 px-3 text-center">Fecha Entrega</th>
-                    <th className="py-3 px-3">Condición</th>
-                    <th className="py-3 px-3 text-center">Estado</th>
-                    <th className="py-3 px-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {filteredModalAssignments.map((assignment) => {
-                    const isReturned = assignment.status === 'Devuelto';
-                    const batchId = getAssignmentBatchId(assignment);
+            <>
+              {/* Vista Móvil: Tarjetas optimizadas sin scroll horizontal (md:hidden) */}
+              <div className="space-y-3 md:hidden">
+                {filteredModalAssignments.map((assignment) => {
+                  const isReturned = assignment.status === 'Devuelto';
+                  const batchId = getAssignmentBatchId(assignment);
+                  const isTransferred = Array.isArray(assignment.history) && assignment.history.some((h) => h.action === 'Transferencia');
 
-                    return (
-                      <tr key={assignment.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2.5 px-3 font-mono font-black text-slate-800">
-                          <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">
+                  return (
+                    <div
+                      key={assignment.id}
+                      className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-xs space-y-3 transition-shadow hover:shadow-sm"
+                    >
+                      {/* Cabecera: Código, Categoría y Badges */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs">
                             {assignment.itemCode}
                           </span>
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900 max-w-[220px]">
-                          {assignment.itemDescription}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600 font-medium">
-                          {assignment.itemCategory || 'Herramienta'}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          {batchId ? (
-                            <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 whitespace-nowrap">
-                              <FiLayers className="text-[10px]" />
-                              {batchId}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 italic">—</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-slate-100 text-slate-800 border border-slate-200 whitespace-nowrap">
-                            {assignment.quantity} {assignment.itemUnit || 'unid'}
+                          <span className="text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                            {assignment.itemCategory || 'Herramienta'}
                           </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-medium text-slate-700 whitespace-nowrap">
-                          {assignment.assignedDate}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-700 text-[11px]">
-                          <strong>{assignment.initialCondition}</strong>
-                          {isReturned && assignment.returnCondition && (
-                            <span className="block text-[10px] text-emerald-700 font-medium">
-                              Retorno: {assignment.returnCondition}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           <StatusBadge
                             status={assignment.status}
                             variant={getStatusVariant(assignment.status)}
                             size="sm"
                           />
-                        </td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                            <IconButton
-                              icon={<FiEye />}
-                              variant="primary"
-                              title="Ver detalle de trazabilidad"
-                              onClick={() => onOpenIndividualDetail(assignment)}
-                            />
-                            {!isReturned && (
-                              <IconButton
-                                icon={<FiCornerDownLeft />}
-                                variant="success"
-                                title="Registrar devolución"
-                                onClick={() => onOpenReturn(assignment)}
-                              />
+                          {isTransferred && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                              <FiRepeat className="text-[9px]" /> Traspasado
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Descripción */}
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 leading-snug">
+                          {assignment.itemDescription}
+                        </h4>
+                        {isTransferred && (
+                          <p className="text-[10px] text-indigo-600 font-semibold mt-0.5 flex items-center gap-1">
+                            <FiRepeat className="text-[10px]" /> Recibido por Traspaso de Custodia
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Grid de Datos Clave */}
+                      <div className="grid grid-cols-2 gap-2 bg-slate-50/80 rounded-lg p-2.5 text-[11px] border border-slate-100">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Cantidad</span>
+                          <span className="font-black text-slate-800">
+                            {assignment.quantity} {assignment.itemUnit || 'unid'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Fecha Entrega</span>
+                          <span className="font-medium text-slate-700">
+                            {assignment.assignedDate || '—'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Condición</span>
+                          <span className="font-bold text-slate-800">
+                            {assignment.initialCondition || 'Bueno'}
+                          </span>
+                          {isReturned && assignment.returnCondition && (
+                            <span className="block text-[9.5px] text-emerald-700 font-medium">
+                              Ret: {assignment.returnCondition}
+                            </span>
+                          )}
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">N° Mov. / Lote</span>
+                          {batchId ? (
+                            <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold text-blue-700 truncate max-w-full">
+                              <FiLayers className="text-[10px] flex-shrink-0" />
+                              <span className="truncate">{batchId}</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">—</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Botones de Acción Táctiles */}
+                      <div className="pt-1 flex items-center justify-end gap-1.5 border-t border-slate-100 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                        <IconButton
+                          icon={<FiEye />}
+                          variant="primary"
+                          title="Ver detalle de trazabilidad"
+                          onClick={() => onOpenIndividualDetail(assignment)}
+                        />
+                        <IconButton
+                          icon={<FiFileText />}
+                          variant="danger"
+                          title={isTransferred ? "Descargar comprobante de traspaso PDF" : "Descargar comprobante de asignación PDF"}
+                          onClick={() => handleExportSinglePDF(assignment)}
+                        />
+                        {!isReturned && onOpenTransfer && (
+                          <IconButton
+                            icon={<FiRepeat />}
+                            variant="secondary"
+                            title="Transferir / Reasignar a otro custodio"
+                            onClick={() => onOpenTransfer(assignment)}
+                          />
+                        )}
+                        {!isReturned && (
+                          <IconButton
+                            icon={<FiCornerDownLeft />}
+                            variant="success"
+                            title="Registrar devolución"
+                            onClick={() => onOpenReturn(assignment)}
+                          />
+                        )}
+                        {!isReturned && (
+                          <IconButton
+                            icon={<FiAlertTriangle />}
+                            variant={
+                              assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
+                                ? 'warning'
+                                : 'danger'
+                            }
+                            title={
+                              assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
+                                ? 'Resolver Incidencia'
+                                : 'Reportar Incidencia'
+                            }
+                            onClick={() => onOpenIncident(assignment)}
+                          />
+                        )}
+                        {isUserAdmin && (
+                          <IconButton
+                            icon={<FiTrash2 />}
+                            variant="danger"
+                            title="Eliminar asignación"
+                            onClick={() => onDeleteAssignment(assignment)}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Vista Escritorio: Tabla tradicional (hidden md:block) */}
+              <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 shadow-xs">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                      <th className="py-3 px-3 min-w-[90px]">Código</th>
+                      <th className="py-3 px-3 min-w-[220px]">Descripción</th>
+                      <th className="py-3 px-3 min-w-[130px]">Tipo / Categoría</th>
+                      <th className="py-3 px-3 text-center min-w-[120px]">N° Mov. / Lote</th>
+                      <th className="py-3 px-3 text-center min-w-[100px]">Cantidad</th>
+                      <th className="py-3 px-3 text-center min-w-[110px]">Fecha Entrega</th>
+                      <th className="py-3 px-3 min-w-[100px]">Condición</th>
+                      <th className="py-3 px-3 text-center min-w-[130px]">Estado / Origen</th>
+                      <th className="py-3 px-3 text-center min-w-[190px] bg-slate-100/90">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredModalAssignments.map((assignment) => {
+                      const isReturned = assignment.status === 'Devuelto';
+                      const batchId = getAssignmentBatchId(assignment);
+                      const isTransferred = Array.isArray(assignment.history) && assignment.history.some((h) => h.action === 'Transferencia');
+
+                      return (
+                        <tr key={assignment.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-3 font-mono font-black text-slate-800 whitespace-nowrap">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">
+                              {assignment.itemCode}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 font-bold text-slate-900 min-w-[220px]">
+                            {assignment.itemDescription}
+                            {isTransferred && (
+                              <span className="block text-[10px] text-indigo-600 font-semibold mt-0.5">
+                                Recibido por Traspaso de Custodia
+                              </span>
                             )}
-                            {!isReturned && (
-                              <IconButton
-                                icon={<FiAlertTriangle />}
-                                variant={
-                                  assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
-                                    ? 'warning'
-                                    : 'danger'
-                                }
-                                title={
-                                  assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
-                                    ? 'Resolver Incidencia'
-                                    : 'Reportar Incidencia'
-                                }
-                                onClick={() => onOpenIncident(assignment)}
-                              />
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 font-medium whitespace-nowrap">
+                            {assignment.itemCategory || 'Herramienta'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            {batchId ? (
+                              <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 whitespace-nowrap">
+                                <FiLayers className="text-[10px]" />
+                                {batchId}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">—</span>
                             )}
-                            {isUserAdmin && (
+                          </td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-slate-100 text-slate-800 border border-slate-200 whitespace-nowrap">
+                              {assignment.quantity} {assignment.itemUnit || 'unid'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-medium text-slate-700 whitespace-nowrap">
+                            {assignment.assignedDate}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-700 text-[11px] whitespace-nowrap">
+                            <strong>{assignment.initialCondition}</strong>
+                            {isReturned && assignment.returnCondition && (
+                              <span className="block text-[10px] text-emerald-700 font-medium">
+                                Retorno: {assignment.returnCondition}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <StatusBadge
+                                status={assignment.status}
+                                variant={getStatusVariant(assignment.status)}
+                                size="sm"
+                              />
+                              {isTransferred && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                  <FiRepeat className="text-[10px]" /> Traspasado
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <div className="inline-flex items-center justify-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-200/80 shadow-2xs" onClick={(e) => e.stopPropagation()}>
                               <IconButton
-                                icon={<FiTrash2 />}
+                                icon={<FiEye />}
+                                variant="primary"
+                                title="Ver detalle de trazabilidad"
+                                onClick={() => onOpenIndividualDetail(assignment)}
+                              />
+                              <IconButton
+                                icon={<FiFileText />}
                                 variant="danger"
-                                title="Eliminar asignación"
-                                onClick={() => onDeleteAssignment(assignment)}
+                                title={isTransferred ? "Descargar comprobante de traspaso PDF" : "Descargar comprobante de asignación PDF"}
+                                onClick={() => handleExportSinglePDF(assignment)}
                               />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                              {!isReturned && onOpenTransfer && (
+                                <IconButton
+                                  icon={<FiRepeat />}
+                                  variant="secondary"
+                                  title="Transferir / Reasignar a otro custodio"
+                                  onClick={() => onOpenTransfer(assignment)}
+                                />
+                              )}
+                              {!isReturned && (
+                                <IconButton
+                                  icon={<FiCornerDownLeft />}
+                                  variant="success"
+                                  title="Registrar devolución"
+                                  onClick={() => onOpenReturn(assignment)}
+                                />
+                              )}
+                              {!isReturned && (
+                                <IconButton
+                                  icon={<FiAlertTriangle />}
+                                  variant={
+                                    assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
+                                      ? 'warning'
+                                      : 'danger'
+                                  }
+                                  title={
+                                    assignment.incidentReport && assignment.incidentReport.status === 'Abierta'
+                                      ? 'Resolver Incidencia'
+                                      : 'Reportar Incidencia'
+                                  }
+                                  onClick={() => onOpenIncident(assignment)}
+                                />
+                              )}
+                              {isUserAdmin && (
+                                <IconButton
+                                  icon={<FiTrash2 />}
+                                  variant="danger"
+                                  title="Eliminar asignación"
+                                  onClick={() => onDeleteAssignment(assignment)}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>

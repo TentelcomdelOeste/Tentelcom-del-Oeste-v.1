@@ -147,7 +147,10 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     const solId = movement.requestNumber || '---';
     const movDate = movement.date || new Date().toISOString().split('T')[0];
     const movTypeLabel = movement.subtype || (movement.type === 'Salida' ? 'Salida por Asignación' : movement.type);
-    const recipientLabel = movement.destination || movement.recipientName || (movement.type === 'Devolución' ? movement.origin : '---');
+
+    // Obtener y limpiar destinatario
+    let rawRecipient = movement.recipientName || movement.destination || (movement.type === 'Devolución' ? movement.origin : '---');
+    rawRecipient = rawRecipient.replace(/^(Nuevo custodio|Anterior custodio):\s*/i, '').trim() || '---';
     const conditionLabel = movement.initialCondition || 'Bueno';
 
     doc.setFontSize(9.5);
@@ -157,7 +160,8 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     doc.setFont('helvetica', 'bold');
     doc.text(`PROYECTO / ORIGEN:`, margin + 15, boxY + 20);
     doc.setFont('helvetica', 'normal');
-    doc.text(originDisplay, margin + 135, boxY + 20);
+    const splitOrigin = doc.splitTextToSize(originDisplay, 190);
+    doc.text(splitOrigin, margin + 135, boxY + 20);
 
     doc.setFont('helvetica', 'bold');
     doc.text(`ID MOVIMIENTO:`, margin + 340, boxY + 20);
@@ -180,7 +184,8 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     doc.setFont('helvetica', 'bold');
     doc.text(`DESTINATARIO:`, margin + 15, boxY + 70);
     doc.setFont('helvetica', 'normal');
-    doc.text(recipientLabel, margin + 135, boxY + 70);
+    const splitRecipient = doc.splitTextToSize(rawRecipient, 190);
+    doc.text(splitRecipient, margin + 135, boxY + 70);
 
     doc.setFont('helvetica', 'bold');
     doc.text(`CONDICIÓN:`, margin + 340, boxY + 70);
@@ -265,7 +270,8 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     // Observaciones y Trazabilidad Dinámica
     let obsText = '';
     if (movement.subtype === 'Asignación de Herramienta' || isAssignment) {
-      const recipientName = movement.recipientName || movement.destination || '---';
+      let recipientName = movement.recipientName || movement.destination || '---';
+      recipientName = recipientName.replace(/^(Nuevo custodio|Anterior custodio):\s*/i, '').trim() || '---';
       const recipientTypeLabel = movement.recipientType === 'colaborador' 
         ? 'Colaborador' 
         : (movement.recipientType === 'unidad' ? 'Unidad Vehicular' : 'Colaborador');

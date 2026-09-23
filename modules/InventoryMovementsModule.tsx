@@ -45,7 +45,7 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
     hasMore,
     loadingMore
   } = useInventoryMovements(currentUser);
-  const { items: inventoryItems } = useInventory(currentUser);
+  const { items: inventoryItems } = useInventory(currentUser, { fetchAll: true });
   const { quotes } = useQuotes(currentUser);
   const { requests } = useMaterialRequests(currentUser);
 
