@@ -8,7 +8,8 @@ import {
   orderBy,
   limit,
   where,
-  runTransaction
+  runTransaction,
+  increment
 } from 'firebase/firestore';
 import { MaterialRequest } from '../dispatchTypes';
 import { User } from '../utils/types';
@@ -159,10 +160,108 @@ export const useShortages = (currentUser: User | null) => {
       await updateShortageStatus(id, 'Cerrado');
   }, [updateShortageStatus]);
 
+  const reintegrateShortageToOriginal = useCallback(async (id: string) => {
+      if (!currentUser) throw new Error("No autenticado");
+      
+      await runTransaction(db, async (transaction) => {
+          // 1. LECTURAS (READS) PRIMERO
+          const ref = doc(db, "material_reports", id);
+          const snap = await transaction.get(ref);
+          if (!snap.exists()) throw new Error("La solicitud no existe.");
+          
+          const data = snap.data() as MaterialRequest;
+          const items = data.items || [];
+
+          // Identificar ítems con faltante y leer sus documentos de inventario antes de cualquier escritura
+          const itemReads: { 
+            index: number; 
+            item: any; 
+            shortage: number; 
+            itemRef: any; 
+            itemSnap: any;
+          }[] = [];
+
+          for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              const shortage = item.shortageQty || item.quantityPending || 0;
+
+              if (shortage > 0 && item.inventoryItemId) {
+                  const itemRef = doc(db, "inventory_items", item.inventoryItemId);
+                  const itemSnap = await transaction.get(itemRef);
+                  itemReads.push({
+                      index: i,
+                      item,
+                      shortage,
+                      itemRef,
+                      itemSnap
+                  });
+              }
+          }
+
+          if (itemReads.length === 0) {
+              throw new Error("No se encontraron ítems con faltante activo en esta solicitud.");
+          }
+
+          // 2. CÁLCULOS Y PREPARACIÓN
+          const updatedItems = [...items];
+          const writesToExecute: { itemRef: any; qtyToCover: number }[] = [];
+          let totalCovered = 0;
+
+          for (const { index, item, shortage, itemRef, itemSnap } of itemReads) {
+              if (itemSnap.exists()) {
+                  const itemData = itemSnap.data();
+                  const currentStock = itemData.stock || 0;
+                  const currentReserved = itemData.reserved || 0;
+                  const available = Math.max(0, currentStock - currentReserved);
+
+                  const qtyToCover = Math.min(shortage, available);
+                  if (qtyToCover > 0) {
+                      totalCovered += qtyToCover;
+                      writesToExecute.push({ itemRef, qtyToCover });
+
+                      const newShortage = Math.max(0, shortage - qtyToCover);
+                      const currentDispatched = item.quantityDispatched || 0;
+                      const requested = item.quantityRequested || item.quantity || 0;
+                      const newPending = Math.max(0, requested - currentDispatched - newShortage);
+
+                      updatedItems[index] = {
+                          ...item,
+                          shortageQty: newShortage,
+                          quantityPending: newPending
+                      };
+                  }
+              }
+          }
+
+          if (totalCovered === 0) {
+              throw new Error("No hay stock disponible suficiente en Inventario General para cubrir este faltante actualmente.");
+          }
+
+          // 3. ESCRITURAS (WRITES) DESPUÉS DE TODAS LAS LECTURAS
+          for (const { itemRef, qtyToCover } of writesToExecute) {
+              transaction.update(itemRef, {
+                  reserved: increment(qtyToCover)
+              });
+          }
+
+          const remainingShortage = updatedItems.reduce((acc, it) => acc + (it.shortageQty || 0), 0);
+          const isFullyResolved = remainingShortage === 0;
+
+          transaction.update(ref, {
+              items: updatedItems,
+              status: isFullyResolved ? (data.status === 'Parcial' ? 'Aprobada' : data.status) : data.status,
+              shortageStatus: isFullyResolved ? 'Material recibido' : 'Parcial',
+              resolved: isFullyResolved,
+              updatedAt: new Date().toISOString()
+          });
+      });
+  }, [currentUser]);
+
   return {
     shortages,
     isLoading,
     updateShortageStatus,
+    reintegrateShortageToOriginal,
     deleteShortage,
     loadMore: () => {},
     hasMore: false,

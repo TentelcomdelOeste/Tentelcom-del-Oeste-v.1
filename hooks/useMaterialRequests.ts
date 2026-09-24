@@ -59,11 +59,31 @@ export const useMaterialRequests = (currentUser: User | null) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       // logger.log("Material requests loaded:", snapshot.size);
       
-      const serverItems = snapshot.docs.map(doc => {
-        const data = doc.data();
+      const serverItems = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        const items = (data.items || []).map((item: any) => {
+          const requested = item.quantityRequested || item.quantity || 0;
+          const dispatched = item.quantityDispatched || 0;
+          const shortage = item.shortageQty || 0;
+          const computedPending = Math.max(0, requested - dispatched - shortage);
+
+          const pending = (item.quantityPending !== undefined && item.quantityPending > 0)
+            ? item.quantityPending
+            : computedPending;
+
+          return {
+            ...item,
+            quantityRequested: requested,
+            quantityDispatched: dispatched,
+            shortageQty: shortage,
+            quantityPending: pending
+          };
+        });
+
         return {
           ...data,
-          id: doc.id
+          id: docSnap.id,
+          items
         } as MaterialRequest;
       });
 

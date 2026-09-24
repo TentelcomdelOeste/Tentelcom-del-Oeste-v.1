@@ -38,15 +38,38 @@ export const useDispatch = (currentUser: User | null) => {
     const materialRequestsCollectionName = "material_reports";
     
     const baseRef = collection(db, materialRequestsCollectionName);
-    const q = query(baseRef, where("status", "==", "Aprobada"));
+    const q = query(baseRef, where("status", "in", ["Aprobada", "Parcial"]));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       logger.log("Dispatch requests loaded:", snapshot.size);
       
-      const list = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      } as MaterialRequest));
+      const list = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        const items = (data.items || []).map((item: any) => {
+          const requested = item.quantityRequested || item.quantity || 0;
+          const dispatched = item.quantityDispatched || 0;
+          const shortage = item.shortageQty || 0;
+          const computedPending = Math.max(0, requested - dispatched - shortage);
+
+          const pending = (item.quantityPending !== undefined && item.quantityPending > 0)
+            ? item.quantityPending
+            : computedPending;
+
+          return {
+            ...item,
+            quantityRequested: requested,
+            quantityDispatched: dispatched,
+            shortageQty: shortage,
+            quantityPending: pending
+          };
+        });
+
+        return {
+          ...data,
+          id: docSnap.id,
+          items
+        } as MaterialRequest;
+      });
       
       // Ordenamiento en cliente
       list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

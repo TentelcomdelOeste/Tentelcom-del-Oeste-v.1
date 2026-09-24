@@ -11,7 +11,7 @@ interface ShortagesViewProps {
 }
 
 export const ShortagesView: React.FC<ShortagesViewProps> = ({ currentUser }) => {
-  const { shortages, isLoading, updateShortageStatus, deleteShortage } = useShortages(currentUser);
+  const { shortages, isLoading, updateShortageStatus, reintegrateShortageToOriginal, deleteShortage } = useShortages(currentUser);
 
   const columns = useMemo<TableColumn<Shortage>[]>(() => [
     {
@@ -103,6 +103,15 @@ export const ShortagesView: React.FC<ShortagesViewProps> = ({ currentUser }) => 
           updateShortageStatus(s.id, status as any);
         };
 
+        const handleReintegrate = async () => {
+          try {
+            await reintegrateShortageToOriginal(s.id);
+            alert(`✅ ¡Excelente! El faltante ha sido reservado e integrado exitosamente a la solicitud original (${s.requestNumber || 'SOL-XXXX'}).`);
+          } catch (err: any) {
+            alert(`⚠️ ${err.message || 'Error al reintegrar el faltante.'}`);
+          }
+        };
+
         const isPending = s.status === 'Pendiente';
         const isProcessing = s.status === 'En proceso de compra';
         const isReceived = s.status === 'Material recibido';
@@ -117,6 +126,16 @@ export const ShortagesView: React.FC<ShortagesViewProps> = ({ currentUser }) => 
         return (
           <div className="flex items-center justify-end gap-2 p-1">
             <div className="flex gap-1.5 flex-wrap justify-end">
+              {!isClosed && !isReceived && (
+                <button 
+                  onClick={handleReintegrate}
+                  title="Reserva el stock recién disponible e intégralo directamente a la solicitud original sin crear una nueva solicitud"
+                  className="group flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase rounded-lg border border-indigo-200 hover:bg-indigo-600 hover:text-white hover:scale-105 transition-all shadow-sm active:scale-95"
+                >
+                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 group-hover:bg-white animate-pulse" />
+                  Unir a Solicitud Original
+                </button>
+              )}
               {isPending && (
                 <button 
                   onClick={() => handleStatus('En proceso de compra')}
@@ -129,10 +148,11 @@ export const ShortagesView: React.FC<ShortagesViewProps> = ({ currentUser }) => 
               {(isPending || isProcessing) && (
                 <button 
                   onClick={() => handleStatus('Material recibido')}
+                  title="Marca como recibido y crea una nueva solicitud derivada independiente"
                   className="group flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase rounded-lg border border-emerald-200 hover:bg-emerald-600 hover:text-white hover:scale-105 transition-all shadow-sm active:scale-95"
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 group-hover:bg-white" />
-                  Recibir
+                  Nueva Solicitud Derivada
                 </button>
               )}
               {!isClosed && (
@@ -156,7 +176,7 @@ export const ShortagesView: React.FC<ShortagesViewProps> = ({ currentUser }) => 
         );
       }
     }
-  ], [updateShortageStatus, deleteShortage]);
+  ], [updateShortageStatus, reintegrateShortageToOriginal, deleteShortage]);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-500">
