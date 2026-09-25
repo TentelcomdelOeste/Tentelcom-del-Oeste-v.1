@@ -5,6 +5,8 @@ import { Vehicle, VehicleDocument, VehicleAttachment } from '../../../types/vehi
 import { formatUnitLabel } from '../controlVehicularService';
 import { VEHICLES } from '../../job_scheduling/JobForm';
 import { FiFileText, FiPaperclip, FiTrash2, FiAlertCircle } from 'react-icons/fi';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../../../firebase';
 
 interface VehicleDocumentModalProps {
   isOpen: boolean;
@@ -26,6 +28,50 @@ const PRESET_DOC_TYPES = [
   'Permisos especiales',
   'Otro (Especifique)'
 ];
+
+async function compressImageIfNeeded(file: File, maxWidth = 1920, quality = 0.8): Promise<Blob | File> {
+  if (!file.type.startsWith('image/')) return file;
+  if (file.size <= 300 * 1024) return file;
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                resolve(file);
+              }
+            },
+            'image/jpeg',
+            quality
+          );
+        } else {
+          resolve(file);
+        }
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
 
 export const VehicleDocumentModal: React.FC<VehicleDocumentModalProps> = ({
   isOpen,
@@ -92,23 +138,18 @@ export const VehicleDocumentModal: React.FC<VehicleDocumentModalProps> = ({
     if (!files || files.length === 0) return;
 
     Array.from(files).forEach((file) => {
-      if (file.size > 8 * 1024 * 1024) {
-        setError(`El archivo ${file.name} supera el tamaño máximo de 8MB`);
+      if (file.size > 15 * 1024 * 1024) {
+        setErrorMsg(`El archivo ${file.name} supera el tamaño máximo permitido de 15MB`);
         return;
       }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        setArchivos((prev) => [
-          ...prev,
-          {
-            name: file.name,
-            url: result,
-            type: file.type
-          }
-        ]);
+      const previewUrl = URL.createObjectURL(file);
+      const newAttachment: VehicleAttachment & { _rawFile?: File } = {
+        name: file.name,
+        url: previewUrl,
+        type: file.type,
+        _rawFile: file
       };
-      reader.readAsDataURL(file);
+      setArchivos((prev) => [...prev, newAttachment]);
     });
     e.target.value = '';
   };
@@ -167,8 +208,30 @@ export const VehicleDocumentModal: React.FC<VehicleDocumentModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      const recordId = editingDoc?.id || crypto.randomUUID();
+      const finalArchivos: VehicleAttachment[] = [];
+
+      for (const item of archivos) {
+        const rawFile = (item as any)._rawFile;
+        if (rawFile) {
+          const compressed = await compressImageIfNeeded(rawFile);
+          const sanitizedName = rawFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const storagePath = `control_vehicular/documentos/${recordId}/${Date.now()}_${sanitizedName}`;
+          const storageRef = ref(storage, storagePath);
+          await uploadBytes(storageRef, compressed, { contentType: rawFile.type });
+          const downloadUrl = await getDownloadURL(storageRef);
+          finalArchivos.push({
+            name: rawFile.name,
+            url: downloadUrl,
+            type: rawFile.type
+          });
+        } else {
+          finalArchivos.push(item);
+        }
+      }
+
       await onSave({
-        id: editingDoc?.id,
+        id: recordId,
         vehiculoId: matchedVeh?.id || vehiculoId,
         unidad: unidadCode,
         unidadLabel,
@@ -179,7 +242,7 @@ export const VehicleDocumentModal: React.FC<VehicleDocumentModalProps> = ({
         costo: costo ? parseFloat(costo) : 0,
         diasAnticipacionAlerta: diasAlerta || 30,
         observaciones: observaciones.trim(),
-        archivos,
+        archivos: finalArchivos,
         createdBy: editingDoc?.createdBy || currentUser.name || currentUser.username || 'Usuario',
         createdById: editingDoc?.createdById || currentUser.uid
       });
@@ -394,6 +457,7 @@ export const VehicleDocumentModal: React.FC<VehicleDocumentModalProps> = ({
             className="px-4 py-2 text-xs font-bold uppercase"
           />
           <ActionButton
+            type="submit"
             variant="primary"
             label={isSubmitting ? 'GUARDANDO...' : 'GUARDAR'}
             disabled={isSubmitting}

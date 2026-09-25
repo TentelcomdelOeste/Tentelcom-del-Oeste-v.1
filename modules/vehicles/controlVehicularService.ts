@@ -5,6 +5,7 @@ import {
   getDocs,
   addDoc,
   updateDoc,
+  setDoc,
   onSnapshot
 } from 'firebase/firestore';
 import {
@@ -114,10 +115,11 @@ export async function saveVehicleDocument(docData: Partial<VehicleDocument>): Pr
     const docRef = doc(db, DOCS_COLLECTION, docData.id);
     const updatePayload = {
       ...docData,
-      updatedAt: now
+      updatedAt: now,
+      isDeleted: docData.isDeleted ?? false
     };
     delete updatePayload.id;
-    await updateDoc(docRef, updatePayload);
+    await setDoc(docRef, updatePayload, { merge: true });
     return docData.id;
   } else {
     const colRef = collection(db, DOCS_COLLECTION);
@@ -198,10 +200,11 @@ export async function saveVehicleMaintenance(maintData: Partial<VehicleMaintenan
     const docRef = doc(db, MAINT_COLLECTION, maintData.id);
     const updatePayload = {
       ...maintData,
-      updatedAt: now
+      updatedAt: now,
+      isDeleted: maintData.isDeleted ?? false
     };
     delete updatePayload.id;
-    await updateDoc(docRef, updatePayload);
+    await setDoc(docRef, updatePayload, { merge: true });
     return maintData.id;
   } else {
     const colRef = collection(db, MAINT_COLLECTION);
