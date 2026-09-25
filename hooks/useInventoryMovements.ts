@@ -194,7 +194,8 @@ export const useInventoryMovements = (currentUser: User | null) => {
                 iva: itemRequest.iva || 0,
                 total: itemRequest.total || subtotal,
                 subtotal: subtotal,
-                currency: currency
+                currency: currency,
+                notes: itemRequest.notes || null
             });
         });
 

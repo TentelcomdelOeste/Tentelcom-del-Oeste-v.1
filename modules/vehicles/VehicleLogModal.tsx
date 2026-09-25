@@ -5,6 +5,7 @@ import {
     VehicleLog, 
     VehicleRecharge, 
     VehicleExpense, 
+    VehicleControlAlert,
     INSPECTION_ITEMS, 
     getDefaultVehicleInspection, 
     normalizeVehicleInspection, 
@@ -34,9 +35,10 @@ interface VehicleLogModalProps {
     initialData?: VehicleLog | null;
     initialEmployees?: {id: string, name: string}[];
     trabajoId?: string; // New prop
+    controlAlerts?: VehicleControlAlert[];
 }
 
-export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose, currentUser, initialData, initialEmployees = [], trabajoId }) => {
+export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose, currentUser, initialData, initialEmployees = [], trabajoId, controlAlerts = [] }) => {
     useAuditPermanence({
         module: 'Bitácora de Vehículos',
         submodule: 'Registro de Bitácora',
@@ -1028,75 +1030,139 @@ export const VehicleLogModal: React.FC<VehicleLogModalProps> = ({ show, onClose,
                         </div>
                     )}
                     {/* INFORMACIÓN GENERAL */}
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h3 className="text-xs font-black text-blue-800 uppercase mb-3">Información General</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Conductor</label>
-                                {userIsAdmin ? (
-                                    <Select 
-                                        options={[
-                                            ...employees.map(emp => ({ value: emp.id, label: emp.name })),
-                                            ...(formData.conductorId && !employees.some(e => e.id === formData.conductorId) 
-                                                ? [{ 
-                                                    value: formData.conductorId, 
-                                                    label: (!formData.conductorName || formData.conductorName === formData.conductorId) 
-                                                        ? 'Cargando...' 
-                                                        : formData.conductorName 
-                                                }] : [])
-                                        ]}
-                                        value={formData.conductorId || ''}
-                                        onChange={(val) => {
-                                            const emp = employees.find(e => e.id === val);
-                                            setFormData(p => ({
-                                                ...p, 
-                                                conductorId: val, 
-                                                conductorName: emp?.name || ''
-                                            }));
-                                        }}
-                                        placeholder="Seleccione conductor..."
-                                        required
-                                    />
-                                ) : (
-                                    <input
-                                        type="text"
-                                        value={
-                                            (formData.conductorName && formData.conductorName !== formData.conductorId) 
-                                            ? formData.conductorName 
-                                            : (formData.conductorId ? "Cargando..." : (currentUser?.name || currentUser?.email || ''))
-                                        }
-                                        className="w-full p-2 border border-slate-200 rounded-lg bg-slate-100 text-slate-600 font-bold"
-                                        disabled
-                                    />
-                                )}
-                                <input type="hidden" name="conductorId" value={formData.conductorId || ''} />
-                                <input type="hidden" name="conductorName" value={formData.conductorName || ''} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha</label>
-                                <input type="date" name="fecha" value={formData.fecha || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" required />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Unidad / Vehículo</label>
-                                <Select 
-                                    options={VEHICLES.map(v => ({ value: v.value, label: v.label }))}
-                                    value={formData.unidadName}
-                                    onChange={(val) => {
-                                        const vehicle = VEHICLES.find(v => v.value === val);
-                                        setFormData(p => ({...p, unidadName: val, unidadId: vehicle?.label || ''}));
-                                    }}
-                                    placeholder="Buscar vehículo..."
-                                    required
-                                />
-                                {activeLogWarning && (
-                                    <div className="mt-2 flex items-center gap-2 text-[10px] font-black text-orange-600 bg-orange-50 p-2 rounded-lg border border-orange-100 animate-pulse">
-                                        <FiAlertTriangle className="text-xs shrink-0" />
-                                        <span className="uppercase tracking-tight font-black">{activeLogWarning}</span>
+                    {(() => {
+                        const selectedCode = (formData.unidadName || '').split(' - ')[0]?.split(' — ')[0]?.trim().toUpperCase();
+                        const selectedUnitDocAlerts = (formData.unidadName && selectedCode)
+                            ? (controlAlerts || []).filter((a) => {
+                                if (a.tipoAlerta !== 'documento_vencimiento') return false;
+                                const alertUnit = (a.unidad || a.vehiculoId || '').toUpperCase();
+                                return (
+                                    alertUnit.includes(selectedCode) ||
+                                    selectedCode.includes(alertUnit) ||
+                                    (formData.unidadId && a.vehiculoId === formData.unidadId)
+                                );
+                            })
+                            : [];
+                        const hasExpiredDoc = selectedUnitDocAlerts.some((a) => (a.restanDias ?? 0) <= 0 || a.nivel === 'danger');
+
+                        return (
+                            <div className={`p-4 rounded-xl border transition-all ${
+                                selectedUnitDocAlerts.length > 0
+                                    ? hasExpiredDoc
+                                        ? 'bg-red-50/70 border-red-300 shadow-2xs'
+                                        : 'bg-amber-50/70 border-amber-300 shadow-2xs'
+                                    : 'bg-slate-50 border-slate-200'
+                            }`}>
+                                <h3 className="text-xs font-black text-blue-800 uppercase mb-3">Información General</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Conductor</label>
+                                        {userIsAdmin ? (
+                                            <Select 
+                                                options={[
+                                                    ...employees.map(emp => ({ value: emp.id, label: emp.name })),
+                                                    ...(formData.conductorId && !employees.some(e => e.id === formData.conductorId) 
+                                                        ? [{ 
+                                                            value: formData.conductorId, 
+                                                            label: (!formData.conductorName || formData.conductorName === formData.conductorId) 
+                                                                ? 'Cargando...' 
+                                                                : formData.conductorName 
+                                                        }] : [])
+                                                ]}
+                                                value={formData.conductorId || ''}
+                                                onChange={(val) => {
+                                                    const emp = employees.find(e => e.id === val);
+                                                    setFormData(p => ({
+                                                        ...p, 
+                                                        conductorId: val, 
+                                                        conductorName: emp?.name || ''
+                                                    }));
+                                                }}
+                                                placeholder="Seleccione conductor..."
+                                                required
+                                            />
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                value={
+                                                    (formData.conductorName && formData.conductorName !== formData.conductorId) 
+                                                    ? formData.conductorName 
+                                                    : (formData.conductorId ? "Cargando..." : (currentUser?.name || currentUser?.email || ''))
+                                                }
+                                                className="w-full p-2 border border-slate-200 rounded-lg bg-slate-100 text-slate-600 font-bold"
+                                                disabled
+                                            />
+                                        )}
+                                        <input type="hidden" name="conductorId" value={formData.conductorId || ''} />
+                                        <input type="hidden" name="conductorName" value={formData.conductorName || ''} />
                                     </div>
-                                )}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha</label>
+                                        <input type="date" name="fecha" value={formData.fecha || ''} onChange={handleChange} className="w-full p-2 border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-100 text-[16px] md:text-sm appearance-none" required />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Unidad / Vehículo</label>
+                                        <Select 
+                                            options={VEHICLES.map(v => ({ value: v.value, label: v.label }))}
+                                            value={formData.unidadName}
+                                            onChange={(val) => {
+                                                const vehicle = VEHICLES.find(v => v.value === val);
+                                                setFormData(p => ({...p, unidadName: val, unidadId: vehicle?.label || ''}));
+                                            }}
+                                            placeholder="Buscar vehículo..."
+                                            required
+                                        />
+                                        {activeLogWarning && (
+                                            <div className="mt-2 flex items-center gap-2 text-[10px] font-black text-orange-600 bg-orange-50 p-2 rounded-lg border border-orange-100 animate-pulse">
+                                                <FiAlertTriangle className="text-xs shrink-0" />
+                                                <span className="uppercase tracking-tight font-black">{activeLogWarning}</span>
+                                            </div>
+                                        )}
+
+                                        {selectedUnitDocAlerts.length > 0 && (
+                                            <div className="mt-3 p-3 rounded-xl border bg-white/95 border-amber-300 shadow-2xs space-y-1.5">
+                                                <div className="flex items-center gap-1.5 font-black text-amber-950 text-xs uppercase tracking-tight">
+                                                    <FiAlertTriangle className="text-amber-600 text-sm shrink-0" />
+                                                    <span>⚠️ Esta unidad presenta {selectedUnitDocAlerts.length} alerta{selectedUnitDocAlerts.length > 1 ? 's' : ''} de control vehicular</span>
+                                                </div>
+                                                <ul className="space-y-1 pt-1">
+                                                    {selectedUnitDocAlerts.map((alt) => {
+                                                        const isExpired = (alt.restanDias ?? 0) <= 0 || alt.nivel === 'danger';
+                                                        let formattedText = alt.detalle;
+                                                        if (alt.fechaOVencimiento) {
+                                                            const parts = alt.fechaOVencimiento.split('-');
+                                                            if (parts.length === 3) {
+                                                                const [y, m, d] = parts;
+                                                                if (isExpired) {
+                                                                    const daysAgo = Math.abs(alt.restanDias ?? 0);
+                                                                    formattedText = `${alt.targetNombre} vencido el ${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}${daysAgo > 0 ? ` (hace ${daysAgo} días)` : ' (hoy)'}.`;
+                                                                } else {
+                                                                    formattedText = `${alt.targetNombre} vence en ${alt.restanDias} días.`;
+                                                                }
+                                                            }
+                                                        }
+                                                        return (
+                                                            <li
+                                                                key={alt.id}
+                                                                className={`text-[11px] font-medium px-2.5 py-1 rounded-md border flex items-center gap-1.5 leading-snug ${
+                                                                    isExpired
+                                                                        ? 'bg-red-50 text-red-800 border-red-200 font-bold'
+                                                                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                                                                }`}
+                                                            >
+                                                                <span className="shrink-0">•</span>
+                                                                <span>{formattedText}</span>
+                                                            </li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
+                        );
+                    })()}
 
                     {/* 1. INICIO DE LABORES */}
                     <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-200/80 shadow-xs space-y-2">

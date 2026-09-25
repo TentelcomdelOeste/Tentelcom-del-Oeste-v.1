@@ -460,6 +460,10 @@ export const VehicleDocumentModal: React.FC<VehicleDocumentModalProps> = ({
             type="submit"
             variant="primary"
             label={isSubmitting ? 'GUARDANDO...' : 'GUARDAR'}
+            onClick={(e: any) => {
+              if (e && typeof e.preventDefault === 'function') e.preventDefault();
+              handleSubmit(e);
+            }}
             disabled={isSubmitting}
             className="px-5 py-2 text-xs font-bold uppercase"
           />

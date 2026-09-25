@@ -154,6 +154,7 @@ export const MaterialRequestModal = ({
                 quantityRequested: i.quantityRequested || 0,
                 quantityDispatched: i.quantityDispatched || 0,
                 quantityPending: i.quantityPending ?? (i.quantityRequested || 0),
+                shortageQty: (i as any).shortageQty || 0,
                 status: i.status || 'pending',
                 comment: i.comment || '',
                 error: null

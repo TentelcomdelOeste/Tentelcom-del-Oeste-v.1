@@ -279,6 +279,21 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
                 );
             }
 
+            if (m.projectName && m.projectName.trim() !== '') {
+                return (
+                    <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-900">
+                            {m.projectCode ? `[${m.projectCode}] ` : ''}{m.projectName}
+                        </span>
+                        {m.origin && (
+                            <span className="text-[10px] text-slate-400 font-medium">
+                                {normalizeOrigin(m.origin)}
+                            </span>
+                        )}
+                    </div>
+                );
+            }
+
             return (
                 <span className="text-xs font-medium text-slate-700">
                     {normalizeOrigin(m.origin || '---')}

@@ -41,6 +41,7 @@ interface TempItem {
     iva?: number;
     total?: number;
     currency?: 'USD' | 'CRC';
+    notes?: string;
 }
 
 export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({ 
@@ -70,6 +71,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
     type: 'Salida' as MovementType,
     date: new Date().toISOString().split('T')[0],
     projectId: '',
+    projectCode: '',
+    projectName: '',
     observations: '',
     origin: '' as 'IBUX-CLARO' | 'CNFL' | 'PRIVADO' | 'Proveedor' | '',
     provider: '',
@@ -139,6 +142,25 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
       });
     }
 
+    if (formData.type === 'Devolución') {
+      base.push({
+        header: 'Comentarios / Notas',
+        render: (item) => (
+          <input
+            type="text"
+            value={item.notes || ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              setAddedItems(prev => prev.map(i => i.id === item.id ? { ...i, notes: val } : i));
+            }}
+            placeholder="Observaciones de este material..."
+            className="w-full px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold outline-none focus:ring-2 focus:ring-blue-100 bg-white text-slate-700"
+          />
+        ),
+        className: 'w-48 sm:w-64'
+      });
+    }
+
     base.push({
       header: '',
       render: (item) => (
@@ -163,6 +185,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
   const [tempBolt4Price, setTempBolt4Price] = useState(''); // Precio Perno 4
   const [tempBolt3Price, setTempBolt3Price] = useState(''); // Precio Perno 3
   const [tempCurrency, setTempCurrency] = useState<'USD'|'CRC'>('CRC'); // Moneda por defecto CRC
+  const [tempNotes, setTempNotes] = useState(''); // Notas del ítem individual para Devolución
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +211,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                   type: initialData.type,
                   date: initialData.date,
                   projectId: initialData.projectId || '',
+                  projectCode: initialData.projectCode || '',
+                  projectName: initialData.projectName || '',
                   observations: initialData.observations || '',
                   origin: (initialData.origin as any) || '',
                   provider: initialData.provider || '',
@@ -218,7 +243,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                           unitPrice: i.unitPrice,
                           iva: i.iva,
                           total: i.total,
-                          currency: i.currency
+                          currency: i.currency,
+                          notes: i.notes || ''
                       };
                   });
               } else if (initialData.inventoryItemId) {
@@ -246,6 +272,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                   type: 'Salida',
                   date: new Date().toISOString().split('T')[0],
                   projectId: '',
+                  projectCode: '',
+                  projectName: '',
                   observations: '',
                   origin: '',
                   provider: '',
@@ -266,6 +294,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
           setTempBolt4Price('');
           setTempBolt3Price('');
           setTempCurrency('CRC');
+          setTempNotes('');
           setItemSearch('');
           setError(null);
           
@@ -307,6 +336,56 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
   const selectedProject = useMemo(() => 
       approvedQuotes.find(q => q.id.toString() === formData.projectId?.toString()),
   [approvedQuotes, formData.projectId]);
+
+  // Proyectos únicos derivados de solicitudes despachadas para Devoluciones
+  const dispatchedProjects = useMemo(() => {
+    const dispatched = (requests || []).filter(r => r.status === 'Despachada');
+    const map = new Map<string, {
+      key: string;
+      projectId: string;
+      projectName: string;
+      projectCode?: string;
+      origin?: string;
+      fdh?: string;
+      torre?: string;
+      locationDetails?: string;
+      planta?: string;
+      label: string;
+    }>();
+
+    dispatched.forEach(r => {
+      const rawName = (r.projectName || '').trim();
+      const rawId = (r.projectId || '').trim();
+      const rawCode = (r.projectCode || '').trim();
+
+      if (!rawName && !rawId) return;
+
+      const isGenericId = !rawId || rawId === 'SIN PROYECTO' || rawId === 'N/A' || rawId === 'IBUX-CLARO';
+      const key = isGenericId ? rawName.toUpperCase() : rawId;
+
+      if (!map.has(key)) {
+        const hasCodeInName = rawCode && rawName.toUpperCase().includes(rawCode.toUpperCase());
+        const displayLabel = (rawCode && !hasCodeInName)
+          ? `${rawCode} - ${rawName}`
+          : (rawName || rawCode || rawId);
+
+        map.set(key, {
+          key,
+          projectId: rawId || key,
+          projectName: rawName || rawCode || rawId,
+          projectCode: rawCode || undefined,
+          origin: r.origin || undefined,
+          fdh: r.fdh || undefined,
+          torre: r.torre || undefined,
+          locationDetails: r.locationDetails || undefined,
+          planta: r.planta || undefined,
+          label: displayLabel
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [requests]);
 
   // Efecto para cargar precio automático si es Entrada de Proveedor
   const isClampCondition = useMemo(() => {
@@ -473,7 +552,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
           unitPrice: itemPrice,
           iva: itemIva,
           total: itemTotal,
-          currency: tempCurrency
+          currency: tempCurrency,
+          notes: tempNotes
       };
       itemsToAdd.push(clampItem);
 
@@ -532,6 +612,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
       setTempBolt4Price('');
       setTempBolt3Price('');
       setTempCurrency('CRC');
+      setTempNotes('');
       setItemSearch('');
   };
 
@@ -559,8 +640,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
 
     // 3. Validar Proyecto (Regla Condicional Extendida)
     // Si es Salida Y el origen NO es IBUX (CLARO/CLQRO), el proyecto es obligatorio.
-    // Si es Devolución, el proyecto es SIEMPRE obligatorio (para devolver stock al consumo del proyecto).
-    const isProjectRequired = (formData.type === 'Salida' && !isIBUXOrigin) || formData.type === 'Devolución';
+    // Para Devolución, el proyecto es OPCIONAL (permite devolución general sin proyecto).
+    const isProjectRequired = formData.type === 'Salida' && !isIBUXOrigin;
     if (isProjectRequired && !formData.projectId) {
         setError("Es obligatorio asociar un proyecto para este tipo de movimiento.");
         return;
@@ -627,18 +708,19 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                         unitPrice: price,
                         iva: item.iva !== undefined ? item.iva : iva,
                         total: item.total !== undefined ? item.total : total,
-                        currency: item.currency || 'USD'
+                        currency: item.currency || 'USD',
+                        notes: item.notes || null
                     };
                 }),
                 type: sanitizedFormData.type,
                 date: sanitizedFormData.date,
                 projectId: sanitizedFormData.projectId || null,
-                projectCode: projectCodeValue,
-                projectName: selectedProject ? selectedProject.empresa.replace(" MANTENIMIENTO", "") : null,
+                projectCode: sanitizedFormData.projectCode || projectCodeValue,
+                projectName: sanitizedFormData.projectName || (selectedProject ? selectedProject.empresa.replace(" MANTENIMIENTO", "") : null),
                 userId: currentUser.id,
                 userName: currentUser.email,
                 observations: sanitizedFormData.observations,
-                origin: sanitizedFormData.origin.replace(" MANTENIMIENTO", ""),
+                origin: sanitizedFormData.origin ? sanitizedFormData.origin.replace(" MANTENIMIENTO", "") : null,
                 provider: sanitizedFormData.origin === 'Proveedor' ? sanitizedFormData.provider : null,
                 factura: sanitizedFormData.factura || null,
                 linkedRequestId: sanitizedFormData.linkedRequestId || null,
@@ -663,7 +745,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
   if (!show) return null;
 
   // Helper para determinar si el proyecto es visualmente requerido
-  const isProjectVisuallyRequired = (formData.type === 'Salida' && !isIBUXOrigin) || formData.type === 'Devolución';
+  const isProjectVisuallyRequired = formData.type === 'Salida' && !isIBUXOrigin;
 
   return createPortal(
     <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[200] p-4">
@@ -690,7 +772,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                 <div className="flex bg-slate-100 p-1 rounded-xl flex-1 gap-1">
                     <button
                         type="button"
-                        onClick={() => { setFormData({...formData, type: 'Salida', projectId: ''}); setAddedItems([]); }}
+                        onClick={() => { setFormData({...formData, type: 'Salida', projectId: '', projectName: '', projectCode: ''}); setAddedItems([]); }}
                         className={`flex-1 py-2 rounded-lg text-[9px] sm:text-xs font-black transition-all ${formData.type === 'Salida' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                         disabled={!!initialData} // Deshabilitar cambio de tipo en edición
                     >
@@ -698,7 +780,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                     </button>
                     <button
                         type="button"
-                        onClick={() => { setFormData({...formData, type: 'Entrada', projectId: ''}); setAddedItems([]); }}
+                        onClick={() => { setFormData({...formData, type: 'Entrada', projectId: '', projectName: '', projectCode: ''}); setAddedItems([]); }}
                         className={`flex-1 py-2 rounded-lg text-[9px] sm:text-xs font-black transition-all ${formData.type === 'Entrada' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                         disabled={!!initialData}
                     >
@@ -706,7 +788,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                     </button>
                     <button
                         type="button"
-                        onClick={() => { setFormData({...formData, type: 'Devolución', projectId: ''}); setAddedItems([]); }}
+                        onClick={() => { setFormData({...formData, type: 'Devolución', projectId: '', projectName: '', projectCode: ''}); setAddedItems([]); }}
                         className={`flex-1 py-2 rounded-lg text-[9px] sm:text-xs font-black transition-all ${formData.type === 'Devolución' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                         disabled={!!initialData}
                     >
@@ -734,64 +816,55 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                 </div>
             )}
 
-            {/* 1.5 Selector de Solicitud (Solo para Devolución) */}
+            {/* 1.5 Selector de Proyecto de Origen (Solo para Devolución) */}
             {formData.type === 'Devolución' && (
                 <div className="animate-in fade-in slide-in-from-top-2">
                     <Select
-                        label="Entrega (Dispatch) (Opcional)"
-                        placeholder="Buscar por ID (SOL-XXXX), Proyecto o Fecha..."
+                        label="Proyecto de Origen (Opcional)"
+                        placeholder="Buscar proyecto..."
                         isSearchable={true}
                         options={[
                             { label: '-- Ninguno (Devolución General) --', value: '' },
-                            ...requests
-                            .filter(r => r.status === 'Despachada')
-                            .map(r => ({
-                                label: `${r.requestNumber || 'SOL-XXXX'} - ${r.projectName} (${r.date})`,
-                                value: r.dispatchId
+                            ...dispatchedProjects.map(p => ({
+                                label: p.label,
+                                value: p.key
                             }))
                         ]}
-                        value={requests.find(r => r.dispatchId === formData.dispatchId) ? {
-                            label: `${requests.find(r => r.dispatchId === formData.dispatchId)?.requestNumber || 'SOL-XXXX'} - ${requests.find(r => r.dispatchId === formData.dispatchId)?.projectName} (${requests.find(r => r.dispatchId === formData.dispatchId)?.date})`,
-                            value: formData.dispatchId
-                        } : (formData.dispatchId || '')}
+                        value={
+                            dispatchedProjects.find(p => p.key === formData.projectId || p.projectId === formData.projectId || p.projectName === formData.projectName)?.key 
+                            || formData.projectId 
+                            || ''
+                        }
                         onChange={opt => {
                             const val = typeof opt === 'string' ? opt : opt?.value;
-                            
-                            // Buscar por dispatchId o por SOL-XXXX
-                            const request = requests.find(r => r.dispatchId === val || r.requestNumber === val);
-                            
-                            if (request) {
-                                setFormData({
-                                    ...formData,
-                                    dispatchId: request.dispatchId || '',
-                                    linkedRequestId: request.id,
-                                    linkedRequestNumber: request.requestNumber || '',
-                                    projectId: request.projectId || '',
-                                    fdh: request.fdh || '',
-                                    torre: request.torre || '',
-                                    locationDetails: request.locationDetails || '',
-                                    origin: 'IBUX-CLARO'
-                                });
+                            if (!val) {
+                                setFormData(prev => ({
+                                    ...prev,
+                                    projectId: '',
+                                    projectName: '',
+                                    projectCode: '',
+                                    linkedRequestId: '',
+                                    linkedRequestNumber: '',
+                                    dispatchId: ''
+                                }));
+                                return;
+                            }
 
-                                // Pre-población de items para Devolución
-                                if (formData.type === 'Devolución' && request.items) {
-                                    const prePopulatedItems: TempItem[] = request.items.map(reqItem => {
-                                        const invItem = inventoryItems.find(i => i.id === reqItem.inventoryItemId);
-                                        return {
-                                            id: `pre-${reqItem.inventoryItemId}-${Date.now()}`,
-                                            inventoryItemId: reqItem.inventoryItemId,
-                                            code: reqItem.code,
-                                            description: reqItem.description,
-                                            quantity: reqItem.quantityDispatched || reqItem.quantityRequested,
-                                            unit: reqItem.unit,
-                                            stock: invItem?.stock || 0
-                                        };
-                                    });
-                                    setAddedItems(prePopulatedItems);
-                                }
-                            } else {
-                                // Si no se encuentra, guardamos el valor crudo para permitir búsqueda/pegado
-                                setFormData(prev => ({ ...prev, dispatchId: val || '' }));
+                            const proj = dispatchedProjects.find(p => p.key === val || p.projectId === val);
+                            if (proj) {
+                                setFormData(prev => ({
+                                    ...prev,
+                                    projectId: proj.projectId,
+                                    projectName: proj.projectName,
+                                    projectCode: proj.projectCode || '',
+                                    origin: (proj.origin as any) || prev.origin || 'IBUX-CLARO',
+                                    fdh: proj.fdh || prev.fdh || '',
+                                    torre: proj.torre || prev.torre || '',
+                                    locationDetails: proj.locationDetails || prev.locationDetails || '',
+                                    linkedRequestId: '',
+                                    linkedRequestNumber: '',
+                                    dispatchId: ''
+                                }));
                             }
                         }}
                     />
@@ -843,8 +916,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                 </div>
             )}
 
-            {/* 3. Proyecto Asociado (REORDENADO Y CONDICIONAL) */}
-            {(formData.type === 'Salida' || formData.type === 'Devolución') && (
+            {/* 3. Proyecto Asociado (Solo para Salida de Cotizaciones) */}
+            {formData.type === 'Salida' && (
                 <div className="animate-in fade-in slide-in-from-top-2">
                     <Select
                         label={`Proyecto Asociado ${isProjectVisuallyRequired ? '' : '(Opcional)'}`}
@@ -977,6 +1050,20 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold text-slate-400 uppercase">{selectedItem?.unit}</span>
                         </div>
                     </div>
+
+                    {/* Campo Comentarios / Notas (Solo Devolución) */}
+                    {formData.type === 'Devolución' && (
+                        <div className="flex-[2] min-w-[150px]">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Comentarios / Notas</label>
+                            <input 
+                                type="text"
+                                value={tempNotes}
+                                onChange={e => setTempNotes(e.target.value)}
+                                className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-xs font-bold outline-none text-slate-700 focus:ring-2 focus:ring-blue-100"
+                                placeholder="Ej: Material sobrante, buen estado..."
+                            />
+                        </div>
+                    )}
 
                     {/* Campos de Costo (Solo Entrada Proveedor) */}
                     {formData.type === 'Entrada' && formData.origin === 'Proveedor' && (
@@ -1118,7 +1205,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
             </div>
 
             <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Observaciones</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Observaciones Generales</label>
                 <textarea 
                     value={formData.observations}
                     onChange={e => setFormData({...formData, observations: e.target.value})}

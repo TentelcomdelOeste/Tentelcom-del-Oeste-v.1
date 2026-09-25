@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
-import { VehicleLog, VehicleExpense, evaluateVehicleInspectionAlerts } from '../../../types/vehicle.types';
+import React, { useState, useMemo } from 'react';
+import { VehicleLog, VehicleExpense, VehicleControlAlert, evaluateVehicleInspectionAlerts } from '../../../types/vehicle.types';
 import { FaTruck, FaCalendar, FaUser, FaMapPin, FaTachometerAlt, FaCreditCard } from 'react-icons/fa';
+import { FiAlertTriangle } from 'react-icons/fi';
 import { ActionButtons } from '../../../components/ui/ActionButtons';
 import { SovereignVehicleImage } from './SovereignVehicleImage';
 import { InspectionAlertsModal } from './InspectionAlertsModal';
@@ -9,6 +10,7 @@ import { InspectionAlertsModal } from './InspectionAlertsModal';
 interface Props {
     log: VehicleLog;
     expenses?: VehicleExpense[];
+    controlAlerts?: VehicleControlAlert[];
     onEdit: () => void;
     onDelete: () => void;
     onPdf: () => void;
@@ -16,10 +18,24 @@ interface Props {
     onCostAnalysis?: () => void;
 }
 
-export const VehicleLogCard = React.memo(({ log, expenses = [], onEdit, onDelete, onPdf, onTimeline, onCostAnalysis }: Props) => {
+export const VehicleLogCard = React.memo(({ log, expenses = [], controlAlerts = [], onEdit, onDelete, onPdf, onTimeline, onCostAnalysis }: Props) => {
     const [showAlertsModal, setShowAlertsModal] = useState(false);
     const isIncomplete = !log.horaLlegada || !log.kmLlegada;
     const totalExpenses = expenses.reduce((sum, e) => sum + (e.monto || 0), 0);
+
+    const unitCode = ((log as any)._resolvedUnidad || log.unidadName || log.unidadId || '').toUpperCase();
+    const docAlerts = useMemo(() => {
+        if (!controlAlerts || controlAlerts.length === 0) return [];
+        return controlAlerts.filter((a) => {
+            if (a.tipoAlerta !== 'documento_vencimiento') return false;
+            const alertCode = (a.unidad || a.vehiculoId || '').toUpperCase();
+            return (
+                unitCode.includes(alertCode) ||
+                alertCode.includes(unitCode) ||
+                (log.unidadId && a.vehiculoId === log.unidadId)
+            );
+        });
+    }, [controlAlerts, unitCode, log.unidadId]);
 
     const alertInfo = evaluateVehicleInspectionAlerts(log.revisionUnidad, log);
     const hasInspectionAlert = log.hasInspectionAlert !== undefined ? log.hasInspectionAlert : alertInfo.hasInspectionAlert;
@@ -230,6 +246,47 @@ export const VehicleLogCard = React.memo(({ log, expenses = [], onEdit, onDelete
                     </div>
                 </div>
             </div>
+
+            {/* Alertas de Documentación Vehicular */}
+            {docAlerts.length > 0 && (
+                <div className="mb-3 p-2.5 rounded-xl border bg-amber-50/80 border-amber-200 space-y-1.5 text-xs">
+                    <div className="flex items-center gap-1.5 font-black text-amber-950 text-[11px] uppercase tracking-wider">
+                        <FiAlertTriangle className="text-amber-600 text-sm shrink-0" />
+                        <span>Alertas de documentación</span>
+                    </div>
+                    <ul className="space-y-1">
+                        {docAlerts.map((alt) => {
+                            const isExpired = (alt.restanDias ?? 0) <= 0 || alt.nivel === 'danger';
+                            let formattedText = alt.detalle;
+                            if (alt.fechaOVencimiento) {
+                                const parts = alt.fechaOVencimiento.split('-');
+                                if (parts.length === 3) {
+                                    const [y, m, d] = parts;
+                                    if (isExpired) {
+                                        const daysAgo = Math.abs(alt.restanDias ?? 0);
+                                        formattedText = `${alt.targetNombre} vencido el ${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}${daysAgo > 0 ? ` (hace ${daysAgo} días)` : ' (hoy)'}.`;
+                                    } else {
+                                        formattedText = `${alt.targetNombre} vence en ${alt.restanDias} días.`;
+                                    }
+                                }
+                            }
+                            return (
+                                <li
+                                    key={alt.id}
+                                    className={`text-[11px] font-medium px-2 py-1 rounded-md border flex items-center gap-1.5 leading-snug ${
+                                        isExpired
+                                            ? 'bg-red-50 text-red-800 border-red-200 font-bold'
+                                            : 'bg-amber-50 text-amber-800 border-amber-200'
+                                    }`}
+                                >
+                                    <span className="shrink-0">•</span>
+                                    <span>{formattedText}</span>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+            )}
 
             {/* Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">

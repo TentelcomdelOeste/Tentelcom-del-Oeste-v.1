@@ -14,6 +14,7 @@ export interface MovementItemDetail {
   total?: number;
   subtotal?: number;
   currency?: 'USD' | 'CRC';
+  notes?: string | null;
 }
 
 export interface InventoryMovement {

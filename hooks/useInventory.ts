@@ -32,7 +32,7 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
     );
     if (!canViewRequests || !authReady || !currentUser?.uid) return;
     // Fetch material_reports for dynamic reserved stock calculation
-    const q = query(collection(db, "material_reports"), where("status", "in", ["Pendiente", "Aprobada"]));
+    const q = query(collection(db, "material_reports"), where("status", "in", ["Pendiente", "Aprobada", "Parcial"]));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       try {
         const docs = snapshot.docs || [];
@@ -54,7 +54,9 @@ export const useInventory = (currentUser: User | null, options?: { fetchAll?: bo
     return safeRequests.reduce((sum, request) => {
       const itemsList = Array.isArray(request.items) ? request.items : [];
       const item = itemsList.find((i: any) => i.inventoryItemId === itemId);
-      return sum + (item?.quantityRequested || 0);
+      if (!item) return sum;
+      const resv = Math.max(0, (item.quantityRequested || 0) - (item.shortageQty || 0) - (item.quantityDispatched || 0));
+      return sum + resv;
     }, 0);
   }, [materialRequests]);
 

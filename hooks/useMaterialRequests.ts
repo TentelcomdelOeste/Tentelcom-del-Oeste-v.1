@@ -194,11 +194,29 @@ export const useMaterialRequests = (currentUser: User | null) => {
     // Transactional creation with reservation and requestNumber generation
     let finalRequestNumber = '';
     let finalMovementRef = '';
+    let finalUpdatedItems: any[] = [];
     const movementDocId = `mov-${Date.now()}-${id}`;
 
     await runTransaction(db, async (transaction) => {
         // 1. READS (ALL)
         
+        // Obtener otras solicitudes activas para conocer la reserva real de OTRAS solicitudes DENTRO de la transacción
+        const activeRequestsSnap = await getDocs(query(
+            collection(db, "material_reports"),
+            where("status", "in", ["Pendiente", "Aprobada", "Parcial"])
+        ));
+        
+        const reservedByOthersMap: Record<string, number> = {};
+        for (const d of activeRequestsSnap.docs) {
+            if (d.id === id) continue; // Excluir la solicitud actual
+            const reqData = d.data() as MaterialRequest;
+            for (const it of reqData.items || []) {
+                if (!it.inventoryItemId) continue;
+                const resv = Math.max(0, (it.quantityRequested || 0) - (it.shortageQty || 0) - (it.quantityDispatched || 0));
+                reservedByOthersMap[it.inventoryItemId] = (reservedByOthersMap[it.inventoryItemId] || 0) + resv;
+            }
+        }
+
         // A. Read counter
         const counterRef = doc(db, "counters", "requestNumber");
         const counterSnap = await transaction.get(counterRef);
@@ -234,12 +252,21 @@ export const useMaterialRequests = (currentUser: User | null) => {
 
         // 2. CALCULATIONS
         
+        // Disponibilidad real para esta nueva solicitud (stock físico - reservas de otras solicitudes activas)
+        const availableForThisRequest: Record<string, number> = {};
+        for (const { item, itemSnap } of itemSnaps) {
+            const itemId = item.inventoryItemId;
+            if (availableForThisRequest[itemId] === undefined) {
+                const currentStock = itemSnap.data().stock || 0;
+                const reservedByOthers = reservedByOthersMap[itemId] || 0;
+                availableForThisRequest[itemId] = Math.max(0, currentStock - reservedByOthers);
+            }
+        }
+
         // Validation: For vehicle transfer, strictly ensure ALL items have enough stock in Bodega Principal
         if (isVehicleTransfer) {
-            for (const { item, itemSnap } of itemSnaps) {
-                const currentStock = itemSnap.data().stock || 0;
-                const currentReserved = itemSnap.data().reserved || 0;
-                const available = Math.max(0, currentStock - currentReserved);
+            for (const { item } of itemSnaps) {
+                const available = availableForThisRequest[item.inventoryItemId] ?? 0;
                 if (item.quantityRequested > available) {
                     throw new Error(`Stock insuficiente en Bodega Principal para el material ${item.code}. Solicitado: ${item.quantityRequested}, disponible: ${available} ${item.unit || ''}`);
                 }
@@ -276,18 +303,18 @@ export const useMaterialRequests = (currentUser: User | null) => {
 
         // Update inventory items
         const updatedItems = [...repairedItems];
+        const newReservedByThisRequest: Record<string, number> = {};
+
         for (let i = 0; i < itemSnaps.length; i++) {
-            const { item, itemSnap } = itemSnaps[i];
-            const itemRef = doc(db, "inventory_items", item.inventoryItemId);
-            const currentStock = itemSnap.data().stock || 0;
-            const currentReserved = itemSnap.data().reserved || 0;
-            const available = Math.max(0, currentStock - currentReserved);
+            const { item, itemSnap, itemRef } = itemSnaps[i];
+            const itemId = item.inventoryItemId;
             
             if (isVehicleTransfer) {
                 // En traslados a bodega vehicular, descontamos stock físico directamente
                 const qtyToDeduct = item.quantityRequested;
                 updatedItems[i] = {
                     ...item,
+                    quantityRequested: qtyToDeduct,
                     quantityDispatched: qtyToDeduct,
                     quantityPending: 0,
                     shortageQty: 0,
@@ -299,20 +326,46 @@ export const useMaterialRequests = (currentUser: User | null) => {
                     updatedBy: currentUser.email
                 });
             } else {
-                // Solicitud normal de proyecto: reservamos solo lo disponible
-                const qtyToReserve = Math.min(item.quantityRequested, available);
+                // Solicitud normal de proyecto: reservamos solo lo disponible real
+                const currentAvailable = availableForThisRequest[itemId] ?? 0;
+                const qtyReq = item.quantityRequested || 0;
+                const qtyToReserve = Math.min(qtyReq, currentAvailable);
+                const shortage = Math.max(0, qtyReq - qtyToReserve);
+
+                availableForThisRequest[itemId] = Math.max(0, currentAvailable - qtyToReserve);
+                newReservedByThisRequest[itemId] = (newReservedByThisRequest[itemId] || 0) + qtyToReserve;
+
                 updatedItems[i] = {
                     ...item,
-                    shortageQty: Math.max(0, item.quantityRequested - qtyToReserve)
+                    quantityRequested: qtyReq,
+                    quantityDispatched: 0,
+                    quantityPending: qtyToReserve,
+                    shortageQty: shortage,
+                    status: 'pending'
                 };
+            }
+        }
 
-                if (qtyToReserve > 0) {
+        // Si no es traslado vehicular, sincronizar campo reserved con la verdad de las solicitudes activas
+        if (!isVehicleTransfer) {
+            const uniqueItemIds = Array.from(new Set(itemSnaps.map(s => s.item.inventoryItemId)));
+            for (const itemId of uniqueItemIds) {
+                const itemSnapObj = itemSnaps.find(s => s.item.inventoryItemId === itemId);
+                const currentReserved = itemSnapObj?.itemSnap.data().reserved || 0;
+                const reservedByOthers = reservedByOthersMap[itemId] || 0;
+                const newReservedForThis = newReservedByThisRequest[itemId] || 0;
+                const finalReserved = Math.max(0, reservedByOthers + newReservedForThis);
+
+                if (finalReserved !== currentReserved) {
+                    const itemRef = doc(db, "inventory_items", itemId);
                     transaction.update(itemRef, {
-                        reserved: increment(qtyToReserve)
+                        reserved: finalReserved
                     });
                 }
             }
         }
+
+        finalUpdatedItems = updatedItems;
 
         // If vehicle transfer: increment vehicle items & create vehicle movement record
         if (isVehicleTransfer && targetVehiculoId) {
@@ -403,7 +456,7 @@ export const useMaterialRequests = (currentUser: User | null) => {
     
     const createdReq = {
         ...newRequestData,
-        items: repairedItems,
+        items: finalUpdatedItems,
         status: isVehicleTransfer ? ('Despachada' as RequestStatus) : ((requestData as any).status || ('Pendiente' as RequestStatus)),
         dispatchId,
         requestNumber: finalRequestNumber,
@@ -455,66 +508,100 @@ export const useMaterialRequests = (currentUser: User | null) => {
           });
 
           await runTransaction(db, async (transaction) => {
+              // Obtener otras solicitudes activas para conocer la reserva real de OTRAS solicitudes DENTRO de la transacción
+              const activeRequestsSnap = await getDocs(query(
+                  collection(db, "material_reports"),
+                  where("status", "in", ["Pendiente", "Aprobada", "Parcial"])
+              ));
+              
+              const reservedByOthersMap: Record<string, number> = {};
+              for (const d of activeRequestsSnap.docs) {
+                  if (d.id === id) continue; // Excluir la solicitud que se está editando
+                  const reqData = d.data() as MaterialRequest;
+                  for (const it of reqData.items || []) {
+                      if (!it.inventoryItemId) continue;
+                      const resv = Math.max(0, (it.quantityRequested || 0) - (it.shortageQty || 0) - (it.quantityDispatched || 0));
+                      reservedByOthersMap[it.inventoryItemId] = (reservedByOthersMap[it.inventoryItemId] || 0) + resv;
+                  }
+              }
+
               const currentItems = repairItems(currentData.items || []);
               const newItems = repairItems(sanitizedUpdates.items || []);
-              
-              const inventoryUpdates: Record<string, number> = {};
-              
-              // Restar reservas anteriores (considerando faltantes)
-              for (const item of currentItems) {
-                  const reservedBefore = Math.max(0, item.quantityRequested - (item.shortageQty || 0));
-                  inventoryUpdates[item.inventoryItemId] = (inventoryUpdates[item.inventoryItemId] || 0) - reservedBefore;
-              }
-              
-              // Sumar nuevas reservas (calculando faltantes sobre el stock actual)
-              const preparedItems = [...newItems];
-              for (let i = 0; i < preparedItems.length; i++) {
-                  const item = preparedItems[i];
-                  const itemRef = doc(db, "inventory_items", item.inventoryItemId);
+
+              // 1. Obtener todos los IDs de inventario únicos que intervienen (anteriores y nuevos)
+              const allItemIds = Array.from(new Set([
+                  ...currentItems.map((i: any) => i.inventoryItemId),
+                  ...newItems.map((i: any) => i.inventoryItemId)
+              ])).filter(Boolean) as string[];
+
+              // 2. FASE DE LECTURA: Leer todos los documentos de inventario dentro de la transacción
+              const inventoryDocs: Record<string, any> = {};
+              for (const itemId of allItemIds) {
+                  const itemRef = doc(db, "inventory_items", itemId);
                   const itemDoc = await transaction.get(itemRef);
-                  
                   if (!itemDoc.exists()) {
-                      throw new Error(`El ítem con ID ${item.inventoryItemId} no existe en inventario.`);
+                      throw new Error(`El ítem con ID ${itemId} no existe en inventario.`);
                   }
+                  inventoryDocs[itemId] = itemDoc;
+              }
 
-                  const currentStock = itemDoc.data().stock || 0;
-                  const currentReserved = itemDoc.data().reserved || 0;
-                  const available = Math.max(0, currentStock - currentReserved);
+              // 3. Calcular la disponibilidad real para ESTA solicitud (stock físico - reserva de otros)
+              const availableForThisRequest: Record<string, number> = {};
+              for (const itemId of allItemIds) {
+                  const itemData = inventoryDocs[itemId].data();
+                  const stock = itemData.stock || 0;
+                  const reservedByOthers = reservedByOthersMap[itemId] || 0;
 
-                  // Calculamos cuánto podemos reservar ahora
-                  const qtyToReserve = Math.min(item.quantityRequested, available);
-                  
-                  // Actualizamos el item con el nuevo shortageQty
-                  preparedItems[i] = {
+                  // Disponibilidad real para esta solicitud = stock físico - reserva de otros
+                  availableForThisRequest[itemId] = Math.max(0, stock - reservedByOthers);
+              }
+
+              // 4. Preparar los nuevos items calculando shortageQty y nuevas reservas
+              const preparedItems: any[] = [];
+              const newReservedByThisRequest: Record<string, number> = {};
+
+              for (const item of newItems) {
+                  const itemId = item.inventoryItemId;
+                  const qtyReq = item.quantityRequested || 0;
+                  const currentAvailable = availableForThisRequest[itemId] ?? 0;
+
+                  // Cuánto podemos reservar de la disponibilidad real de esta solicitud
+                  const qtyToReserve = Math.min(qtyReq, currentAvailable);
+                  const shortage = Math.max(0, qtyReq - qtyToReserve);
+
+                  // Descontar del disponible para esta solicitud (en caso de items duplicados en la misma solicitud)
+                  availableForThisRequest[itemId] = Math.max(0, currentAvailable - qtyToReserve);
+                  newReservedByThisRequest[itemId] = (newReservedByThisRequest[itemId] || 0) + qtyToReserve;
+
+                  const dispatched = item.quantityDispatched ?? 0;
+                  const pending = Math.max(0, qtyToReserve - dispatched);
+
+                  preparedItems.push({
                       ...item,
-                      shortageQty: Math.max(0, item.quantityRequested - qtyToReserve)
-                  };
-
-                  inventoryUpdates[item.inventoryItemId] = (inventoryUpdates[item.inventoryItemId] || 0) + qtyToReserve;
-              }
-              
-              // Leer items de inventario de nuevo para aplicar cambios finales (o usar cache de transaction.get)
-              const itemsToUpdate = [];
-              for (const itemId of Object.keys(inventoryUpdates)) {
-                  const delta = inventoryUpdates[itemId];
-                  if (delta !== 0) {
-                      const itemRef = doc(db, "inventory_items", itemId);
-                      // Realizamos un fresh get para seguridad
-                      const itemDoc = await transaction.get(itemRef);
-                      itemsToUpdate.push({ itemRef, itemDoc, delta });
-                  }
-              }
-              
-              // Aplicar las escrituras una vez realizadas todas las lecturas
-              for (const { itemRef, itemDoc, delta } of itemsToUpdate) {
-                  const currentReserved = itemDoc.data().reserved || 0;
-                  const newReserved = Math.max(0, currentReserved + delta);
-                  
-                  transaction.update(itemRef, {
-                      reserved: newReserved
+                      quantityRequested: qtyReq,
+                      quantityDispatched: dispatched,
+                      quantityPending: pending,
+                      shortageQty: shortage
                   });
               }
-              
+
+              // 5. FASE DE ESCRITURA: Actualizar inventory_items.reserved = otros + lo asignado a esta solicitud
+              for (const itemId of allItemIds) {
+                  const itemDoc = inventoryDocs[itemId];
+                  const currentReserved = itemDoc.data().reserved || 0;
+                  const reservedByOthers = reservedByOthersMap[itemId] || 0;
+                  const newReservedForThis = newReservedByThisRequest[itemId] || 0;
+                  const finalReserved = Math.max(0, reservedByOthers + newReservedForThis);
+
+                  if (finalReserved !== currentReserved) {
+                      const itemRef = doc(db, "inventory_items", itemId);
+                      transaction.update(itemRef, {
+                          reserved: finalReserved
+                      });
+                  }
+              }
+
+              // 6. Actualizar el documento de la solicitud existente en material_reports
               transaction.update(reqRef, {
                   ...sanitizedUpdates,
                   items: preparedItems,

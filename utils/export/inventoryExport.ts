@@ -461,22 +461,29 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
       doc.setFont('helvetica', 'bold');
       doc.text(`Proyecto:`, margin + 10, boxY + 20);
       doc.setFont('helvetica', 'normal');
-      doc.text(`${metadata.proyecto}`, margin + 70, boxY + 20);
+      const projectValue = movement.type === 'Devolución' ? `${metadata.cotizacion}` : `${metadata.proyecto}`;
+      doc.text(projectValue, margin + 70, boxY + 20);
 
       doc.setFont('helvetica', 'bold');
-      doc.text(movement.type === 'Devolución' ? `ID Devolución:` : (movement.requestNumber?.startsWith('MOV') ? `ID Movimiento:` : `ID Solicitud:`), margin + 300, boxY + 20);
+      const idLabel = movement.type === 'Devolución' ? 'ID Devolución:' : (movement.requestNumber?.startsWith('MOV') ? 'ID Movimiento:' : 'ID Solicitud:');
+      doc.text(idLabel, margin + 300, boxY + 20);
       doc.setFont('helvetica', 'normal');
-      doc.text(`${metadata.solicitud}`, margin + 390, boxY + 20);
+      const idLabelWidth = doc.getTextWidth(idLabel);
+      doc.text(`${metadata.solicitud}`, margin + 300 + idLabelWidth + 5, boxY + 20);
 
       doc.setFont('helvetica', 'bold');
       doc.text(`Fecha:`, margin + 10, boxY + 40);
       doc.setFont('helvetica', 'normal');
       doc.text(`${metadata.fecha}`, margin + 70, boxY + 40);
 
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Cotización:`, margin + 300, boxY + 40);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`${metadata.cotizacion}`, margin + 370, boxY + 40);
+      if (movement.type !== 'Devolución') {
+          doc.setFont('helvetica', 'bold');
+          const quoteLabel = 'Cotización:';
+          doc.text(quoteLabel, margin + 300, boxY + 40);
+          doc.setFont('helvetica', 'normal');
+          const quoteLabelWidth = doc.getTextWidth(quoteLabel);
+          doc.text(`${metadata.cotizacion}`, margin + 300 + quoteLabelWidth + 5, boxY + 40);
+      }
 
       doc.setFont('helvetica', 'bold');
       doc.text(`TORRE:`, margin + 10, boxY + 60);
@@ -500,6 +507,8 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
         currency: movement.currency || 'CRC' // Default to CRC if missing
       }];
 
+  const isReturn = movement.type === 'Devolución';
+
   const tableData = items.map(item => {
     const basePrice = item.unitPrice ?? movement.unitPrice ?? 0;
     const rate = getIvaForDetail(item.inventoryItemId || '', item.inventoryItemCode || '');
@@ -518,47 +527,73 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     ];
   });
 
+  const tableHeaders = isReturn
+    ? [['Código', 'Descripción', 'Cant.', 'Comentarios / Notas']]
+    : [['Código', 'Descripción', 'Tipo', 'Cant.', 'Moneda', 'Precio U.', 'Total']];
+
+  const tableBody = isReturn
+    ? items.map(item => [
+        item.inventoryItemCode,
+        item.inventoryItemName,
+        item.quantity.toLocaleString('es-CR'),
+        (item as any).notes || '' // Print saved note if exists, else empty for manual writing
+      ])
+    : tableData;
+
+  const colStyles = isReturn
+    ? {
+        0: { cellWidth: 70, halign: 'left' },
+        1: { cellWidth: 190, halign: 'left' },
+        2: { cellWidth: 50, halign: 'right' },
+        3: { cellWidth: 220, halign: 'left' } // Giving ample horizontal space for comments
+      }
+    : {
+        3: { halign: 'right' },
+        4: { halign: 'center' },
+        5: { halign: 'right' },
+        6: { halign: 'right' }
+      };
+
   autoTable(doc, {
     startY: boxY + 100,
-    head: [['Código', 'Descripción', 'Tipo', 'Cant.', 'Moneda', 'Precio U.', 'Total']],
-    body: tableData,
+    head: tableHeaders,
+    body: tableBody,
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 4, textColor: [41, 51, 61], lineColor: [230, 230, 230] },
     headStyles: { fillColor: [30, 58, 138], textColor: 255, halign: 'center', fontStyle: 'bold' },
-    columnStyles: {
-      3: { halign: 'right' },
-      4: { halign: 'center' },
-      5: { halign: 'right' },
-      6: { halign: 'right' }
-    }
+    columnStyles: colStyles
   });
 
   const finalY = (doc as any).lastAutoTable.finalY + 20;
-  
-  // Totales por moneda
-  const totals = items.reduce((acc, item) => {
-    const basePrice = item.unitPrice ?? movement.unitPrice ?? 0;
-    const rate = getIvaForDetail(item.inventoryItemId || '', item.inventoryItemCode || '');
-    const priceWithIva = basePrice * (1 + rate);
-    const currency = item.currency || movement.currency || 'CRC';
-    acc[currency] = (acc[currency] || 0) + (item.quantity * priceWithIva);
-    return acc;
-  }, {} as Record<string, number>);
+  let currentY = finalY;
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(30, 58, 138);
-  doc.text('RESUMEN DEL MOVIMIENTO', margin, finalY);
+  if (!isReturn) {
+    // Totales por moneda
+    const totals = items.reduce((acc, item) => {
+      const basePrice = item.unitPrice ?? movement.unitPrice ?? 0;
+      const rate = getIvaForDetail(item.inventoryItemId || '', item.inventoryItemCode || '');
+      const priceWithIva = basePrice * (1 + rate);
+      const currency = item.currency || movement.currency || 'CRC';
+      acc[currency] = (acc[currency] || 0) + (item.quantity * priceWithIva);
+      return acc;
+    }, {} as Record<string, number>);
 
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(0, 0, 0);
-  let currentY = finalY + 15;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 58, 138);
+    doc.text('RESUMEN DEL MOVIMIENTO', margin, finalY);
 
-  Object.entries(totals).forEach(([currency, total]) => {
-    doc.text(`Total ${currency}: ${total.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, margin, currentY);
-    currentY += 15;
-  });
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    currentY = finalY + 15;
+
+    Object.entries(totals).forEach(([currency, total]) => {
+      doc.text(`Total ${currency}: ${total.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, margin, currentY);
+      currentY += 15;
+    });
+    currentY += 10;
+  }
 
   // Observaciones
   if (metadata.observaciones) {
@@ -582,6 +617,43 @@ export const exportMovementToPdf = async (movement: InventoryMovement, linkedReq
     
     doc.text(splitObs, margin + 10, currentY + 15);
     currentY += boxHeight + 20;
+  }
+
+  // Firmas para Devolución
+  if (isReturn) {
+    currentY += 20;
+    
+    // Ensure we don't overflow the page
+    if (currentY > doc.internal.pageSize.height - 150) {
+      doc.addPage();
+      currentY = margin + 20;
+    }
+    
+    const sigWidth = 180;
+    const leftX = margin + 20;
+    const rightX = pageWidth - margin - sigWidth - 20;
+    const lineY = currentY + 45;
+    
+    doc.setDrawColor(150, 150, 150);
+    doc.setLineWidth(1);
+    
+    // Entrega
+    doc.line(leftX, lineY, leftX + sigWidth, lineY);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text("Nombre y firma", leftX + (sigWidth / 2), lineY + 12, { align: 'center' });
+    doc.text("Entrega", leftX + (sigWidth / 2), lineY + 24, { align: 'center' });
+    
+    // Recibe
+    doc.line(rightX, lineY, rightX + sigWidth, lineY);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text("Nombre y firma", rightX + (sigWidth / 2), lineY + 12, { align: 'center' });
+    doc.text("Recibe", rightX + (sigWidth / 2), lineY + 24, { align: 'center' });
+    
+    currentY += 85;
   }
 
   // Footer

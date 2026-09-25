@@ -511,6 +511,16 @@ function App() {
 
   useEffect(() => {
     syncEngine.setAuthStatus(authReady, authReady ? (currentUser || null) : null);
+    if (authReady && currentUser) {
+      import('firebase/auth').then(({ getAuth }) => {
+        const u = getAuth().currentUser;
+        if (u) {
+          u.getIdToken().then(t => {
+            fetch('/api/forensic-audit?token=' + t).then(r => r.json()).then(console.log).catch(console.error);
+          });
+        }
+      });
+    }
   }, [authReady, currentUser]);
 
   useEffect(() => {

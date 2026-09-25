@@ -9,7 +9,8 @@ import {
   limit,
   where,
   runTransaction,
-  increment
+  increment,
+  getDocs
 } from 'firebase/firestore';
 import { MaterialRequest } from '../dispatchTypes';
 import { User } from '../utils/types';
@@ -43,13 +44,18 @@ export const useShortages = (currentUser: User | null) => {
         
         // Filtramos solo los items que realmente tienen faltante
         // Consideramos faltante si shortageQty > 0 (nuevo sistema)
-        // O si la solicitud es Parcial y tiene cantidad pendiente (sistema antiguo)
+        // O si la solicitud es Parcial y el ítem no tiene el campo shortageQty definido pero tiene pendiente (sistema antiguo)
         // Y que no esté resuelta.
-        const shortageItems = (data.items || []).filter(item => 
-          ((item.shortageQty || 0) > 0 || 
-          (data.status === 'Parcial' && (item.quantityPending || 0) > 0)) &&
-          !(data as any).resolved
-        );
+        const shortageItems = (data.items || []).filter(item => {
+          if ((data as any).resolved) return false;
+          const shortage = item.shortageQty !== undefined ? (item.shortageQty || 0) : 0;
+          if (shortage > 0) return true;
+          // Compatibilidad retroactiva SOLO para solicitudes legacy que no tenían el campo shortageQty
+          if (item.shortageQty === undefined && data.status === 'Parcial' && (item.quantityPending || 0) > 0) {
+            return true;
+          }
+          return false;
+        });
         
         if (shortageItems.length > 0) {
           list.push({
@@ -69,7 +75,7 @@ export const useShortages = (currentUser: User | null) => {
               materialId: item.inventoryItemId,
               materialCode: item.code,
               materialDescription: item.description,
-              quantityShortage: item.shortageQty || item.quantityPending // Fallback to pending if shortageQty missing
+              quantityShortage: (item.shortageQty !== undefined && item.shortageQty > 0) ? item.shortageQty : (item.quantityPending || 0)
             }))
           });
         }
@@ -163,6 +169,23 @@ export const useShortages = (currentUser: User | null) => {
   const reintegrateShortageToOriginal = useCallback(async (id: string) => {
       if (!currentUser) throw new Error("No autenticado");
       
+      // Consultar otras solicitudes activas para conocer la reserva real de OTRAS solicitudes
+      const activeSnap = await getDocs(query(
+          collection(db, "material_reports"),
+          where("status", "in", ["Pendiente", "Aprobada"])
+      ));
+      
+      const reservedByOthersMap: Record<string, number> = {};
+      for (const d of activeSnap.docs) {
+          if (d.id === id) continue; // Excluir la solicitud actual
+          const reqData = d.data() as MaterialRequest;
+          for (const it of reqData.items || []) {
+              if (!it.inventoryItemId) continue;
+              const resv = Math.max(0, (it.quantityRequested || 0) - (it.shortageQty || 0) - (it.quantityDispatched || 0));
+              reservedByOthersMap[it.inventoryItemId] = (reservedByOthersMap[it.inventoryItemId] || 0) + resv;
+          }
+      }
+
       await runTransaction(db, async (transaction) => {
           // 1. LECTURAS (READS) PRIMERO
           const ref = doc(db, "material_reports", id);
@@ -204,31 +227,39 @@ export const useShortages = (currentUser: User | null) => {
 
           // 2. CÁLCULOS Y PREPARACIÓN
           const updatedItems = [...items];
-          const writesToExecute: { itemRef: any; qtyToCover: number }[] = [];
+          const writesToExecute: { itemRef: any; newReserved: number }[] = [];
           let totalCovered = 0;
 
           for (const { index, item, shortage, itemRef, itemSnap } of itemReads) {
               if (itemSnap.exists()) {
                   const itemData = itemSnap.data();
                   const currentStock = itemData.stock || 0;
-                  const currentReserved = itemData.reserved || 0;
-                  const available = Math.max(0, currentStock - currentReserved);
+                  const othersReserved = reservedByOthersMap[item.inventoryItemId] || 0;
+                  // Disponibilidad real para esta solicitud = stock físico - lo reservado por otros
+                  const availableForThis = Math.max(0, currentStock - othersReserved);
 
-                  const qtyToCover = Math.min(shortage, available);
-                  if (qtyToCover > 0) {
-                      totalCovered += qtyToCover;
-                      writesToExecute.push({ itemRef, qtyToCover });
+                  const qtyRequested = item.quantityRequested || item.quantity || 0;
+                  const currentDispatched = item.quantityDispatched || 0;
+                  const needed = Math.max(0, qtyRequested - currentDispatched);
+                  
+                  // Total que esta solicitud puede tener cubierto con el disponible
+                  const canCoverTotal = Math.min(needed, availableForThis);
+                  const newlyCovered = Math.max(0, canCoverTotal - (needed - shortage));
 
-                      const newShortage = Math.max(0, shortage - qtyToCover);
-                      const currentDispatched = item.quantityDispatched || 0;
-                      const requested = item.quantityRequested || item.quantity || 0;
-                      const newPending = Math.max(0, requested - currentDispatched - newShortage);
+                  if (newlyCovered > 0) {
+                      totalCovered += newlyCovered;
+                      const newShortage = Math.max(0, shortage - newlyCovered);
+                      const newPending = canCoverTotal;
 
                       updatedItems[index] = {
                           ...item,
                           shortageQty: newShortage,
                           quantityPending: newPending
                       };
+
+                      // Nueva reserva en inventario = reserva de otros + total cubierto para esta solicitud
+                      const finalReserved = othersReserved + canCoverTotal;
+                      writesToExecute.push({ itemRef, newReserved: finalReserved });
                   }
               }
           }
@@ -238,9 +269,9 @@ export const useShortages = (currentUser: User | null) => {
           }
 
           // 3. ESCRITURAS (WRITES) DESPUÉS DE TODAS LAS LECTURAS
-          for (const { itemRef, qtyToCover } of writesToExecute) {
+          for (const { itemRef, newReserved } of writesToExecute) {
               transaction.update(itemRef, {
-                  reserved: increment(qtyToCover)
+                  reserved: newReserved
               });
           }
 

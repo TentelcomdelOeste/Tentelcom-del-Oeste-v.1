@@ -74,6 +74,142 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.get("/api/forensic-audit", async (req, res) => {
+    try {
+      const token = (req.query.token as string) || req.headers.authorization?.replace('Bearer ', '');
+      if (!token) {
+        res.status(401).json({ error: "Token required" });
+        return;
+      }
+
+      const https = await import('https');
+      
+      function fetchCollection(colName: string): Promise<any> {
+        return new Promise((resolve, reject) => {
+          const url = `https://firestore.googleapis.com/v1/projects/tentelcom-del-oeste/databases/(default)/documents/${colName}?pageSize=300`;
+          const r = https.get(url, { headers: { 'Authorization': `Bearer ${token}` } }, (response) => {
+            let data = '';
+            response.on('data', chunk => data += chunk);
+            response.on('end', () => {
+              try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+            });
+          });
+          r.on('error', reject);
+        });
+      }
+
+      function parseValue(val: any): any {
+        if (!val) return null;
+        if ('stringValue' in val) return val.stringValue;
+        if ('integerValue' in val) return parseInt(val.integerValue, 10);
+        if ('doubleValue' in val) return parseFloat(val.doubleValue);
+        if ('booleanValue' in val) return val.booleanValue;
+        if ('mapValue' in val) {
+          const resMap: any = {};
+          for (const k in val.mapValue.fields || {}) {
+            resMap[k] = parseValue(val.mapValue.fields[k]);
+          }
+          return resMap;
+        }
+        if ('arrayValue' in val) {
+          return (val.arrayValue.values || []).map(parseValue);
+        }
+        return null;
+      }
+
+      function parseFields(docFields: any): any {
+        const resObj: any = {};
+        for (const k in docFields || {}) {
+          resObj[k] = parseValue(docFields[k]);
+        }
+        return resObj;
+      }
+
+      const reportsData = await fetchCollection('material_reports');
+      if (!reportsData.documents) {
+        res.status(500).json({ error: "Failed to fetch material_reports", details: reportsData });
+        return;
+      }
+
+      const parsedReports = reportsData.documents.map((d: any) => ({
+        id: d.name.split('/').pop(),
+        path: d.name,
+        ...parseFields(d.fields)
+      }));
+
+      const targetReport = parsedReports.find((r: any) => {
+        const items = r.items || [];
+        return items.some((it: any) => {
+          const qty = it.quantityRequested || it.quantity;
+          return qty === 17 || qty === 54 || qty === 74 || qty === 22;
+        });
+      });
+
+      if (!targetReport) {
+        res.json({ error: "Target report not found", totalReportsScanned: parsedReports.length, recentReports: parsedReports.slice(0, 10) });
+        return;
+      }
+
+      const inventoryItemsData = await fetchCollection('inventory_items');
+      const parsedInventory = (inventoryItemsData.documents || []).map((d: any) => ({
+        id: d.name.split('/').pop(),
+        ...parseFields(d.fields)
+      }));
+
+      const itemAnalysis = (targetReport.items || []).map((item: any) => {
+        const invByDocId = parsedInventory.find((inv: any) => inv.id === item.inventoryItemId || inv.id === item.id);
+        const invByCode = parsedInventory.find((inv: any) => inv.code === item.code || inv.id === item.code);
+
+        return {
+          itemInReport: item,
+          inventoryMatchedById: invByDocId ? {
+            id: invByDocId.id,
+            code: invByDocId.code,
+            description: invByDocId.description || invByDocId.name,
+            stock: invByDocId.stock ?? 0,
+            reserved: invByDocId.reserved ?? 0,
+            availableCalculated: (invByDocId.stock ?? 0) - (invByDocId.reserved ?? 0)
+          } : null,
+          inventoryMatchedByCode: invByCode ? {
+            id: invByCode.id,
+            code: invByCode.code,
+            description: invByCode.description || invByCode.name,
+            stock: invByCode.stock ?? 0,
+            reserved: invByCode.reserved ?? 0,
+            availableCalculated: (invByCode.stock ?? 0) - (invByCode.reserved ?? 0)
+          } : null
+        };
+      });
+
+      const fullResult = {
+        targetReport: {
+          id: targetReport.id,
+          requestNumber: targetReport.requestNumber,
+          status: targetReport.status,
+          fecha: targetReport.fecha || targetReport.createdAt,
+          solicitante: targetReport.requestedBy || targetReport.createdByName || targetReport.solicitante,
+          proyecto: targetReport.proyecto || targetReport.projectName || targetReport.workOrderNumber,
+          items: targetReport.items
+        },
+        itemAnalysis,
+        allInventoryItemsSummary: parsedInventory.map((inv: any) => ({
+          id: inv.id,
+          code: inv.code,
+          description: inv.description || inv.name,
+          stock: inv.stock,
+          reserved: inv.reserved
+        }))
+      };
+
+      const fs = await import('fs');
+      fs.writeFileSync('./FORENSIC_RESULT.json', JSON.stringify(fullResult, null, 2));
+
+      res.json({ success: true, result: fullResult });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message, stack: err.stack });
+    }
+  });
+
   // Proxy endpoint to download original files cleanly bypassing cross-origin restrictions
   app.get("/api/download-proxy", async (req, res) => {
     try {

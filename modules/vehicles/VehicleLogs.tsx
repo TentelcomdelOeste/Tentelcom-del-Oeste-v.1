@@ -51,7 +51,6 @@ import {
   calculateControlAlerts
 } from "./controlVehicularService";
 import { VehicleDocument, VehicleMaintenance, Vehicle } from "../../types/vehicle.types";
-import { FiAlertTriangle } from "react-icons/fi";
 
 const SECTION_OPTIONS = [
   { value: "registros", label: "REGISTROS DE BITÁCORA" },
@@ -818,37 +817,6 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
             />
           ) : (
             <>
-              {/* Alertas de Control Vehicular Integradas en Bitácora Diaria */}
-              {controlAlerts.length > 0 && (
-                <div className="mb-4 bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 shadow-sm">
-                  <div className="flex items-center justify-between font-black text-amber-900 text-xs">
-                    <span className="flex items-center gap-2">
-                      <FiAlertTriangle className="text-amber-600 text-base shrink-0" />
-                      Alertas de Control Vehicular Activas ({controlAlerts.length})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSection("control_vehicular")}
-                      className="text-[11px] text-blue-700 hover:underline font-bold bg-white border border-amber-200 px-2.5 py-1 rounded-lg"
-                    >
-                      Ver Control Vehicular →
-                    </button>
-                  </div>
-                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-amber-900">
-                    {controlAlerts.slice(0, 4).map((alt) => (
-                      <div key={alt.id} className="p-2 bg-white/80 border border-amber-200 rounded-lg">
-                        <span className="font-bold">{alt.unidadLabel}:</span> {alt.detalle}
-                      </div>
-                    ))}
-                    {controlAlerts.length > 4 && (
-                      <p className="text-[10px] text-amber-700 italic col-span-full">
-                        + {controlAlerts.length - 4} alertas más en Control Vehicular.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
               <ModuleToolbar>
                 <div className="flex flex-col md:flex-row items-center gap-3 w-full">
                   {/* Search + Action Button on Mobile Row */}
@@ -941,6 +909,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
                         key={log.id}
                         log={log}
                         expenses={expenses.filter(e => e.bitacoraId === log.id)}
+                        controlAlerts={controlAlerts}
                         onEdit={() => {
                           setSelectedLog(log);
                           setIsModalOpen(true);
@@ -1000,6 +969,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
               currentUser={currentUser}
               initialData={selectedLog}
               initialEmployees={employeesList}
+              controlAlerts={controlAlerts}
             />
           )}
 
