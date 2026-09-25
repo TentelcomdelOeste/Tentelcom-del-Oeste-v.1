@@ -18,7 +18,9 @@ import {
   extraerUnidad,
   extraerPlaca,
   evaluateVehicleInspectionAlerts,
+  getUnitCode,
 } from "../../types/vehicle.types";
+import { normalizeDateToCanonical, reconcileUnlinkedMaintenanceExpenses } from "./controlVehicularService";
 import { db } from "../../firebase";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -38,7 +40,7 @@ import { VehicleExpense } from "../../types/vehicle.types";
 import { globalSearchEngine, vehicleLogSearchPlugin } from '../../core/search';
 
 
-import { generateVehicleLogPDF } from "../../utils/export/vehicleLogPdf";
+import { generateVehicleLogPDF, exportVehicleLogsListPDF, exportVehicleLogsListExcel } from "../../utils/export/vehicleLogPdf";
 import { VehicleLogCard } from "./components/VehicleLogCard";
 import { InspectionAlertsModal } from "./components/InspectionAlertsModal";
 import { localDocStore } from "../../core/offline/localDocStore";
@@ -241,54 +243,25 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
   useEffect(() => {
     if (!authReady || !currentUser) return;
     
+    // Limpiar posibles lápidas/tombstones residuales para asegurar recuperación íntegra
+    localDocStore.clearCollectionTombstones("bitacora_vehiculos").catch(console.error);
+
+    // Auto-reconciliar gastos de mantenimiento sin vincular
+    reconcileUnlinkedMaintenanceExpenses().catch(console.error);
+
     // Solo mostramos loader si no hay datos locales para evitar parpadeo (SWR pattern)
     if (logs.length === 0) {
       setIsLoading(true);
     }
 
-    let q = query(
+    const q = query(
       collection(db, "bitacora_vehiculos"),
-      orderBy("fecha", "desc"),
-      limit(100)
+      orderBy("fecha", "desc")
     );
-
-    if (filterMonth && filterMonth.startsWith("week:")) {
-      const parts = filterMonth.split(":");
-      const start = parts[1] || "";
-      const end = parts[2] || "";
-      q = query(
-        collection(db, "bitacora_vehiculos"),
-        where("fecha", ">=", start),
-        where("fecha", "<=", end),
-        orderBy("fecha", "desc")
-      );
-    } else if (filterYear !== 0) {
-      if (filterMonth !== "all") {
-        const m = filterMonth.padStart(2, "0");
-        const startMonth = `${filterYear}-${m}-01`;
-        const endMonth = `${filterYear}-${m}-31`;
-        q = query(
-          collection(db, "bitacora_vehiculos"),
-          where("fecha", ">=", startMonth),
-          where("fecha", "<=", endMonth),
-          orderBy("fecha", "desc")
-        );
-      } else {
-        const startYear = `${filterYear}-01-01`;
-        const endYear = `${filterYear}-12-31`;
-        q = query(
-          collection(db, "bitacora_vehiculos"),
-          where("fecha", ">=", startYear),
-          where("fecha", "<=", endYear),
-          orderBy("fecha", "desc")
-        );
-      }
-    }
 
     const unsubscribe = onSnapshot(
       q,
       async (snapshot) => {
-        
         // Detectar cambios incrementales (especialmente eliminaciones físicas)
         try {
           for (const change of snapshot.docChanges()) {
@@ -309,16 +282,15 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
           console.warn("[GlobalSearchEngine] Error en vehicles:", searchErr);
         }
 
-
         const remoteData = snapshot.docs
           .map((doc) => ({ ...doc.data(), id: doc.id }) as VehicleLog)
           .filter(log => !log.isDeleted);
         setIsLoading(false);
         
-        // Caching optimizado por lote para evitar tormenta de renders
+        // Caching optimizado por lote para persistencia Offline-First
         await localDocStore.saveLocalDocsBatch("bitacora_vehiculos", remoteData);
 
-        // Reconciliar colección local con la versión autoritativa del servidor si no es cache
+        // Reconciliar colección local con la versión autoritativa completa del servidor
         if (!snapshot.metadata.fromCache) {
           const serverDocIds = new Set(snapshot.docs.map(d => d.id));
           await localDocStore.reconcileServerCollection("bitacora_vehiculos", serverDocIds);
@@ -330,8 +302,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
       },
     );
 
-    // ADICIÓN: Segundo listener específico para bitácoras incompletas (activas)
-    // Esto garantiza que siempre estén en el cache local aunque estén fuera del rango de fecha actual
+    // ADICIÓN: Listener específico para bitácoras incompletas (activas)
     const qIncomplete = query(
       collection(db, "bitacora_vehiculos"),
       where("kmLlegada", "==", null),
@@ -354,7 +325,9 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
       limit(500)
     );
     const unsubscribeExpenses = onSnapshot(qExpenses, (snap) => {
-      const expensesData = snap.docs.map(doc => ({ ...doc.data(), id: doc.id }) as VehicleExpense);
+      const expensesData = snap.docs
+        .map(doc => ({ ...doc.data(), id: doc.id }) as VehicleExpense)
+        .filter(e => !e.isDeleted);
       setExpenses(expensesData);
     });
 
@@ -363,7 +336,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
       unsubscribeIncomplete();
       unsubscribeExpenses();
     };
-  }, [authReady, currentUser, filterYear, filterMonth]);
+  }, [authReady, currentUser]);
 
   // ELIMINACIÓN DE REPAIR HOOKS LEGADOS
   // La integridad ahora la garantiza SyncEngine y VersionControl
@@ -380,7 +353,8 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
         years.push(currentYear - i);
       }
 
-      logs.forEach((log) => {
+      localDocuments.forEach((doc: any) => {
+        const log = doc.data || doc;
         const dateStr = log.fecha || log.createdAt || "";
         if (!dateStr) return;
 
@@ -404,7 +378,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
       console.error("Error computing availableYears:", err);
       return [new Date().getFullYear()];
     }
-  }, [logs]);
+  }, [localDocuments]);
 
   const yearOptions = useMemo(
     () => [
@@ -495,7 +469,9 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
           log._resolvedName.toLowerCase().includes(lower)) ||
         (log._resolvedPlaca &&
           log._resolvedPlaca.toLowerCase().includes(lower)) ||
-        (log.unidadName && log.unidadName.toLowerCase().includes(lower)),
+        (log.unidadName && log.unidadName.toLowerCase().includes(lower)) ||
+        (log.unidadId && log.unidadId.toLowerCase().includes(lower)) ||
+        (log.destino && log.destino.toLowerCase().includes(lower)),
     );
   }, [logs, searchTerm, getConductorName, vehicleMapById, vehicleMapByName]);
 
@@ -691,7 +667,17 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
         width: "10%",
         align: "center",
         render: (l: any) => {
-          const logExpenses = expenses.filter(e => e.bitacoraId === l.id);
+          const logExpenses = expenses.filter(e => {
+            if (e.bitacoraId === l.id) return true;
+            if (e.sourceType === 'control_vehicular_mantenimiento' && !e.bitacoraId) {
+              const lUCode = getUnitCode(l._resolvedUnidad, l.unidad, l.unidadId || l.unidadName) || extraerUnidad(l.unidadId);
+              const eUCode = getUnitCode(e.unidad, e.vehiculoId);
+              const lDate = normalizeDateToCanonical(l.fecha);
+              const eDate = normalizeDateToCanonical(e.fecha);
+              return !!(lUCode && eUCode && lUCode === eUCode && lDate && eDate && lDate === eDate);
+            }
+            return false;
+          });
           const total = logExpenses.reduce((sum, e) => sum + (e.monto || 0), 0);
           
           if (logExpenses.length === 0) return <span className="text-slate-300 text-[10px] font-bold uppercase">---</span>;
@@ -738,6 +724,17 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
       },
     ];
   }, [handleDelete, setSelectedLog, setIsModalOpen, currentUser, expenses, onSetActiveModule]);
+
+  const getPeriodText = () => {
+    if (filterYear === 0) return "Historico_Completo";
+    if (filterMonth === "all") return `Anio_${filterYear}`;
+    if (filterMonth.startsWith("week:")) {
+      const parts = filterMonth.split(":");
+      return `Semana_${parts[1]}_al_${parts[2]}`;
+    }
+    const monthObj = MONTH_NAMES.find(m => m.value === filterMonth);
+    return `${monthObj ? monthObj.label : 'Mes_' + filterMonth}_${filterYear}`;
+  };
 
   // REPAIR HOOKS LEGADOS ELIMINADOS
 
@@ -875,7 +872,25 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
                       />
                     </div>
 
-                    <div className="hidden md:block">
+                    <div className="hidden md:flex items-center gap-2">
+                      <ActionButton
+                        variant="secondary"
+                        label="Excel"
+                        className="whitespace-nowrap px-4 !bg-emerald-600 hover:!bg-emerald-700 !text-white border-none font-bold text-xs uppercase"
+                        onClick={() => {
+                          const periodText = getPeriodText();
+                          exportVehicleLogsListExcel(sortedLogs, periodText);
+                        }}
+                      />
+                      <ActionButton
+                        variant="secondary"
+                        label="PDF"
+                        className="whitespace-nowrap px-4 !bg-rose-600 hover:!bg-rose-700 !text-white border-none font-bold text-xs uppercase"
+                        onClick={() => {
+                          const periodText = getPeriodText();
+                          exportVehicleLogsListPDF(sortedLogs, periodText);
+                        }}
+                      />
                       {hasPermission(
                         currentUser,
                         "bitacoraVehiculos",
@@ -884,7 +899,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
                         <ActionButton
                           variant="primary"
                           label="NUEVO"
-                          className="whitespace-nowrap px-6"
+                          className="whitespace-nowrap px-6 h-10 text-xs font-bold uppercase"
                           onClick={() => {
                             setSelectedLog(null);
                             setIsModalOpen(true);

@@ -5,7 +5,7 @@ import { ActionButton, DataTable, TableColumn, useConfirm } from '../../design-s
 import { ModulePage } from '../../components/ui/ModulePage';
 import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
 import { ActionButtons } from '../../components/ui/ActionButtons';
-import { VehicleLog, extraerUnidad, extraerPlaca, VehicleExpense } from '../../types/vehicle.types';
+import { VehicleLog, extraerUnidad, extraerPlaca, VehicleExpense, getUnitCode } from '../../types/vehicle.types';
 import { db } from '../../firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
@@ -93,8 +93,7 @@ export const VehicleCostAnalysis: React.FC<VehicleCostAnalysisProps> = ({ curren
         setIsLoading(true);
 
         const q = query(
-            collection(db, "bitacora_vehiculos"),
-            orderBy("fecha", "desc")
+            collection(db, "bitacora_vehiculos")
         );
         
         const unsubscribe = onSnapshot(q, async (snapshot) => {
@@ -112,16 +111,32 @@ export const VehicleCostAnalysis: React.FC<VehicleCostAnalysisProps> = ({ curren
         return () => unsubscribe();
     }, [authReady, currentUser?.id]);
 
-    // Apply unified filtering logic to the memory-cached logs
+    // Apply unified filtering logic to the memory-cached logs and sort chronologically (newest to oldest)
     useEffect(() => {
         const registrosUnidad = allLogs.filter(r => {
             if (r.isDeleted) return false;
-            const unidad = r.unidad || extraerUnidad(r.unidadId);
-            const placa = r.placa || extraerPlaca(r.unidadId);
-            
-            return unidad === unidadParam || 
-                   placa === unidadParam ||
-                   (r.unidadId || '').startsWith(unidadParam + " - ");
+            const resolvedUnit = getUnitCode(r.unidad, r.unidadId, r.unidadName);
+            const resolvedParam = getUnitCode(unidadParam);
+            if (resolvedUnit && resolvedParam && resolvedUnit === resolvedParam) return true;
+
+            if (unidadParam) {
+                const p = unidadParam.toUpperCase();
+                const u = String(r.unidad || '').toUpperCase();
+                const uid = String(r.unidadId || '').toUpperCase();
+                const uname = String(r.unidadName || '').toUpperCase();
+                if (u.includes(p) || uid.includes(p) || uname.includes(p)) return true;
+            }
+            return false;
+        });
+
+        // Sort from newest to oldest
+        registrosUnidad.sort((a, b) => {
+            const dateA = a.fecha || "";
+            const dateB = b.fecha || "";
+            if (dateA !== dateB) return dateB.localeCompare(dateA);
+            const timeA = a.horaSalida || "";
+            const timeB = b.horaSalida || "";
+            return timeB.localeCompare(timeA);
         });
 
         setRawLogs(registrosUnidad);

@@ -906,33 +906,49 @@ export const deleteVehicleExpense = async (id: string, expenseData: VehicleExpen
  */
 export const getVehicleExpenses = async (unidad: string): Promise<VehicleExpense[]> => {
     try {
+        const targetUCode = getUnitCode(unidad);
+        const matchesUnit = (e: VehicleExpense) => {
+            if (e.isDeleted) return false;
+            if (e.unidad === unidad) return true;
+            const expUCode = getUnitCode(e.unidad, e.vehiculoId);
+            return !!(targetUCode && expUCode && targetUCode === expUCode);
+        };
+
         if (networkProbe.isOnline()) {
             const q = query(
                 collection(db, "vehicle_expenses"),
-                where("unidad", "==", unidad)
+                orderBy("fecha", "desc")
             );
             const snapshot = await getDocs(q);
-            const docs = snapshot.docs.map(doc => ({
+            const allDocs = snapshot.docs.map(doc => ({
                 ...doc.data(),
                 id: doc.id
             } as VehicleExpense)).filter(e => !e.isDeleted);
             
             // Save to local cache
-            await localDocStore.saveLocalDocsBatch("vehicle_expenses", docs);
+            await localDocStore.saveLocalDocsBatch("vehicle_expenses", allDocs);
+            const docs = allDocs.filter(matchesUnit);
             return docs.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
         } else {
             const local = await localDocStore.getLocalDocs("vehicle_expenses");
             return local
                 .map(d => ({ ...d.data, id: d.docId } as VehicleExpense))
-                .filter(e => e.unidad === unidad && !e.isDeleted)
+                .filter(matchesUnit)
                 .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
         }
     } catch (error) {
         console.error("Error fetching vehicle expenses, falling back to local store:", error);
+        const targetUCode = getUnitCode(unidad);
+        const matchesUnit = (e: VehicleExpense) => {
+            if (e.isDeleted) return false;
+            if (e.unidad === unidad) return true;
+            const expUCode = getUnitCode(e.unidad, e.vehiculoId);
+            return !!(targetUCode && expUCode && targetUCode === expUCode);
+        };
         const local = await localDocStore.getLocalDocs("vehicle_expenses");
         return local
             .map(d => ({ ...d.data, id: d.docId } as VehicleExpense))
-            .filter(e => e.unidad === unidad && !e.isDeleted)
+            .filter(matchesUnit)
             .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
     }
 };

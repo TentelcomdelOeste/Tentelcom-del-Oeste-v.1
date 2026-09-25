@@ -12,8 +12,16 @@ import {
   Vehicle,
   VehicleDocument,
   VehicleMaintenance,
-  VehicleControlAlert
+  VehicleControlAlert,
+  VehicleExpense,
+  VehicleLog,
+  extraerUnidad,
+  getUnitCode
 } from '../../types/vehicle.types';
+import { saveVehicleExpense, deleteVehicleExpense } from './vehicleService';
+import { updateVersionedDocOffline } from '../../core/versionControl';
+import { localDocStore } from '../../core/offline/localDocStore';
+import { User } from '../../utils/types';
 
 const DOCS_COLLECTION = 'control_vehicular_documentos';
 const MAINT_COLLECTION = 'control_vehicular_mantenimientos';
@@ -192,12 +200,171 @@ export function subscribeVehicleMaintenances(callback: (maints: VehicleMaintenan
 }
 
 /**
+ * Normaliza cualquier formato de fecha (ISO con T, YYYY-MM-DD, DD/MM/YYYY) a formato canónico 'YYYY-MM-DD'
+ */
+export function normalizeDateToCanonical(dateVal?: string | null): string {
+  if (!dateVal) return '';
+  const str = String(dateVal).trim();
+  if (!str) return '';
+
+  // Caso ISO string: "2026-09-25T14:30:00.000Z" o "2026-09-25T..."
+  if (str.includes('T')) {
+    return str.split('T')[0];
+  }
+
+  // Caso "YYYY-MM-DD"
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  // Caso "DD/MM/YYYY" o "DD-MM-YYYY"
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // Fallback con Date parsing
+  try {
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      const y = parsed.getFullYear();
+      const m = String(parsed.getMonth() + 1).padStart(2, '0');
+      const d = String(parsed.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+  } catch {}
+
+  return str;
+}
+
+/**
+ * Mapea el tipo de mantenimiento a la categoría de gasto adecuada en Análisis de Flota
+ */
+export function mapMaintTypeToExpenseCategory(tipoMaint: string): VehicleExpense['categoria'] {
+  const lower = (tipoMaint || '').toLowerCase();
+  if (lower.includes('aceite')) return 'Aceite';
+  if (lower.includes('llanta') || lower.includes('alineaci')) return 'Llantas';
+  if (lower.includes('bater')) return 'Batería';
+  if (lower.includes('freno') || lower.includes('reparaci') || lower.includes('mecánic') || lower.includes('mecanic')) return 'Reparación';
+  return 'Mantenimiento';
+}
+
+/**
+ * Busca el registro de bitácora correspondiente a un vehículo, fecha y kilometraje.
+ * Utiliza Offline-First con fallback a Firestore remoto.
+ */
+export async function findMatchingBitacoraLog(
+  unidad: string,
+  vehiculoId: string,
+  fecha: string,
+  kilometraje?: number
+): Promise<string | undefined> {
+  try {
+    const targetDate = normalizeDateToCanonical(fecha);
+    const targetUCode = getUnitCode(unidad, vehiculoId) || extraerUnidad(unidad);
+
+    // 1. Obtener logs desde localDocStore
+    let rawDocs = await localDocStore.getLocalCollection('bitacora_vehiculos');
+    let logs = rawDocs
+      .map((d) => ({ ...d.data, id: d.docId }) as VehicleLog)
+      .filter((l) => !l.isDeleted);
+
+    let matchingUnitLogs = logs.filter((l) => {
+      const logUCode = getUnitCode(l.unidad, l.unidadId, l.unidadName) || extraerUnidad(l.unidadId);
+      return (
+        (targetUCode && logUCode === targetUCode) ||
+        l.unidad === unidad ||
+        l.unidadId === vehiculoId ||
+        extraerUnidad(l.unidadId) === unidad
+      );
+    });
+
+    let exactDateLogs = matchingUnitLogs.filter((l) => normalizeDateToCanonical(l.fecha) === targetDate);
+
+    // Si la caché local no tiene registros o no encontró la fecha exacta, consultar Firebase Firestore
+    if (exactDateLogs.length === 0) {
+      try {
+        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
+        const snap = await getDocs(query(collection(db, 'bitacora_vehiculos'), orderBy('fecha', 'desc')));
+        if (!snap.empty) {
+          const remoteLogs = snap.docs
+            .map((doc) => ({ ...doc.data(), id: doc.id }) as VehicleLog)
+            .filter((l) => !l.isDeleted);
+
+          await localDocStore.saveLocalDocsBatch('bitacora_vehiculos', remoteLogs);
+          logs = remoteLogs;
+          matchingUnitLogs = logs.filter((l) => {
+            const logUCode = getUnitCode(l.unidad, l.unidadId, l.unidadName) || extraerUnidad(l.unidadId);
+            return (
+              (targetUCode && logUCode === targetUCode) ||
+              l.unidad === unidad ||
+              l.unidadId === vehiculoId ||
+              extraerUnidad(l.unidadId) === unidad
+            );
+          });
+          exactDateLogs = matchingUnitLogs.filter((l) => normalizeDateToCanonical(l.fecha) === targetDate);
+        }
+      } catch (errRemote) {
+        console.warn('[findMatchingBitacoraLog] Fallback a Firestore remoto falló:', errRemote);
+      }
+    }
+
+    if (exactDateLogs.length === 0) return undefined;
+
+    if (exactDateLogs.length === 1) {
+      return exactDateLogs[0].id;
+    }
+
+    if (exactDateLogs.length > 1) {
+      // Si hay kilometraje de mantenimiento, buscar el mejor match
+      if (kilometraje && kilometraje > 0) {
+        // a) Rango estricto [kmSalida, kmLlegada]
+        const inRange = exactDateLogs.find((l) =>
+          l.kmSalida != null && l.kmLlegada != null &&
+          l.kmSalida <= kilometraje && kilometraje <= l.kmLlegada
+        );
+        if (inRange) return inRange.id;
+
+        // b) Menor distancia a kmSalida o kmLlegada
+        const sortedByKmDiff = [...exactDateLogs].sort((a, b) => {
+          const diffA = Math.min(
+            a.kmLlegada != null ? Math.abs(a.kmLlegada - kilometraje) : Infinity,
+            a.kmSalida != null ? Math.abs(a.kmSalida - kilometraje) : Infinity
+          );
+          const diffB = Math.min(
+            b.kmLlegada != null ? Math.abs(b.kmLlegada - kilometraje) : Infinity,
+            b.kmSalida != null ? Math.abs(b.kmSalida - kilometraje) : Infinity
+          );
+          return diffA - diffB;
+        });
+        if (sortedByKmDiff[0]) return sortedByKmDiff[0].id;
+      }
+
+      // c) Más reciente por hora de salida o createdAt
+      return exactDateLogs.sort((a, b) =>
+        (b.horaSalida || b.createdAt || '').localeCompare(a.horaSalida || a.createdAt || '')
+      )[0].id;
+    }
+
+    return undefined;
+  } catch (err) {
+    console.error('Error finding matching bitacora log:', err);
+    return undefined;
+  }
+}
+
+/**
  * Guarda o actualiza un registro de mantenimiento
  */
-export async function saveVehicleMaintenance(maintData: Partial<VehicleMaintenance>): Promise<string> {
+export async function saveVehicleMaintenance(maintData: Partial<VehicleMaintenance>, currentUser?: User): Promise<string> {
   const now = new Date().toISOString();
-  if (maintData.id) {
-    const docRef = doc(db, MAINT_COLLECTION, maintData.id);
+  let maintId = maintData.id;
+
+  if (maintId) {
+    const docRef = doc(db, MAINT_COLLECTION, maintId);
     const updatePayload = {
       ...maintData,
       updatedAt: now,
@@ -205,7 +372,6 @@ export async function saveVehicleMaintenance(maintData: Partial<VehicleMaintenan
     };
     delete updatePayload.id;
     await setDoc(docRef, updatePayload, { merge: true });
-    return maintData.id;
   } else {
     const colRef = collection(db, MAINT_COLLECTION);
     const newDoc = {
@@ -215,16 +381,186 @@ export async function saveVehicleMaintenance(maintData: Partial<VehicleMaintenan
       isDeleted: false
     };
     const res = await addDoc(colRef, newDoc);
-    return res.id;
+    maintId = res.id;
+  }
+
+  // --- INTEGRACIÓN CON GASTOS (Análisis de Flota y Registro de Bitácora) ---
+  if (maintId) {
+    const expenseId = `gasto_maint_${maintId}`;
+    const cost = maintData.costo || 0;
+    const isMaintDeleted = maintData.isDeleted === true;
+
+    if (isMaintDeleted || cost <= 0) {
+      try {
+        const existingExpense = await localDocStore.getLocalDoc('vehicle_expenses', expenseId);
+        if (existingExpense && existingExpense.data) {
+          const expenseData = existingExpense.data as VehicleExpense;
+          if (currentUser) {
+            await deleteVehicleExpense(expenseId, expenseData, currentUser);
+          } else {
+            const fallbackUser = { id: maintData.createdBy || 'system', name: maintData.createdBy || 'Sistema' } as User;
+            await deleteVehicleExpense(expenseId, expenseData, fallbackUser);
+          }
+        } else {
+          const fallbackUser = currentUser || { id: maintData.createdBy || 'system', name: maintData.createdBy || 'Sistema' } as User;
+          await updateVersionedDocOffline('vehicle_expenses', expenseId, {
+            isDeleted: true,
+            updatedAt: now,
+            updatedBy: fallbackUser.id
+          }, {
+            id: expenseId,
+            isDeleted: true,
+            unidad: maintData.unidad || '',
+            vehiculoId: maintData.vehiculoId || '',
+            fecha: maintData.fecha || '',
+            categoria: 'Mantenimiento',
+            descripcion: `Mantenimiento: ${maintData.tipoMantenimiento || ''}`,
+            monto: cost,
+            createdAt: now,
+            createdBy: fallbackUser.id
+          });
+        }
+      } catch (err) {
+        console.error('Error al remover el gasto asociado al mantenimiento:', err);
+      }
+    } else {
+      try {
+        const fallbackUser = currentUser || { id: maintData.createdBy || 'system', name: maintData.createdBy || 'Sistema' } as User;
+        const tipoMaint = maintData.tipoMantenimiento || '';
+        const desc = tipoMaint ? `${tipoMaint}${maintData.tallerProveedor ? ` - ${maintData.tallerProveedor}` : ''}` : 'Mantenimiento';
+        const categoria = mapMaintTypeToExpenseCategory(tipoMaint);
+        
+        // Buscar el ID del registro de bitácora correspondiente para esa unidad y fecha/kilometraje
+        const matchedBitacoraId = await findMatchingBitacoraLog(
+          maintData.unidad || '',
+          maintData.vehiculoId || '',
+          maintData.fecha || now.split('T')[0],
+          maintData.kilometrajeActual
+        );
+
+        const expensePayload: Partial<VehicleExpense> = {
+          id: expenseId,
+          vehiculoId: maintData.vehiculoId || '',
+          unidad: maintData.unidad || '',
+          fecha: maintData.fecha || now.split('T')[0],
+          categoria: categoria,
+          descripcion: desc,
+          monto: cost,
+          kilometraje: maintData.kilometrajeActual,
+          bitacoraId: matchedBitacoraId,
+          sourceType: 'control_vehicular_mantenimiento',
+          sourceId: maintId,
+          observaciones: 'Generado automáticamente desde Control Vehicular.',
+          isDeleted: false
+        };
+
+        await saveVehicleExpense(expensePayload, fallbackUser);
+      } catch (err) {
+        console.error('Error al guardar el gasto asociado al mantenimiento:', err);
+      }
+    }
+  }
+
+  return maintId;
+}
+
+/**
+ * Auto-vincula y sincroniza todos los mantenimientos activos con la colección de gastos (vehicle_expenses)
+ * y asigna el bitacoraId correspondiente a cada uno de forma persistente.
+ */
+export async function reconcileUnlinkedMaintenanceExpenses(): Promise<void> {
+  try {
+    const { getDocs, query, collection, doc, setDoc } = await import('firebase/firestore');
+    
+    // Consultar todos los mantenimientos registrados en Control Vehicular
+    const maintsSnap = await getDocs(query(collection(db, MAINT_COLLECTION)));
+    if (maintsSnap.empty) return;
+
+    for (const mDoc of maintsSnap.docs) {
+      const maint = { ...mDoc.data(), id: mDoc.id } as VehicleMaintenance;
+      const cost = Number(maint.costo) || 0;
+      if (maint.isDeleted || cost <= 0) continue;
+
+      const expenseId = `gasto_maint_${maint.id}`;
+      const matchedBitacoraId = await findMatchingBitacoraLog(
+        maint.unidad || '',
+        maint.vehiculoId || '',
+        maint.fecha || maint.createdAt?.split('T')[0] || '',
+        maint.kilometrajeActual
+      );
+
+      const tipoMaint = maint.tipoMantenimiento || '';
+      const desc = tipoMaint ? `${tipoMaint}${maint.tallerProveedor ? ` - ${maint.tallerProveedor}` : ''}` : 'Mantenimiento';
+      const categoria = mapMaintTypeToExpenseCategory(tipoMaint);
+      const now = new Date().toISOString();
+
+      const expensePayload: VehicleExpense = {
+        id: expenseId,
+        vehiculoId: maint.vehiculoId || '',
+        unidad: maint.unidad || '',
+        fecha: maint.fecha || maint.createdAt?.split('T')[0] || now.split('T')[0],
+        categoria: categoria,
+        descripcion: desc,
+        monto: cost,
+        kilometraje: maint.kilometrajeActual,
+        bitacoraId: matchedBitacoraId,
+        sourceType: 'control_vehicular_mantenimiento',
+        sourceId: maint.id,
+        observaciones: 'Generado automáticamente desde Control Vehicular.',
+        isDeleted: false,
+        createdAt: maint.createdAt || now,
+        updatedAt: now,
+        createdBy: maint.createdBy || 'sistema',
+        version: 1
+      };
+
+      // Guardar de forma determinista e idempotente en Firestore
+      await setDoc(doc(db, 'vehicle_expenses', expenseId), expensePayload, { merge: true });
+
+      // Guardar en localDocStore
+      await localDocStore.saveLocalDoc('vehicle_expenses', expenseId, expensePayload);
+    }
+  } catch (err) {
+    console.warn('[reconcileUnlinkedMaintenanceExpenses] error:', err);
   }
 }
 
 /**
  * Elimina un registro de mantenimiento
  */
-export async function deleteVehicleMaintenance(id: string): Promise<void> {
+export async function deleteVehicleMaintenance(id: string, currentUser?: User): Promise<void> {
   const docRef = doc(db, MAINT_COLLECTION, id);
-  await updateDoc(docRef, { isDeleted: true, updatedAt: new Date().toISOString() });
+  const now = new Date().toISOString();
+  await updateDoc(docRef, { isDeleted: true, updatedAt: now });
+
+  // --- INTEGRACIÓN CON GASTOS: Borrar el gasto correspondiente ---
+  const expenseId = `gasto_maint_${id}`;
+  try {
+    const existingExpense = await localDocStore.getLocalDoc('vehicle_expenses', expenseId);
+    const fallbackUser = currentUser || { id: 'system', name: 'Sistema' } as User;
+    if (existingExpense && existingExpense.data) {
+      await deleteVehicleExpense(expenseId, existingExpense.data as VehicleExpense, fallbackUser);
+    } else {
+      await updateVersionedDocOffline('vehicle_expenses', expenseId, {
+        isDeleted: true,
+        updatedAt: now,
+        updatedBy: fallbackUser.id
+      }, {
+        id: expenseId,
+        isDeleted: true,
+        unidad: '',
+        vehiculoId: '',
+        fecha: '',
+        categoria: 'Mantenimiento',
+        descripcion: 'Mantenimiento eliminado',
+        monto: 0,
+        createdAt: now,
+        createdBy: fallbackUser.id
+      });
+    }
+  } catch (err) {
+    console.error('Error al eliminar el gasto asociado durante la eliminación del mantenimiento:', err);
+  }
 }
 
 /**

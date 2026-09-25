@@ -97,9 +97,9 @@ export const localDocStore = {
         for (const doc of docs) {
             const docId = doc.docId || doc.id;
             
-            // Evitar guardar si posee tombstone activo
-            const isTomb = await localDB.isTombstoned(collection, docId);
-            if (isTomb) continue;
+            // Si el documento viene explícitamente desde el servidor como documento válido,
+            // aseguramos que cualquier tombstone espurio sea limpiado
+            await localDB.clearTombstone(collection, docId);
 
             const existing = localMap.get(docId);
             
@@ -123,6 +123,10 @@ export const localDocStore = {
             await Promise.all(writePromises);
             this.notify(collection);
         }
+    },
+
+    async clearCollectionTombstones(collection: string): Promise<void> {
+        await localDB.clearTombstonesForCollection(collection);
     },
 
     async getLocalDoc(collection: string, docId: string): Promise<LocalDocument | null> {

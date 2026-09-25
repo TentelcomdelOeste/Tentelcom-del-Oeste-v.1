@@ -1,4 +1,6 @@
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { LOGO_BASE64 } from '../logoBase64';
 import { VehicleLog } from '../../types/vehicle.types';
 import { format } from 'date-fns';
@@ -231,4 +233,196 @@ export const generateVehicleLogPDF = async (log: VehicleLog) => {
     const fileName = `Bitacora_${log.unidadName}_${log.fecha}.pdf`;
     const blob = doc.output('blob');
     triggerFileDownload(blob, fileName);
+};
+
+export const exportVehicleLogsListPDF = async (logs: VehicleLog[], periodText: string) => {
+    // Generate Landscape letter size PDF
+    const doc = new jsPDF('l', 'pt', 'letter');
+    const pageWidth = doc.internal.pageSize.getWidth(); // 792
+    const margin = 40;
+
+    // Header Logo (Preserving original aspect ratio)
+    const logoX = margin;
+    const logoY = 30;
+    const logoWidth = 90;
+    let logoHeight = 45; // safety fallback
+
+    try {
+        const logoData = LOGO_BASE64;
+        const imgProps = doc.getImageProperties(logoData);
+        if (imgProps && imgProps.width && imgProps.height) {
+            logoHeight = (imgProps.height * logoWidth) / imgProps.width;
+        }
+        doc.addImage(logoData, 'PNG', logoX, logoY, logoWidth, logoHeight);
+    } catch (e) {
+        console.error('Error adding logo to PDF:', e);
+    }
+
+    // Title and Metadata
+    const headerTextX = logoX + logoWidth + 15;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(30, 58, 138); // Dark Blue
+    doc.text("REPORTE DE BITÁCORAS DE FLOTA VEHICULAR", headerTextX, logoY + 18);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139); // Slate 500
+    doc.text(`Período / Filtro: ${periodText} | Generado el: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, headerTextX, logoY + 32);
+
+    // Prepare table data
+    const tableData = logs.map(l => {
+        let displayDate = "";
+        if (l.fecha) {
+            if (l.fecha.includes("T")) {
+                displayDate = format(new Date(l.fecha), "dd/MM/yyyy");
+            } else {
+                const [year, month, day] = l.fecha.split("-").map(Number);
+                displayDate = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+            }
+        } else {
+            displayDate = "---";
+        }
+
+        const conductor = l.conductorName || '---';
+        const unidad = l.unidad || (l.unidadId ? String(l.unidadId).split(' - ')[0]?.trim() || '' : '---');
+        const placa = l.placa || (l.unidadId ? String(l.unidadId).split(' - ').slice(-1)[0]?.trim() || '' : '---');
+        const displayVehicle = (unidad && placa && unidad !== placa) ? `${unidad} - ${placa}` : (unidad || '---');
+        const kmRecorridos = l.totalKm != null ? `${l.totalKm} km` : `${(l.kmLlegada || 0) - (l.kmSalida || 0)} km`;
+        const combustible = `${l.combustible || '---'} / ${l.combustibleFinal || '---'}`;
+        const recarga = l.monto ? `₡${l.monto.toLocaleString()}` : '---';
+
+        return [
+            displayDate,
+            displayVehicle,
+            conductor,
+            l.destino || "---",
+            l.kmSalida != null ? l.kmSalida.toLocaleString() : '---',
+            l.kmLlegada != null ? l.kmLlegada.toLocaleString() : '---',
+            kmRecorridos,
+            combustible,
+            recarga,
+            l.observaciones || "---"
+        ];
+    });
+
+    const columns = [
+        "Fecha",
+        "Vehículo",
+        "Conductor",
+        "Destino / Actividad",
+        "KM Inicio",
+        "KM Fin",
+        "Recorrido",
+        "Combustible (I/F)",
+        "Recarga",
+        "Observaciones"
+    ];
+
+    autoTable(doc, {
+        head: [columns],
+        body: tableData,
+        startY: Math.max(logoY + logoHeight + 15, 95),
+        margin: { left: margin, right: margin },
+        styles: {
+            fontSize: 7.5,
+            cellPadding: 4,
+            overflow: 'linebreak',
+            halign: 'left'
+        },
+        headStyles: {
+            fillColor: [30, 58, 138], // Dark Blue
+            textColor: [255, 255, 255],
+            fontStyle: 'bold'
+        },
+        columnStyles: {
+            0: { cellWidth: 55 }, // Fecha
+            1: { cellWidth: 75 }, // Vehículo
+            2: { cellWidth: 95 }, // Conductor
+            3: { cellWidth: 110 }, // Destino
+            4: { cellWidth: 45, halign: 'right' }, // KM Inicio
+            5: { cellWidth: 45, halign: 'right' }, // KM Fin
+            6: { cellWidth: 55, halign: 'right' }, // Recorrido
+            7: { cellWidth: 65, halign: 'center' }, // Combustible (I/F)
+            8: { cellWidth: 55, halign: 'right' }, // Recarga
+            9: { cellWidth: 115 } // Observaciones
+        },
+        alternateRowStyles: {
+            fillColor: [248, 250, 252] // Very light slate
+        }
+    });
+
+    const fileName = `Reporte_Bitacoras_${periodText.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+    const blob = doc.output('blob');
+    triggerFileDownload(blob, fileName);
+};
+
+export const exportVehicleLogsListExcel = async (logs: VehicleLog[], periodText: string) => {
+    try {
+        const excelRows = logs.map(l => {
+            let displayDate = "";
+            if (l.fecha) {
+                if (l.fecha.includes("T")) {
+                    displayDate = format(new Date(l.fecha), "dd/MM/yyyy");
+                } else {
+                    const [year, month, day] = l.fecha.split("-").map(Number);
+                    displayDate = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+                }
+            } else {
+                displayDate = "---";
+            }
+
+            const unidad = l.unidad || (l.unidadId ? String(l.unidadId).split(' - ')[0]?.trim() || '' : '');
+            const placa = l.placa || (l.unidadId ? String(l.unidadId).split(' - ').slice(-1)[0]?.trim() || '' : '');
+            const displayVehicle = (unidad && placa && unidad !== placa) ? `${unidad} - ${placa}` : (unidad || l.unidadName || '');
+            const kmRecorridos = l.totalKm != null ? l.totalKm : ((l.kmLlegada || 0) - (l.kmSalida || 0));
+
+            return {
+                "Fecha": displayDate,
+                "Vehículo / Unidad": displayVehicle,
+                "Placa": placa,
+                "Conductor": l.conductorName || '---',
+                "Destino / Actividad": l.destino || '---',
+                "KM Salida": l.kmSalida || 0,
+                "KM Llegada": l.kmLlegada || 0,
+                "KM Recorridos": kmRecorridos > 0 ? kmRecorridos : 0,
+                "Combustible Inicial": l.combustible || '---',
+                "Combustible Final": l.combustibleFinal || '---',
+                "Gasolinera": l.gasolinera || '---',
+                "Litros Recarga": l.litros || 0,
+                "Monto Recarga (₡)": l.monto || 0,
+                "Observaciones": l.observaciones || '---'
+            };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(excelRows);
+        
+        // Auto-sizing columns helper
+        const wscols = [
+            { wch: 12 }, // Fecha
+            { wch: 18 }, // Vehículo / Unidad
+            { wch: 12 }, // Placa
+            { wch: 25 }, // Conductor
+            { wch: 30 }, // Destino
+            { wch: 12 }, // KM Salida
+            { wch: 12 }, // KM Llegada
+            { wch: 14 }, // KM Recorridos
+            { wch: 18 }, // Combustible Inicial
+            { wch: 18 }, // Combustible Final
+            { wch: 20 }, // Gasolinera
+            { wch: 14 }, // Litros
+            { wch: 16 }, // Monto
+            { wch: 40 }  // Observaciones
+        ];
+        worksheet['!cols'] = wscols;
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Bitácora Vehicular");
+
+        const fileName = `Reporte_Bitacoras_${periodText.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
+        XLSX.writeFile(workbook, fileName);
+    } catch (error) {
+        console.error("Error exportando bitácora a Excel:", error);
+        throw error;
+    }
 };

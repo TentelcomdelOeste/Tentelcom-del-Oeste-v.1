@@ -309,7 +309,7 @@ export const ControlVehicularModule: React.FC<ControlVehicularModuleProps> = ({
 
   // Handlers para Mantenimientos
   const handleSaveMaintenance = async (data: Partial<VehicleMaintenance>) => {
-    await saveVehicleMaintenance(data);
+    await saveVehicleMaintenance(data, currentUser);
   };
 
   const handleDeleteMaint = async (maint: VehicleMaintenance) => {
@@ -320,7 +320,7 @@ export const ControlVehicularModule: React.FC<ControlVehicularModuleProps> = ({
       variant: 'danger'
     });
     if (isConfirmed) {
-      await deleteVehicleMaintenance(maint.id);
+      await deleteVehicleMaintenance(maint.id, currentUser);
     }
   };
 

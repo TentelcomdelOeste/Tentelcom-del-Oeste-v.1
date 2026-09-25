@@ -413,6 +413,31 @@ export class LocalDB {
     }
 
     /**
+     * Limpia todos los tombstones registrados para una colección dada.
+     * Utilizado para sanear lápidas erróneas generadas por consultas parciales.
+     */
+    public async clearTombstonesForCollection(collection: string): Promise<void> {
+        if (Capacitor.getPlatform() === 'web') {
+            const keysToDelete: string[] = [];
+            await localforage.iterate((_value: any, key: string) => {
+                if (key.startsWith(`tombstone:${collection}:`)) {
+                    keysToDelete.push(key);
+                }
+            });
+            for (const key of keysToDelete) {
+                await localforage.removeItem(key);
+            }
+        } else {
+            await this.init();
+            await this.initPromise;
+            await this.db!.run(
+                `DELETE FROM deleted_tombstones WHERE collection = ?`,
+                [collection]
+            );
+        }
+    }
+
+    /**
      * Cancela e invalida todas las mutaciones pendientes (create/update) de un documento eliminado.
      * Evita que mutaciones offline antiguas resuciten un documento borrado.
      */

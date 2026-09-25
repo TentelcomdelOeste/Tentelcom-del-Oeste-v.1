@@ -4,13 +4,14 @@ import { User } from '../../utils/types';
 import { ActionButton, useConfirm } from '../../design-system';
 import { ModulePage } from '../../components/ui/ModulePage';
 import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
-import { VehicleLog, extraerUnidad, extraerPlaca } from '../../types/vehicle.types';
+import { VehicleLog, extraerUnidad, extraerPlaca, VehicleExpense } from '../../types/vehicle.types';
 import { db } from '../../firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { AnalysisPopoverProvider } from './components/AnalysisPopoverContext';
 import { FiEye } from 'react-icons/fi';
 import { FuelConsumptionPopover } from './components/FuelConsumptionPopover';
+import { TotalCostPopover } from './components/TotalCostPopover';
 import { useLocalCollection } from '../../hooks/useLocalCollection';
 import { localDocStore } from '../../core/offline/localDocStore';
 
@@ -27,10 +28,15 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
     const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
     const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
     const localDocuments = useLocalCollection("bitacora_vehiculos");
+    const localExpenses = useLocalCollection("vehicle_expenses");
 
     const allLogs = useMemo(() => {
         return localDocuments.map(d => ({ ...d.data, id: d.docId } as VehicleLog));
     }, [localDocuments]);
+
+    const allExpenses = useMemo(() => {
+        return localExpenses.map(d => ({ ...d.data, id: d.docId } as VehicleExpense));
+    }, [localExpenses]);
 
     const getDateRange = (range: string) => {
         const now = new Date();
@@ -50,16 +56,12 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
             setIsLoading(true);
         }
 
-        const { startDate, endDate } = getDateRange(dateRange);
-        
         const q = query(
             collection(db, "bitacora_vehiculos"),
-            where("fecha", ">=", startDate.toISOString().split('T')[0]),
-            where("fecha", "<=", endDate.toISOString().split('T')[0]),
             orderBy("fecha", "desc")
         );
         
-        const unsubscribe = onSnapshot(q, async (snapshot) => {
+        const unsubscribeLogs = onSnapshot(q, async (snapshot) => {
             const data = snapshot.docs
                 .map(doc => ({ ...doc.data(), id: doc.id } as VehicleLog));
 
@@ -67,12 +69,27 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
             // Sync silent
             await localDocStore.saveLocalDocsBatch("bitacora_vehiculos", data);
         }, (error) => {
-            console.error("Firestore listener error:", error);
+            console.error("Firestore bitacora_vehiculos listener error:", error);
             setIsLoading(false);
         });
+
+        const qExpenses = query(
+            collection(db, "vehicle_expenses")
+        );
+
+        const unsubscribeExpenses = onSnapshot(qExpenses, async (snapshot) => {
+            const data = snapshot.docs
+                .map(doc => ({ ...doc.data(), id: doc.id } as any));
+            await localDocStore.saveLocalDocsBatch("vehicle_expenses", data);
+        }, (error) => {
+            console.error("Firestore vehicle_expenses listener error:", error);
+        });
         
-        return () => unsubscribe();
-    }, [authReady, currentUser, dateRange]);
+        return () => {
+            unsubscribeLogs();
+            unsubscribeExpenses();
+        };
+    }, [authReady, currentUser]);
 
     const logs = useMemo(() => {
         const { startDate, endDate } = getDateRange(dateRange);
@@ -91,6 +108,22 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
         });
     }, [allLogs, selectedUnit, selectedDriver, dateRange]);
 
+    const filteredExpenses = useMemo(() => {
+        const { startDate, endDate } = getDateRange(dateRange);
+        const startStr = startDate.toISOString().split('T')[0];
+        const endStr = endDate.toISOString().split('T')[0];
+
+        return allExpenses.filter(exp => {
+            if (exp.isDeleted) return false;
+            const expDate = exp.fecha || "";
+            if (expDate < startStr || expDate > endStr) return false;
+            
+            const expUnidad = exp.unidad;
+            if (selectedUnit && selectedUnit !== "all" && expUnidad !== selectedUnit) return false;
+            return true;
+        });
+    }, [allExpenses, selectedUnit, dateRange]);
+
     const litrosAGalones = (litros: number) => litros / 3.785;
 
     const _metrics = useMemo(() => {
@@ -100,15 +133,42 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
         let totalEventos = 0;
 
         logs.forEach(log => {
-            const km = log.totalKm || ((log.kmLlegada != null && log.kmSalida != null && log.kmLlegada >= log.kmSalida) ? (log.kmLlegada - log.kmSalida) : 0);
-            const consumoLts = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
-            const costo = log.monto || (log as any).costo || 0;
+            const km = (log.kmLlegada && log.kmSalida && log.kmLlegada >= log.kmSalida) 
+                ? (log.kmLlegada - log.kmSalida) 
+                : (log.totalKm || 0);
+
+            let logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
+            if (log.recargas && Array.isArray(log.recargas)) {
+                log.recargas.forEach(r => {
+                    if (r.litros != null) {
+                        logLitros += parseFloat(String(r.litros)) || 0;
+                    }
+                });
+            }
 
             totalKm += km;
-            totalLitros += consumoLts;
-            costoTotal += costo;
+            totalLitros += logLitros;
             if (log.eventosCarretera === 'Sí') {
                 totalEventos++;
+            }
+        });
+
+        filteredExpenses.forEach(exp => {
+            costoTotal += exp.monto || 0;
+        });
+
+        logs.forEach(log => {
+            const hasAssociated = filteredExpenses.some(exp => exp.bitacoraId === log.id);
+            if (!hasAssociated) {
+                let logCosto = log.monto || (log as any).costo || 0;
+                if (log.recargas && Array.isArray(log.recargas)) {
+                    log.recargas.forEach(r => {
+                        if (r.monto != null) {
+                            logCosto += parseFloat(String(r.monto)) || 0;
+                        }
+                    });
+                }
+                costoTotal += logCosto;
             }
         });
 
@@ -117,7 +177,7 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
         const costoPorKm = totalKm > 0 ? costoTotal / totalKm : 0;
 
         return { totalKm, totalLitros, costoTotal, consumoPromedio, costoPorKm, totalEventos };
-    }, [logs]);
+    }, [logs, filteredExpenses]);
 
     const uniqueDrivers = useMemo(() => {
         const driversMap = new Map();
@@ -143,6 +203,7 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
 
     const groupedByUnit = useMemo(() => {
         const groups: Record<string, any> = {};
+
         logs.forEach(log => {
             const uid = log.unidad || extraerUnidad(log.unidadId);
             if (!uid) return;
@@ -156,6 +217,7 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                     totalKm: 0,
                     totalLitros: 0,
                     costoTotal: 0,
+                    costBreakdown: {} as Record<string, number>,
                     totalEventos: 0,
                     registros: 0
                 };
@@ -163,25 +225,78 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
             
             groups[uid].registros++;
             
-            const km = log.totalKm || ((log.kmLlegada != null && log.kmSalida != null && log.kmLlegada >= log.kmSalida) ? (log.kmLlegada - log.kmSalida) : 0);
-            const consumoLts = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
-            const costo = log.monto || (log as any).costo || 0;
+            const km = (log.kmLlegada && log.kmSalida && log.kmLlegada >= log.kmSalida) 
+                ? (log.kmLlegada - log.kmSalida) 
+                : (log.totalKm || 0);
+
+            let logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
+            if (log.recargas && Array.isArray(log.recargas)) {
+                log.recargas.forEach(r => {
+                    if (r.litros != null) {
+                        logLitros += parseFloat(String(r.litros)) || 0;
+                    }
+                });
+            }
             
             groups[uid].totalKm += km;
-            groups[uid].totalLitros += consumoLts;
-            groups[uid].costoTotal += costo;
+            groups[uid].totalLitros += logLitros;
             
             if (log.eventosCarretera === 'Sí') {
                 groups[uid].totalEventos++;
             }
         });
-        
+
+        filteredExpenses.forEach(exp => {
+            const uid = exp.unidad;
+            if (!uid) return;
+
+            if (!groups[uid]) {
+                groups[uid] = {
+                    unidadId: uid,
+                    unidadName: uid,
+                    placa: '',
+                    totalKm: 0,
+                    totalLitros: 0,
+                    costoTotal: 0,
+                    costBreakdown: {} as Record<string, number>,
+                    totalEventos: 0,
+                    registros: 0
+                };
+            }
+
+            const expMonto = exp.monto || 0;
+            const categoria = exp.categoria || 'Gasto General';
+            groups[uid].costoTotal += expMonto;
+            groups[uid].costBreakdown[categoria] = (groups[uid].costBreakdown[categoria] || 0) + expMonto;
+        });
+
+        logs.forEach(log => {
+            const uid = log.unidad || extraerUnidad(log.unidadId);
+            if (!uid || !groups[uid]) return;
+
+            const hasAssociated = filteredExpenses.some(exp => exp.bitacoraId === log.id);
+            if (!hasAssociated) {
+                let logCosto = log.monto || (log as any).costo || 0;
+                if (log.recargas && Array.isArray(log.recargas)) {
+                    log.recargas.forEach(r => {
+                        if (r.monto != null) {
+                            logCosto += parseFloat(String(r.monto)) || 0;
+                        }
+                    });
+                }
+                if (logCosto > 0) {
+                    groups[uid].costoTotal += logCosto;
+                    groups[uid].costBreakdown['Combustible'] = (groups[uid].costBreakdown['Combustible'] || 0) + logCosto;
+                }
+            }
+        });
+
         return Object.values(groups).map(g => {
             const totalGalones = litrosAGalones(g.totalLitros);
             g.rendimiento = g.totalLitros >= 1 && totalGalones > 0 ? (g.totalKm / totalGalones) : 0;
             return g;
         }).sort((a, b) => b.totalKm - a.totalKm);
-    }, [logs]);
+    }, [logs, filteredExpenses]);
 
 
 
@@ -297,8 +412,11 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                                                     <span className="text-[9px] font-bold text-slate-400 uppercase">GAL</span>
                                                 </div>
                                             </div>
-                                            <div className="p-3 flex flex-col items-center md:items-start group transition-colors hover:bg-slate-50">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-orange-600 transition-colors">Costo Total</span>
+                                            <div className="p-3 flex flex-col items-center md:items-start group transition-colors hover:bg-slate-50 relative">
+                                                <div className="flex items-center gap-1 mb-1">
+                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-orange-600 transition-colors">Costo Total</span>
+                                                    <TotalCostPopover totalCost={unit.costoTotal} breakdown={unit.costBreakdown} />
+                                                </div>
                                                 <div className="flex items-baseline gap-1">
                                                     <span className="text-lg md:text-xl font-black text-orange-600">₡{unit.costoTotal.toLocaleString()}</span>
                                                 </div>

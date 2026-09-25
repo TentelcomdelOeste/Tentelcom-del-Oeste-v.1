@@ -388,6 +388,8 @@ export interface VehicleExpense {
     updatedAt: string;
     version?: number;
     isDeleted?: boolean;
+    sourceType?: string;
+    sourceId?: string;
 }
 
 export interface VehicleAttachment {

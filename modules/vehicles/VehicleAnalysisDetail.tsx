@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { User } from '../../utils/types';
 import { ModulePage } from '../../components/ui/ModulePage';
 import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
-import { VehicleLog, extraerUnidad, extraerPlaca, VehicleExpense } from '../../types/vehicle.types';
+import { VehicleLog, extraerUnidad, extraerPlaca, VehicleExpense, getUnitCode } from '../../types/vehicle.types';
+import { normalizeDateToCanonical, reconcileUnlinkedMaintenanceExpenses } from './controlVehicularService';
 import { db } from '../../firebase';
 import { useAuth } from '../../hooks/useAuth';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, where } from 'firebase/firestore';
 import { useLocalCollection } from '../../hooks/useLocalCollection';
 import { localDocStore } from '../../core/offline/localDocStore';
 import { FiArrowLeft, FiCreditCard } from 'react-icons/fi';
@@ -124,7 +125,7 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
         return () => unsubscribe();
     }, [authReady, currentUser?.id]);
 
-    // Apply unified filtering logic to the memory-cached logs
+    // Apply unified filtering logic to the memory-cached logs and sort chronologically (newest to oldest)
     useEffect(() => {
         const registrosUnidad = allLogs.filter(r => {
             if (r.isDeleted) return false;
@@ -136,18 +137,47 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
                    (r.unidadId || '').startsWith(unidadParam + " - ");
         });
 
+        // Sort from newest to oldest
+        registrosUnidad.sort((a, b) => {
+            const dateA = a.fecha || "";
+            const dateB = b.fecha || "";
+            if (dateA !== dateB) return dateB.localeCompare(dateA);
+            const timeA = a.horaSalida || "";
+            const timeB = b.horaSalida || "";
+            return timeB.localeCompare(timeA);
+        });
+
         setRawLogs(registrosUnidad);
     }, [allLogs, unidadParam]);
 
     useEffect(() => {
         if (!authReady || !currentUser?.id || !unidadParam) return;
         
-        const fetchExpenses = async () => {
-            const data = await getVehicleExpenses(unidadParam);
-            setExpenses(data);
+        reconcileUnlinkedMaintenanceExpenses().catch(console.error);
+
+        const targetUCode = getUnitCode(unidadParam);
+        const matchesUnit = (e: VehicleExpense) => {
+            if (e.isDeleted) return false;
+            if (e.unidad === unidadParam) return true;
+            const expUCode = getUnitCode(e.unidad, e.vehiculoId);
+            return !!(targetUCode && expUCode && targetUCode === expUCode);
         };
 
-        fetchExpenses();
+        const qExpenses = query(
+            collection(db, "vehicle_expenses"),
+            orderBy("fecha", "desc")
+        );
+        const unsubscribe = onSnapshot(qExpenses, (snap) => {
+            const data = snap.docs
+                .map(doc => ({ ...doc.data(), id: doc.id } as VehicleExpense))
+                .filter(matchesUnit);
+            setExpenses(data.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
+        }, (err) => {
+            console.error("Error in vehicle_expenses listener:", err);
+            getVehicleExpenses(unidadParam).then(setExpenses);
+        });
+
+        return () => unsubscribe();
     }, [authReady, currentUser?.id, unidadParam]);
 
     const handleExpenseSuccess = async () => {
@@ -246,15 +276,44 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
         let totalEventos = 0;
 
         rawLogs.forEach(log => {
-            const km = log.totalKm || ((log.kmLlegada != null && log.kmSalida != null && log.kmLlegada >= log.kmSalida) ? (log.kmLlegada - log.kmSalida) : 0);
-            const consumoLts = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
-            const costo = log.monto || (log as any).costo || 0;
+            const km = (log.kmLlegada && log.kmSalida && log.kmLlegada >= log.kmSalida) 
+                ? (log.kmLlegada - log.kmSalida) 
+                : (log.totalKm || 0);
+
+            let logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
+            if (log.recargas && Array.isArray(log.recargas)) {
+                log.recargas.forEach(r => {
+                    if (r.litros != null) {
+                        logLitros += parseFloat(String(r.litros)) || 0;
+                    }
+                });
+            }
 
             totalKm += km;
-            totalLitros += consumoLts;
-            costoTotal += costo;
+            totalLitros += logLitros;
             if (log.eventosCarretera === 'Sí') {
                 totalEventos++;
+            }
+        });
+
+        // 1. Sum up all expenses for this unit
+        expenses.forEach(exp => {
+            costoTotal += exp.monto || 0;
+        });
+
+        // 2. Add any log.monto that is NOT associated with an expense doc
+        rawLogs.forEach(log => {
+            const hasAssociated = expenses.some(exp => exp.bitacoraId === log.id);
+            if (!hasAssociated) {
+                let logCosto = log.monto || (log as any).costo || 0;
+                if (log.recargas && Array.isArray(log.recargas)) {
+                    log.recargas.forEach(r => {
+                        if (r.monto != null) {
+                            logCosto += parseFloat(String(r.monto)) || 0;
+                        }
+                    });
+                }
+                costoTotal += logCosto;
             }
         });
 
@@ -273,7 +332,7 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
             costoPorGalon,
             totalEventos 
         };
-    }, [rawLogs]);
+    }, [rawLogs, expenses]);
 
     const advancedMetrics = useMemo(() => {
         if (rawLogs.length === 0) return null;
@@ -589,44 +648,72 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
                                             </div>
 
                                             {/* GASTOS ASOCIADOS A LA BITACORA */}
-                                            {expenses.filter(e => e.bitacoraId === log.id).length > 0 && (
-                                                <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
-                                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                                                        <FiCreditCard className="text-emerald-500" /> Gastos de este recorrido
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        {expenses.filter(e => e.bitacoraId === log.id).map(exp => (
-                                                            <div key={exp.id} className="flex justify-between items-center bg-white p-2 rounded-md border border-slate-100 shadow-sm group/exp">
-                                                                <div className="flex flex-col">
-                                                                    <span className="text-[10px] font-bold text-slate-900">{exp.descripcion}</span>
-                                                                    <span className="text-[8px] text-slate-400 uppercase font-medium">{exp.categoria}</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-xs font-black text-slate-700">₡{exp.monto.toLocaleString()}</span>
-                                                                    <div className="opacity-0 group-hover/exp:opacity-100 transition-opacity">
-                                                                        <ActionButtons
-                                                                            onEdit={() => {
-                                                                                setEditingExpense(exp);
-                                                                                setShowExpenseModal(true);
-                                                                            }}
-                                                                            onDelete={() => handleDeleteExpense(exp)}
-                                                                        />
+                                            {(() => {
+                                                const logExpenses = expenses.filter(e => {
+                                                    if (e.bitacoraId === log.id) return true;
+                                                    if (e.sourceType === 'control_vehicular_mantenimiento' && !e.bitacoraId) {
+                                                        const lUCode = getUnitCode((log as any)._resolvedUnidad, log.unidad, log.unidadId || log.unidadName) || extraerUnidad(log.unidadId);
+                                                        const eUCode = getUnitCode(e.unidad, e.vehiculoId);
+                                                        const lDate = normalizeDateToCanonical(log.fecha);
+                                                        const eDate = normalizeDateToCanonical(e.fecha);
+                                                        return !!(lUCode && eUCode && lUCode === eUCode && lDate && eDate && lDate === eDate);
+                                                    }
+                                                    return false;
+                                                });
+                                                if (logExpenses.length === 0) return null;
+                                                return (
+                                                    <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
+                                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                                            <FiCreditCard className="text-emerald-500" /> Gastos de este recorrido
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            {logExpenses.map(exp => (
+                                                                <div key={exp.id} className="flex justify-between items-center bg-white p-2 rounded-md border border-slate-100 shadow-sm group/exp">
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-[10px] font-bold text-slate-900">{exp.descripcion}</span>
+                                                                        <span className="text-[8px] text-slate-400 uppercase font-medium">{exp.categoria}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-black text-slate-700">₡{exp.monto.toLocaleString()}</span>
+                                                                        <div className="opacity-0 group-hover/exp:opacity-100 transition-opacity">
+                                                                            <ActionButtons
+                                                                                onEdit={() => {
+                                                                                    setEditingExpense(exp);
+                                                                                    setShowExpenseModal(true);
+                                                                                }}
+                                                                                onDelete={() => handleDeleteExpense(exp)}
+                                                                            />
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
 
                                             <div className="pt-3 mt-auto border-t border-slate-100 flex justify-between items-center">
                                                 <div className="flex gap-1">
-                                                    {expenses.filter(e => e.bitacoraId === log.id).length > 0 && (
-                                                        <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-bold border border-emerald-100">
-                                                            <FiCreditCard className="text-[8px]" />
-                                                            {expenses.filter(e => e.bitacoraId === log.id).reduce((acc, c) => acc + c.monto, 0).toLocaleString()} EN GASTOS
-                                                        </div>
-                                                    )}
+                                                    {(() => {
+                                                        const logExpenses = expenses.filter(e => {
+                                                            if (e.bitacoraId === log.id) return true;
+                                                            if (e.sourceType === 'control_vehicular_mantenimiento' && !e.bitacoraId) {
+                                                                const lUCode = getUnitCode((log as any)._resolvedUnidad, log.unidad, log.unidadId || log.unidadName) || extraerUnidad(log.unidadId);
+                                                                const eUCode = getUnitCode(e.unidad, e.vehiculoId);
+                                                                const lDate = normalizeDateToCanonical(log.fecha);
+                                                                const eDate = normalizeDateToCanonical(e.fecha);
+                                                                return !!(lUCode && eUCode && lUCode === eUCode && lDate && eDate && lDate === eDate);
+                                                            }
+                                                            return false;
+                                                        });
+                                                        if (logExpenses.length === 0) return null;
+                                                        return (
+                                                            <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-bold border border-emerald-100">
+                                                                <FiCreditCard className="text-[8px]" />
+                                                                {logExpenses.reduce((acc, c) => acc + c.monto, 0).toLocaleString()} EN GASTOS
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                                 <ActionButton
                                                     onClick={() => {
