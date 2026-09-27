@@ -33,6 +33,12 @@ jobs:
       - name: Add Android Platform & Sync Capacitor
         run: npx cap add android || npx cap sync android
 
+      - name: Generate Android Icons and Splash
+        run: |
+          mkdir -p assets
+          cp public/icon-512x512.png assets/icon.png
+          npx -y @capacitor/assets generate --android --assetPath assets --iconBackgroundColor '#ffffff' --splashBackgroundColor '#f8fafc'
+
       - name: Build Debug APK with Gradle
         working-directory: android
         run: |
