@@ -53,7 +53,7 @@ jobs:
           # transparent canvas + centered logo, with enough safe area to avoid
           # the previous oversized/clipped appearance.
           convert /tmp/tentelcom-logo-trimmed.png \
-            -resize 85% \
+            -resize 75% \
             -gravity center \
             -background none \
             -extent 1024x1024 \
@@ -70,7 +70,7 @@ jobs:
           # artwork over the splash background instead of showing the launcher
           # icon's white rounded-square container.
           convert /tmp/tentelcom-logo-trimmed.png \
-            -resize 85% \
+            -resize 75% \
             -gravity center \
             -background none \
             -extent 1024x1024 \
@@ -109,8 +109,7 @@ jobs:
           replacement = r'''\1
                   <item name="windowSplashScreenBackground">#ffffff</item>
                   <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
-                  <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
-                  <item name="android:windowSplashScreenBackground">#ffffff</item>'''
+                  <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>'''
 
           pattern = r'(<style name="AppTheme\.NoActionBarLaunch"[^>]*>)(.*?)(</style>)'
           new_text, count = re.subn(
@@ -148,8 +147,7 @@ jobs:
               <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
                   <item name="windowSplashScreenBackground">#ffffff</item>
                   <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
-                  <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
-                  <item name="android:windowSplashScreenBackground">#ffffff</item>
+                  <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
               </style>
           </resources>
           ''')
