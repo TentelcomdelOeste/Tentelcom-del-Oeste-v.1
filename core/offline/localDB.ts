@@ -24,97 +24,130 @@ export class LocalDB {
         }
     }
 
-    public async init() {
-        if (this.initPromise) return this.initPromise;
+    private async isDbOpenSafely(): Promise<boolean> {
+        try {
+            if (!this.db) return false;
+            const res = await this.db.isDBOpen();
+            return !!res?.result;
+        } catch {
+            return false;
+        }
+    }
+
+    private async ensureConnected(): Promise<void> {
+        if (Capacitor.getPlatform() === 'web') return;
+        if (!this.isInitialized || !this.db || !(await this.isDbOpenSafely())) {
+            this.initPromise = null;
+            this.isInitialized = false;
+            await this.init();
+        }
+    }
+
+    public async init(): Promise<void> {
+        if (Capacitor.getPlatform() === 'web') {
+            this.isInitialized = true;
+            return;
+        }
+
+        if (this.isInitialized && this.db && (await this.isDbOpenSafely())) {
+            return;
+        }
+
+        if (this.initPromise) {
+            try {
+                await this.initPromise;
+                if (this.isInitialized && this.db && (await this.isDbOpenSafely())) {
+                    return;
+                }
+            } catch {
+                this.initPromise = null;
+            }
+        }
         
         this.initPromise = (async () => {
             try {
-                console.log("LocalDB: Initializing...");
+                console.log("LocalDB: Initializing Native SQLite...");
                 
-                if (Capacitor.getPlatform() === 'web') {
-                    console.log("LocalDB: Skipping SQLite, using IndexedDB (localforage)...");
-                    this.isInitialized = true;
+                // Check connections consistency
+                const consistency = await this.sqlite.checkConnectionsConsistency();
+                const isConn = (await this.sqlite.isConnection(this.dbName, false)).result;
+                
+                if (consistency.result && isConn) {
+                    this.db = await this.sqlite.retrieveConnection(this.dbName, false);
                 } else {
-                    // Android/iOS Native SQLite
-                    console.log("LocalDB: Initializing Native SQLite...");
-                    
-                    // Check connections consistency
-                    const consistency = await this.sqlite.checkConnectionsConsistency();
-                    const isConn = (await this.sqlite.isConnection(this.dbName, false)).result;
-                    
-                    if (consistency.result && isConn) {
-                        this.db = await this.sqlite.retrieveConnection(this.dbName, false);
-                    } else {
-                        this.db = await this.sqlite.createConnection(this.dbName, false, "no-encryption", 1, false);
-                    }
-                    
-                    await this.db.open();
-                    
-                    await this.db.execute(`
-                        CREATE TABLE IF NOT EXISTS local_metadata (
-                            key TEXT PRIMARY KEY NOT NULL,
-                            value TEXT NOT NULL,
-                            updatedAt INTEGER NOT NULL
-                        );
-
-                        CREATE TABLE IF NOT EXISTS offline_mutations (
-                            id TEXT PRIMARY KEY NOT NULL,
-                            collection TEXT NOT NULL,
-                            docId TEXT NOT NULL,
-                            operation TEXT NOT NULL,
-                            payload TEXT NOT NULL,
-                            timestamp INTEGER NOT NULL,
-                            status TEXT NOT NULL,
-                            retryCount INTEGER NOT NULL,
-                            error TEXT
-                        );
-
-                        CREATE TABLE IF NOT EXISTS local_documents (
-                            collection TEXT NOT NULL,
-                            docId TEXT NOT NULL,
-                            data TEXT NOT NULL,
-                            updatedAt INTEGER NOT NULL,
-                            isDirty INTEGER NOT NULL,
-                            localRevision INTEGER NOT NULL DEFAULT 1,
-                            PRIMARY KEY (collection, docId)
-                        );
-
-                        CREATE TABLE IF NOT EXISTS executed_operations (
-                            id TEXT PRIMARY KEY NOT NULL,
-                            executedAt INTEGER NOT NULL
-                        );
-
-                        CREATE TABLE IF NOT EXISTS pdf_upload_queue (
-                            id TEXT PRIMARY KEY NOT NULL,
-                            localPath TEXT NOT NULL,
-                            fileName TEXT NOT NULL,
-                            mimeType TEXT NOT NULL,
-                            module TEXT NOT NULL,
-                            targetCollection TEXT NOT NULL,
-                            targetDocId TEXT NOT NULL,
-                            status TEXT NOT NULL,
-                            attempts INTEGER NOT NULL DEFAULT 0,
-                            createdAt INTEGER NOT NULL,
-                            updatedAt INTEGER NOT NULL,
-                            firebasePath TEXT,
-                            errorLog TEXT,
-                            checksum TEXT NOT NULL
-                        );
-
-                        CREATE TABLE IF NOT EXISTS deleted_tombstones (
-                            collection TEXT NOT NULL,
-                            docId TEXT NOT NULL,
-                            deletedAt INTEGER NOT NULL,
-                            PRIMARY KEY (collection, docId)
-                        );
-                    `);
-                    
-                    this.isInitialized = true;
+                    this.db = await this.sqlite.createConnection(this.dbName, false, "no-encryption", 1, false);
                 }
                 
+                if (!(await this.isDbOpenSafely())) {
+                    await this.db.open();
+                }
+                
+                await this.db.execute(`
+                    CREATE TABLE IF NOT EXISTS local_metadata (
+                        key TEXT PRIMARY KEY NOT NULL,
+                        value TEXT NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS offline_mutations (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        collection TEXT NOT NULL,
+                        docId TEXT NOT NULL,
+                        operation TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        retryCount INTEGER NOT NULL,
+                        error TEXT
+                    );
+
+                    CREATE TABLE IF NOT EXISTS local_documents (
+                        collection TEXT NOT NULL,
+                        docId TEXT NOT NULL,
+                        data TEXT NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        isDirty INTEGER NOT NULL,
+                        localRevision INTEGER NOT NULL DEFAULT 1,
+                        PRIMARY KEY (collection, docId)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS executed_operations (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        executedAt INTEGER NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS pdf_upload_queue (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        localPath TEXT NOT NULL,
+                        fileName TEXT NOT NULL,
+                        mimeType TEXT NOT NULL,
+                        module TEXT NOT NULL,
+                        targetCollection TEXT NOT NULL,
+                        targetDocId TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        firebasePath TEXT,
+                        errorLog TEXT,
+                        checksum TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS deleted_tombstones (
+                        collection TEXT NOT NULL,
+                        docId TEXT NOT NULL,
+                        deletedAt INTEGER NOT NULL,
+                        PRIMARY KEY (collection, docId)
+                    );
+                `);
+                
+                this.isInitialized = true;
                 console.log("LocalDB: Initialization Complete.");
             } catch (e) {
                 console.error("LocalDB: Error during initialization", e);
+                this.initPromise = null;
+                this.isInitialized = false;
+                throw e;
             }
         })();
         
@@ -123,8 +156,12 @@ export class LocalDB {
 
     public async checkConnectionAlive(): Promise<boolean> {
         try {
-            await localforage.getItem('__connection_check__');
-            return true;
+            if (Capacitor.getPlatform() === 'web') {
+                await localforage.getItem('__connection_check__');
+                return true;
+            } else {
+                return await this.isDbOpenSafely();
+            }
         } catch (error) {
             console.warn('[LocalDB] checkConnectionAlive falló:', error);
             return false;
@@ -142,8 +179,7 @@ export class LocalDB {
             // Ensure docId is included in the stored object for consistency with SQLite retrieval
             await localforage.setItem(key, { ...data, docId, revision, isDirty });
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             // Existing SQLite implementation ...
             const timestamp = Date.now();
             const payload = JSON.stringify(data);
@@ -170,8 +206,7 @@ export class LocalDB {
             const val = await localforage.getItem<any>(key);
             return val ? { ...val, docId } : null;
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             const res = await this.db!.query(
                 `SELECT docId, data, isDirty, updatedAt, localRevision FROM local_documents WHERE collection = ? AND docId = ?`,
                 [collection, docId]
@@ -200,8 +235,7 @@ export class LocalDB {
             });
             return results;
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             const res = await this.db!.query(
                 `SELECT docId, data, isDirty, updatedAt, localRevision FROM local_documents WHERE collection = ?`,
                 [collection]
@@ -224,8 +258,7 @@ export class LocalDB {
             await localforage.setItem(`mutation:${id}`, { id, collection, docId, operation, payload, timestamp, status: 'pending', retryCount: 0 });
             return id;
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             await this.db!.run(
                 `INSERT INTO offline_mutations (id, collection, docId, operation, payload, timestamp, status, retryCount) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0)`,
                 [id, collection, docId, operation, JSON.stringify(payload), timestamp]
@@ -246,8 +279,7 @@ export class LocalDB {
             });
             return results.sort((a, b) => a.timestamp - b.timestamp);
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             const res = await this.db!.query(`SELECT * FROM offline_mutations WHERE status = 'pending' OR status = 'failed' ORDER BY timestamp ASC`);
             return (res.values || []).map(row => ({
                 ...row,
@@ -268,8 +300,7 @@ export class LocalDB {
                 await localforage.setItem(`mutation:${id}`, item);
             }
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             if (status === 'failed') {
                 await this.db!.run(`UPDATE offline_mutations SET status = ?, error = ?, retryCount = retryCount + 1 WHERE id = ?`, [status, error || null, id]);
             } else {
@@ -282,8 +313,7 @@ export class LocalDB {
         if (Capacitor.getPlatform() === 'web') {
             await localforage.removeItem(`mutation:${id}`);
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             await this.db!.run(`DELETE FROM offline_mutations WHERE id = ?`, [id]);
         }
     }
@@ -298,8 +328,7 @@ export class LocalDB {
         if (Capacitor.getPlatform() === 'web') {
             return null;
         }
-        await this.init();
-        await this.initPromise;
+        await this.ensureConnected();
         return this.db;
     }
 
@@ -311,8 +340,7 @@ export class LocalDB {
         if (Capacitor.getPlatform() === 'web') {
             await localforage.removeItem(`${collection}:${docId}`);
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             await this.db!.run(
                 `DELETE FROM local_documents WHERE collection = ? AND docId = ?`,
                 [collection, docId]
@@ -336,8 +364,7 @@ export class LocalDB {
                 await localforage.removeItem(key);
             }
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             await this.db!.run(
                 `DELETE FROM offline_mutations WHERE status = 'dead' OR status = 'completed'`
             );
@@ -352,8 +379,7 @@ export class LocalDB {
         if (Capacitor.getPlatform() === 'web') {
             await localforage.setItem(`tombstone:${collection}:${docId}`, { collection, docId, deletedAt });
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             await this.db!.run(
                 `INSERT OR REPLACE INTO deleted_tombstones (collection, docId, deletedAt) VALUES (?, ?, ?)`,
                 [collection, docId, deletedAt]
@@ -375,8 +401,7 @@ export class LocalDB {
             }
             return true;
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             const res = await this.db!.query(
                 `SELECT deletedAt FROM deleted_tombstones WHERE collection = ? AND docId = ?`,
                 [collection, docId]
@@ -403,8 +428,7 @@ export class LocalDB {
         if (Capacitor.getPlatform() === 'web') {
             await localforage.removeItem(`tombstone:${collection}:${docId}`);
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             await this.db!.run(
                 `DELETE FROM deleted_tombstones WHERE collection = ? AND docId = ?`,
                 [collection, docId]
@@ -428,8 +452,7 @@ export class LocalDB {
                 await localforage.removeItem(key);
             }
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             await this.db!.run(
                 `DELETE FROM deleted_tombstones WHERE collection = ?`,
                 [collection]
@@ -460,8 +483,7 @@ export class LocalDB {
                 }
             }
         } else {
-            await this.init();
-            await this.initPromise;
+            await this.ensureConnected();
             await this.db!.run(
                 `UPDATE offline_mutations SET status = 'dead', error = 'Cancelado por eliminación confirmada del documento' WHERE collection = ? AND docId = ? AND (operation = 'create' OR operation = 'update')`,
                 [collection, docId]

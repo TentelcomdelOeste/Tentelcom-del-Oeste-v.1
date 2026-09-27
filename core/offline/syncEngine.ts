@@ -197,7 +197,10 @@ export class SyncEngine {
         }
 
         try {
-            return await firestorePromise;
+            const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error(`Timeout de sincronización Firestore (${FIREBASE_TIMEOUT_MS}ms)`)), FIREBASE_TIMEOUT_MS)
+            );
+            return await Promise.race([firestorePromise, timeoutPromise]);
         } catch (e: any) {
             // Detectar si el error fue porque el documento no existe en Firestore durante un UPDATE
             if (mutation.operation === 'update' && (e?.code === 'not-found' || e?.message?.includes('No document to update') || e?.message?.includes('not found'))) {

@@ -3,7 +3,7 @@ import format from 'date-fns/format';
 import parse from 'date-fns/parse';
 import { es } from 'date-fns/locale';
 import { Trabajo, EstadoTrabajo } from './types';
-import { createTrabajo, updateTrabajo, deleteTrabajo } from './jobService';
+import { createTrabajo, updateTrabajo, deleteTrabajo, fetchWithTimeout } from './jobService';
 import { createOrUpdateJobType } from './jobTypeService';
 import { createOrUpdateJobTitle } from './jobTitleService';
 import { ActionButton, Select, UI_TOKENS, useConfirm } from '@/design-system';
@@ -574,7 +574,7 @@ export const JobForm: React.FC<JobFormProps> = ({
         }
 
         syncSingleDayStatus(finalData);
-        await createTrabajo(finalData as Omit<Trabajo, "id" | "creado_en" | "actualizado_en">);
+        await fetchWithTimeout(createTrabajo(finalData as Omit<Trabajo, "id" | "creado_en" | "actualizado_en">), 10000);
       } else if (mode === 'edit' && latestTrabajo) {
         // Detect dates changes
         const currentFechaInicio = latestTrabajo.fecha_inicio instanceof Date ? latestTrabajo.fecha_inicio : (latestTrabajo.fecha_inicio as any)?.toDate?.() || new Date(latestTrabajo.fecha_inicio);
@@ -614,9 +614,9 @@ export const JobForm: React.FC<JobFormProps> = ({
           if (isReprogramar) {
             finalData.reprogramado = true;
             finalData.fecha_reprogramacion = new Date();
-            await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
+            await fetchWithTimeout(updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en), 10000);
           } else {
-            await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
+            await fetchWithTimeout(updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en), 10000);
           }
         } else {
           // Propagar horas nuevas en días que no hayan sido editados manualmente si las fechas no se modificaron
@@ -633,7 +633,7 @@ export const JobForm: React.FC<JobFormProps> = ({
             });
           }
           syncSingleDayStatus(finalData);
-          await updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en);
+          await fetchWithTimeout(updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en), 10000);
         }
       } else if (mode === 'edit') {
         throw new Error("No se pudo identificar el trabajo para editar.");

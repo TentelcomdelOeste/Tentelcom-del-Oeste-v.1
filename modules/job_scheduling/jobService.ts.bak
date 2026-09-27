@@ -227,14 +227,12 @@ export const getTrabajos = (callback: (trabajos: Trabajo[]) => void) => {
     return () => {};
   }
 
-  // 1. Si NO HAY INTERNET, cargar de inmediato desde el almacenamiento local de respaldo
-  if (!networkProbe.isOnline()) {
-    updateHybridTrabajos([], callback);
-  }
+  // Carga inicial local
+  updateHybridTrabajos([], callback);
 
-  // 2. Si HAY INTERNET, consultar directamente desde Firebase (Fuente Principal y Directa)
   const q = query(collection(db, COLLECTION_NAME));
   return onSnapshot(q, (snapshot) => {
+    
     try {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'removed') {
@@ -249,16 +247,7 @@ export const getTrabajos = (callback: (trabajos: Trabajo[]) => void) => {
     }
 
     const serverTrabajos = snapshot.docs.map(mapDocToTrabajo);
-    
-    // Entregar directamente a la UI los datos recibidos desde Firebase sin depender de SQLite
-    callback(serverTrabajos);
-
-    // Actualizar el caché local en segundo plano sin retrasar la visualización
-    setTimeout(() => {
-      localDocStore.saveLocalDocsBatch(COLLECTION_NAME, serverTrabajos).catch((err) => {
-        console.warn("[jobService] Error actualizando caché local en segundo plano:", err);
-      });
-    }, 0);
+    updateHybridTrabajos(serverTrabajos, callback);
   }, (err) => {
     console.warn("[jobService] Firestore error, fallback local:", err);
     updateHybridTrabajos([], callback);

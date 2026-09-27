@@ -28,6 +28,7 @@ import {
 } from '../controlVehicularService';
 import { VehicleDocumentModal } from './VehicleDocumentModal';
 import { VehicleMaintenanceModal } from './VehicleMaintenanceModal';
+import { ActionButtons } from '../../../components/ui/ActionButtons';
 import { VEHICLES } from '../../job_scheduling/JobForm';
 import { db } from '../../../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -36,8 +37,6 @@ import {
   FiSettings,
   FiAlertTriangle,
   FiClock,
-  FiEdit2,
-  FiTrash2,
   FiPaperclip,
   FiDownload
 } from 'react-icons/fi';
@@ -297,9 +296,9 @@ export const ControlVehicularModule: React.FC<ControlVehicularModuleProps> = ({
 
   const handleDeleteDoc = async (doc: VehicleDocument) => {
     const isConfirmed = await confirm({
-      title: '¿Eliminar Documento Vehicular?',
-      description: `¿Está seguro de eliminar el registro de ${doc.tipoDocumento} (${doc.unidad})? Esta acción es irreversible.`,
-      confirmLabel: 'Eliminar',
+      title: 'Eliminar Documento',
+      description: `¿Está seguro de que desea eliminar este documento (${doc.tipoDocumento} - ${doc.unidad})?`,
+      confirmLabel: 'ELIMINAR',
       variant: 'danger'
     });
     if (isConfirmed) {
@@ -314,9 +313,9 @@ export const ControlVehicularModule: React.FC<ControlVehicularModuleProps> = ({
 
   const handleDeleteMaint = async (maint: VehicleMaintenance) => {
     const isConfirmed = await confirm({
-      title: '¿Eliminar Mantenimiento?',
-      description: `¿Está seguro de eliminar el registro de ${maint.tipoMantenimiento} (${maint.unidad})? Esta acción es irreversible.`,
-      confirmLabel: 'Eliminar',
+      title: 'Eliminar Mantenimiento',
+      description: `¿Está seguro de que desea eliminar este mantenimiento (${maint.tipoMantenimiento} - ${maint.unidad})?`,
+      confirmLabel: 'ELIMINAR',
       variant: 'danger'
     });
     if (isConfirmed) {
@@ -416,30 +415,18 @@ export const ControlVehicularModule: React.FC<ControlVehicularModuleProps> = ({
     },
     {
       header: 'Acciones',
-      width: '16%',
+      width: '10%',
       align: 'center',
       render: (d) => (
-        <div className="flex items-center justify-center gap-1">
-          <button
-            type="button"
-            onClick={() => {
-              setEditingDoc(d);
-              setIsDocModalOpen(true);
-            }}
-            className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Editar Documento"
-          >
-            <FiEdit2 className="text-sm" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleDeleteDoc(d)}
-            className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Eliminar Documento"
-          >
-            <FiTrash2 className="text-sm" />
-          </button>
-        </div>
+        <ActionButtons
+          onEdit={() => {
+            setEditingDoc(d);
+            setIsDocModalOpen(true);
+          }}
+          onDelete={() => handleDeleteDoc(d)}
+          editTitle="Editar Documento"
+          deleteTitle="Eliminar Documento"
+        />
       )
     }
   ];
@@ -543,30 +530,18 @@ export const ControlVehicularModule: React.FC<ControlVehicularModuleProps> = ({
     },
     {
       header: 'Acciones',
-      width: '8%',
+      width: '10%',
       align: 'center',
       render: (m) => (
-        <div className="flex items-center justify-center gap-1">
-          <button
-            type="button"
-            onClick={() => {
-              setEditingMaint(m);
-              setIsMaintModalOpen(true);
-            }}
-            className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Editar Mantenimiento"
-          >
-            <FiEdit2 className="text-sm" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleDeleteMaint(m)}
-            className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Eliminar Mantenimiento"
-          >
-            <FiTrash2 className="text-sm" />
-          </button>
-        </div>
+        <ActionButtons
+          onEdit={() => {
+            setEditingMaint(m);
+            setIsMaintModalOpen(true);
+          }}
+          onDelete={() => handleDeleteMaint(m)}
+          editTitle="Editar Mantenimiento"
+          deleteTitle="Eliminar Mantenimiento"
+        />
       )
     }
   ];
@@ -788,25 +763,15 @@ export const ControlVehicularModule: React.FC<ControlVehicularModuleProps> = ({
                             <span className="font-black text-blue-900 block">{d.unidad}</span>
                             <span className="text-[10px] text-slate-400 block">{d.unidadLabel || ''}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingDoc(d);
-                                setIsDocModalOpen(true);
-                              }}
-                              className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
-                            >
-                              <FiEdit2 className="text-sm" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteDoc(d)}
-                              className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                            >
-                              <FiTrash2 className="text-sm" />
-                            </button>
-                          </div>
+                          <ActionButtons
+                            onEdit={() => {
+                              setEditingDoc(d);
+                              setIsDocModalOpen(true);
+                            }}
+                            onDelete={() => handleDeleteDoc(d)}
+                            editTitle="Editar Documento"
+                            deleteTitle="Eliminar Documento"
+                          />
                         </div>
 
                         <div className="flex items-center justify-between font-bold text-slate-800">
@@ -889,25 +854,15 @@ export const ControlVehicularModule: React.FC<ControlVehicularModuleProps> = ({
                             <span className="font-black text-blue-900 block">{m.unidad}</span>
                             <span className="text-[10px] text-slate-400 block">{m.unidadLabel || ''}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingMaint(m);
-                                setIsMaintModalOpen(true);
-                              }}
-                              className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
-                            >
-                              <FiEdit2 className="text-sm" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteMaint(m)}
-                              className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                            >
-                              <FiTrash2 className="text-sm" />
-                            </button>
-                          </div>
+                          <ActionButtons
+                            onEdit={() => {
+                              setEditingMaint(m);
+                              setIsMaintModalOpen(true);
+                            }}
+                            onDelete={() => handleDeleteMaint(m)}
+                            editTitle="Editar Mantenimiento"
+                            deleteTitle="Eliminar Mantenimiento"
+                          />
                         </div>
 
                         <div className="flex items-center justify-between font-bold text-slate-800">

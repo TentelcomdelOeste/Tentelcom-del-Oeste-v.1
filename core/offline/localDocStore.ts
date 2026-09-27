@@ -34,6 +34,21 @@ type Listener = () => void;
 const listeners = new Map<string, Set<Listener>>();
 const batchTimeout = new Map<string, any>();
 
+const DB_TIMEOUT_MS = 1200;
+
+async function withDbTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number = DB_TIMEOUT_MS): Promise<T> {
+    let timer: any = null;
+    const timeoutPromise = new Promise<T>((resolve) => {
+        timer = setTimeout(() => {
+            console.warn('[localDocStore] Operación de base de datos local omitida por timeout');
+            resolve(fallback);
+        }, timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+}
+
 export const localDocStore = {
     subscribe(collection: string, listener: Listener) {
         if (!listeners.has(collection)) {
@@ -57,119 +72,134 @@ export const localDocStore = {
     },
 
     async saveLocalDoc(collection: string, docId: string, data: any, isDirty: boolean = false, incrementRevision: boolean = true): Promise<void> {
-        // Prevenir la resurrección de documentos eliminados (Lápida activa)
-        if (!isDirty) {
-            const isTomb = await localDB.isTombstoned(collection, docId);
-            if (isTomb) {
-                return;
+        return withDbTimeout((async () => {
+            // Prevenir la resurrección de documentos eliminados (Lápida activa)
+            if (!isDirty) {
+                const isTomb = await localDB.isTombstoned(collection, docId);
+                if (isTomb) {
+                    return;
+                }
+            } else {
+                // Si el usuario crea explícitamente un documento nuevo con el mismo ID, limpiar el tombstone
+                await localDB.clearTombstone(collection, docId);
             }
-        } else {
-            // Si el usuario crea explícitamente un documento nuevo con el mismo ID, limpiar el tombstone
-            await localDB.clearTombstone(collection, docId);
-        }
 
-        // Optimización: Evitar escrituras redundantes si la data no ha cambiado
-        const existing = await localDB.getDoc(collection, docId);
-        if (existing) {
-            const { revision: _, isDirty: __, docId: ___, ...existingPayload } = existing;
-            const { id: i, ...newPayload } = data;
-            
-            // Comparación simple por stringify para detectar cambios en el payload
-            if (safeStringify(existingPayload) === safeStringify(newPayload) && existing.isDirty === isDirty) {
-                return;
+            // Optimización: Evitar escrituras redundantes si la data no ha cambiado
+            const existing = await localDB.getDoc(collection, docId);
+            if (existing) {
+                const { revision: _, isDirty: __, docId: ___, ...existingPayload } = existing;
+                const { id: i, ...newPayload } = data;
+                
+                // Comparación simple por stringify para detectar cambios en el payload
+                if (safeStringify(existingPayload) === safeStringify(newPayload) && existing.isDirty === isDirty) {
+                    return;
+                }
             }
-        }
 
-        await localDB.saveDoc(collection, docId, data, isDirty);
-        this.notify(collection);
+            await localDB.saveDoc(collection, docId, data, isDirty);
+            this.notify(collection);
+        })(), undefined);
     },
 
     async saveLocalDocsBatch(collection: string, docs: any[]): Promise<void> {
         if (!docs || docs.length === 0) return;
-        
-        // Obtener colección actual una sola vez para comparación masiva
-        const localItems = await localDB.getCollection(collection);
-        const localMap = new Map(localItems.map(item => [item.docId, item]));
-        
-        const writePromises = [];
-        let hasChanges = false;
-
-        for (const doc of docs) {
-            const docId = doc.docId || doc.id;
+        return withDbTimeout((async () => {
+            // Obtener colección actual una sola vez para comparación masiva
+            const localItems = await localDB.getCollection(collection);
+            const localMap = new Map(localItems.map(item => [item.docId, item]));
             
-            // Si el documento viene explícitamente desde el servidor como documento válido,
-            // aseguramos que cualquier tombstone espurio sea limpiado
-            await localDB.clearTombstone(collection, docId);
+            const writePromises = [];
+            let hasChanges = false;
 
-            const existing = localMap.get(docId);
-            
-            let needsUpdate = true;
-            if (existing) {
-                const { revision: _, isDirty: __, docId: ___, ...existingPayload } = existing;
-                const { id: i, ...newPayload } = doc;
+            for (const doc of docs) {
+                const docId = doc.docId || doc.id;
                 
-                if (safeStringify(existingPayload) === safeStringify(newPayload) && !existing.isDirty) {
-                    needsUpdate = false;
+                // Si el documento viene explícitamente desde el servidor como documento válido,
+                // aseguramos que cualquier tombstone espurio sea limpiado
+                await localDB.clearTombstone(collection, docId);
+
+                const existing = localMap.get(docId);
+                
+                let needsUpdate = true;
+                if (existing) {
+                    const { revision: _, isDirty: __, docId: ___, ...existingPayload } = existing;
+                    const { id: i, ...newPayload } = doc;
+                    
+                    if (safeStringify(existingPayload) === safeStringify(newPayload) && !existing.isDirty) {
+                        needsUpdate = false;
+                    }
+                }
+
+                if (needsUpdate) {
+                    writePromises.push(localDB.saveDoc(collection, docId, doc, false));
+                    hasChanges = true;
                 }
             }
 
-            if (needsUpdate) {
-                writePromises.push(localDB.saveDoc(collection, docId, doc, false));
-                hasChanges = true;
+            if (hasChanges) {
+                await Promise.all(writePromises);
+                this.notify(collection);
             }
-        }
-
-        if (hasChanges) {
-            await Promise.all(writePromises);
-            this.notify(collection);
-        }
+        })(), undefined);
     },
 
     async clearCollectionTombstones(collection: string): Promise<void> {
-        await localDB.clearTombstonesForCollection(collection);
+        return withDbTimeout(localDB.clearTombstonesForCollection(collection), undefined);
     },
 
     async getLocalDoc(collection: string, docId: string): Promise<LocalDocument | null> {
-        const doc = await localDB.getDoc(collection, docId);
-        if (!doc) return null;
-        
-        return {
-            collection,
-            docId: doc.docId || docId,
-            data: doc,
-            isDirty: doc.isDirty || false,
-            updatedAt: Date.now(),
-            localRevision: doc.revision || 1
-        };
+        return withDbTimeout((async () => {
+            const doc = await localDB.getDoc(collection, docId);
+            if (!doc) return null;
+            
+            return {
+                collection,
+                docId: doc.docId || docId,
+                data: doc,
+                isDirty: doc.isDirty || false,
+                updatedAt: Date.now(),
+                localRevision: doc.revision || 1
+            };
+        })(), null);
     },
 
     async clearDirtyStateSafe(collection: string, docId: string, expectedRevision: number): Promise<boolean> {
-        const doc = await localDB.getDoc(collection, docId);
-        if (doc && doc.revision === expectedRevision) {
-            await localDB.saveDoc(collection, docId, doc, false);
-            this.notify(collection);
-            return true;
-        }
-        return false;
+        return withDbTimeout((async () => {
+            const doc = await localDB.getDoc(collection, docId);
+            if (doc && doc.revision === expectedRevision) {
+                await localDB.saveDoc(collection, docId, doc, false);
+                this.notify(collection);
+                return true;
+            }
+            return false;
+        })(), false);
     },
 
     async getLocalCollection(collection: string): Promise<LocalDocument[]> {
-        const docs = await localDB.getCollection(collection);
-        return docs.map(doc => ({
-            collection,
-            docId: doc.docId || doc.id || "temp_" + Math.random().toString(36).substring(7),
-            data: doc,
-            isDirty: doc.isDirty || false,
-            updatedAt: Date.now(),
-            localRevision: doc.revision || 1
-        }));
+        return withDbTimeout((async () => {
+            const docs = await localDB.getCollection(collection);
+            return docs.map(doc => ({
+                collection,
+                docId: doc.docId || doc.id || "temp_" + Math.random().toString(36).substring(7),
+                data: doc,
+                isDirty: doc.isDirty || false,
+                updatedAt: Date.now(),
+                localRevision: doc.revision || 1
+            }));
+        })(), []);
+    },
+
+    async getLocalDocs(collection: string): Promise<LocalDocument[]> {
+        return this.getLocalCollection(collection);
     },
 
     async removeLocalDoc(collection: string, docId: string): Promise<void> {
-        await localDB.deleteDoc(collection, docId);
-        await localDB.saveTombstone(collection, docId);
-        await localDB.cancelMutationsForDoc(collection, docId);
-        this.notify(collection);
+        return withDbTimeout((async () => {
+            await localDB.deleteDoc(collection, docId);
+            await localDB.saveTombstone(collection, docId);
+            await localDB.cancelMutationsForDoc(collection, docId);
+            this.notify(collection);
+        })(), undefined);
     },
 
     /**
@@ -177,13 +207,15 @@ export const localDocStore = {
      * Si un documento local no está sucio (isDirty === false) y ya no existe en el servidor, lo elimina.
      */
     async reconcileServerCollection(collection: string, serverDocIds: Set<string>): Promise<void> {
-        const localItems = await localDB.getCollection(collection);
-        for (const item of localItems) {
-            const docId = item.docId || item.id;
-            if (!item.isDirty && !serverDocIds.has(docId)) {
-                console.log(`[localDocStore] Reconciliación: Eliminando doc local ${collection}/${docId} ausente en servidor`);
-                await this.removeLocalDoc(collection, docId);
+        return withDbTimeout((async () => {
+            const localItems = await localDB.getCollection(collection);
+            for (const item of localItems) {
+                const docId = item.docId || item.id;
+                if (!item.isDirty && !serverDocIds.has(docId)) {
+                    console.log(`[localDocStore] Reconciliación: Eliminando doc local ${collection}/${docId} ausente en servidor`);
+                    await this.removeLocalDoc(collection, docId);
+                }
             }
-        }
+        })(), undefined);
     }
 };

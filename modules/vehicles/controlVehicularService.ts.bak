@@ -21,7 +21,6 @@ import {
 import { saveVehicleExpense, deleteVehicleExpense } from './vehicleService';
 import { updateVersionedDocOffline } from '../../core/versionControl';
 import { localDocStore } from '../../core/offline/localDocStore';
-import { networkProbe } from '../../core/offline/networkProbe';
 import { User } from '../../utils/types';
 
 const DOCS_COLLECTION = 'control_vehicular_documentos';
@@ -267,35 +266,13 @@ export async function findMatchingBitacoraLog(
     const targetDate = normalizeDateToCanonical(fecha);
     const targetUCode = getUnitCode(unidad, vehiculoId) || extraerUnidad(unidad);
 
-    let logs: VehicleLog[] = [];
+    // 1. Obtener logs desde localDocStore
+    let rawDocs = await localDocStore.getLocalCollection('bitacora_vehiculos');
+    let logs = rawDocs
+      .map((d) => ({ ...d.data, id: d.docId }) as VehicleLog)
+      .filter((l) => !l.isDeleted);
 
-    // 1. Si estamos ONLINE: Consultar directamente Firebase (Fuente Principal y Directa)
-    if (networkProbe.isOnline()) {
-      try {
-        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
-        const snap = await getDocs(query(collection(db, 'bitacora_vehiculos'), orderBy('fecha', 'desc')));
-        if (!snap.empty) {
-          logs = snap.docs
-            .map((doc) => ({ ...doc.data(), id: doc.id }) as VehicleLog)
-            .filter((l) => !l.isDeleted);
-
-          // Actualizar almacenamiento local en segundo plano
-          localDocStore.saveLocalDocsBatch('bitacora_vehiculos', logs).catch(console.error);
-        }
-      } catch (errRemote) {
-        console.warn('[findMatchingBitacoraLog] Fallback a almacenamiento local tras error en Firestore:', errRemote);
-      }
-    }
-
-    // 2. Si estamos OFFLINE o la consulta online no obtuvo logs: usar respaldo local
-    if (logs.length === 0) {
-      let rawDocs = await localDocStore.getLocalCollection('bitacora_vehiculos');
-      logs = rawDocs
-        .map((d) => ({ ...d.data, id: d.docId }) as VehicleLog)
-        .filter((l) => !l.isDeleted);
-    }
-
-    const matchingUnitLogs = logs.filter((l) => {
+    let matchingUnitLogs = logs.filter((l) => {
       const logUCode = getUnitCode(l.unidad, l.unidadId, l.unidadName) || extraerUnidad(l.unidadId);
       return (
         (targetUCode && logUCode === targetUCode) ||
@@ -305,7 +282,35 @@ export async function findMatchingBitacoraLog(
       );
     });
 
-    const exactDateLogs = matchingUnitLogs.filter((l) => normalizeDateToCanonical(l.fecha) === targetDate);
+    let exactDateLogs = matchingUnitLogs.filter((l) => normalizeDateToCanonical(l.fecha) === targetDate);
+
+    // Si la caché local no tiene registros o no encontró la fecha exacta, consultar Firebase Firestore
+    if (exactDateLogs.length === 0) {
+      try {
+        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
+        const snap = await getDocs(query(collection(db, 'bitacora_vehiculos'), orderBy('fecha', 'desc')));
+        if (!snap.empty) {
+          const remoteLogs = snap.docs
+            .map((doc) => ({ ...doc.data(), id: doc.id }) as VehicleLog)
+            .filter((l) => !l.isDeleted);
+
+          await localDocStore.saveLocalDocsBatch('bitacora_vehiculos', remoteLogs);
+          logs = remoteLogs;
+          matchingUnitLogs = logs.filter((l) => {
+            const logUCode = getUnitCode(l.unidad, l.unidadId, l.unidadName) || extraerUnidad(l.unidadId);
+            return (
+              (targetUCode && logUCode === targetUCode) ||
+              l.unidad === unidad ||
+              l.unidadId === vehiculoId ||
+              extraerUnidad(l.unidadId) === unidad
+            );
+          });
+          exactDateLogs = matchingUnitLogs.filter((l) => normalizeDateToCanonical(l.fecha) === targetDate);
+        }
+      } catch (errRemote) {
+        console.warn('[findMatchingBitacoraLog] Fallback a Firestore remoto falló:', errRemote);
+      }
+    }
 
     if (exactDateLogs.length === 0) return undefined;
 
