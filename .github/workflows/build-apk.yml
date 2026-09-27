@@ -50,16 +50,16 @@ jobs:
           convert public/icon-512x512.png -trim +repage /tmp/tentelcom-logo-trimmed.png
 
           # Android adaptive/launcher icon:
-          # transparent canvas + centered logo, with enough safe area to avoid
-          # the previous oversized/clipped appearance.
+          # maximize the logo inside the 1024x1024 foreground while keeping
+          # a small safety margin for Android/One UI adaptive-icon masking.
           convert /tmp/tentelcom-logo-trimmed.png \
-            -resize 75% \
+            -resize 90% \
             -gravity center \
             -background none \
             -extent 1024x1024 \
             assets/icon-only.png
 
-          # Foreground layer uses the same enlarged transparent logo.
+          # Foreground layer uses the same large transparent logo.
           cp assets/icon-only.png assets/icon-foreground.png
 
           # Keep the launcher adaptive background white. Android/One UI controls
