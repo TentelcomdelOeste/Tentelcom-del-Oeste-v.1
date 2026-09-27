@@ -36,18 +36,23 @@ jobs:
       - name: Generate Android Icons and Splash
         run: |
           mkdir -p assets
-          cp public/icon-512x512.png assets/icon.png
-          npx -y @capacitor/assets generate --android --assetPath assets --iconBackgroundColor '#ffffff' --splashBackgroundColor '#f8fafc'
+          # Padded source: keeps the existing Tentelcom logo but gives Android
+          # enough safe area so the launcher icon is not visually oversized.
+          convert public/icon-512x512.png -resize 72% -gravity center -background white -extent 1024x1024 assets/icon.png
+          # White splash background makes the logo's existing white canvas
+          # visually disappear instead of appearing as a separate frame.
+          npx -y @capacitor/assets generate --android --assetPath assets --iconBackgroundColor "#ffffff" --splashBackgroundColor "#ffffff" --logoSplashScale 0.15
 
       - name: Build Debug APK with Gradle
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Tentelcom.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vehicle-log-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Tentelcom-apk
+          path: android/app/build/outputs/apk/debug/Tentelcom.apk
           retention-days: 14
