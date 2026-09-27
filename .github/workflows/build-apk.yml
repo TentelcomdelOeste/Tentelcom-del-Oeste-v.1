@@ -33,15 +33,52 @@ jobs:
       - name: Add Android Platform & Sync Capacitor
         run: npx cap add android || npx cap sync android
 
-      - name: Generate Android Icons and Splash
+      - name: Prepare Android Icons and Splash
         run: |
           mkdir -p assets
-          # Padded source: keeps the existing Tentelcom logo but gives Android
-          # enough safe area so the launcher icon is not visually oversized.
-          convert public/icon-512x512.png -resize 72% -gravity center -background white -extent 1024x1024 assets/icon.png
-          # White splash background makes the logo's existing white canvas
-          # visually disappear instead of appearing as a separate frame.
-          npx -y @capacitor/assets generate --android --assetPath assets --iconBackgroundColor "#ffffff" --splashBackgroundColor "#ffffff" --logoSplashScale 0.15
+
+          # Ensure ImageMagick is available on the runner.
+          if ! command -v magick >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y imagemagick
+          fi
+
+          # The original PNG contains a large white canvas around the logo.
+          # Trim that canvas first so the logo can be scaled independently.
+          magick public/icon-512x512.png -trim +repage /tmp/tentelcom-logo-trimmed.png
+
+          # Android adaptive/launcher icon:
+          # transparent canvas + centered logo, with enough safe area to avoid
+          # the previous oversized/clipped appearance.
+          magick /tmp/tentelcom-logo-trimmed.png \
+            -resize 62% \
+            -gravity center \
+            -background none \
+            -extent 1024x1024 \
+            assets/icon-only.png
+
+          # Foreground layer uses the same transparent logo.
+          cp assets/icon-only.png assets/icon-foreground.png
+
+          # White icon background keeps the launcher icon clean without the
+          # visible white square that was present in the previous splash.
+          magick -size 1024x1024 canvas:white assets/icon-background.png
+
+          # Full splash for Android versions that support the custom splash
+          # image: white canvas with the trimmed logo substantially larger,
+          # matching the visual composition of the PWA screenshot.
+          magick /tmp/tentelcom-logo-trimmed.png \
+            -resize 1600x1600 \
+            -gravity center \
+            -background white \
+            -extent 2732x2732 \
+            assets/splash.png
+
+          # Generate Android resources using Full Control mode.
+          npx -y @capacitor/assets generate \
+            --android \
+            --assetPath assets \
+            --splashBackgroundColor "#ffffff"
 
       - name: Build Debug APK with Gradle
         working-directory: android
