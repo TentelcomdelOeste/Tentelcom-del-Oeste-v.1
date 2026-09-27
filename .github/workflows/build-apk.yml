@@ -136,8 +136,7 @@ jobs:
                       lambda m: m.group(1) +
                                 '\n        <item name="windowSplashScreenBackground">#ffffff</item>' +
                                 '\n        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>' +
-                                '\n        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>' +
-                                '\n        <item name="android:windowSplashScreenBackground">#ffffff</item>' +
+                                '\n        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>' +
                                 m.group(2) + m.group(3),
                       nt, count=1, flags=re.S
                   )
