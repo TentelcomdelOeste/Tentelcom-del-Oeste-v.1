@@ -332,7 +332,16 @@ jobs:
           echo "=== Generated Android build configuration ==="
           grep -n -A8 -B2 "defaultConfig" app/build.gradle
           echo "=== Validate versionCode syntax ==="
-          grep -Eq '^\s*versionCode\s+[0-9]+\s*        uses: actions/cache@v4
+          grep -Eq '^\s*versionCode\s+[0-9]+\s*$' app/build.gradle
+          if grep -Fq '\n        versionCode' app/build.gradle; then
+            echo "ERROR: literal \n sequence detected in app/build.gradle"
+            exit 1
+          fi
+          echo "=== Validate Gradle script compilation ==="
+          ./gradlew help --stacktrace --no-daemon
+
+      - name: Restore Stable Debug Keystore
+        uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
           key: tentelcom-debug-keystore-v1
