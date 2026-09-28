@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User } from '../utils/types';
 import { InventoryItem } from '../inventoryTypes';
-import { useDispatch } from '../hooks/useDispatch';
+import { useDispatch, getItemPendingQty } from '../hooks/useDispatch';
 import { MaterialRequest } from '../dispatchTypes';
 import { normalizeOrigin } from '../utils/originUtils';
 import { DataTable, TableColumn, IconButton, ACTION_ICONS, StatusBadge, ActionButton, SearchInput, Select } from '../design-system';
@@ -76,8 +76,8 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
         if (prevRequestIdRef.current !== selectedRequest.id) {
             const initialQty: Record<string, number> = {};
             selectedRequest.items.forEach(item => {
-                // Por defecto: despachar lo que falta (quantityPending o quantityRequested si es vieja)
-                const pending = item.quantityPending ?? item.quantityRequested;
+                // Por defecto: despachar lo que falta considerando faltantes y despachos acumulados
+                const pending = getItemPendingQty(item);
                 initialQty[item.inventoryItemId] = pending; 
             });
             setDispatchQuantities(initialQty);
@@ -124,16 +124,16 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
           const reserved = inventoryItem?.reserved || 0;
           
           // El stock disponible para ESTA solicitud contemplando lo que ya tiene apartado
-          // Pero ¡ojo!, lo que tiene apartado es lo que falta por despachar (quantityPending)
-          const pending = item.quantityPending ?? item.quantityRequested;
+          // que corresponde exactamente a la cantidad pendiente real
+          const pending = getItemPendingQty(item);
           const availableForThisRequest = (stock - reserved) + pending;
 
           if (qtyToDispatch > pending) {
-              setErrorMsg(`El ítem ${item.code} excede la cantidad pendiente (${pending}).`);
+              setErrorMsg(`El ítem ${item.code || item.description} excede la cantidad pendiente (${pending}).`);
               return false;
           }
           if (qtyToDispatch > availableForThisRequest) {
-              setErrorMsg(`Stock insuficiente para ${item.code}. Disponible: ${availableForThisRequest}`);
+              setErrorMsg(`Stock insuficiente para ${item.code || item.description}. Disponible: ${availableForThisRequest}`);
               return false;
           }
       }
@@ -410,7 +410,7 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
                                     const stock = inventoryItem?.stock || 0;
                                     const reserved = inventoryItem?.reserved || 0;
                                     
-                                    const pending = item.quantityPending ?? item.quantityRequested;
+                                    const pending = getItemPendingQty(item);
                                     const availableForThisRequest = (stock - reserved) + pending;
                                     
                                     const dispatchQty = dispatchQuantities[item.inventoryItemId] || 0;

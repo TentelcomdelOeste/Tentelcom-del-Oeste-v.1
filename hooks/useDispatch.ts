@@ -20,6 +20,18 @@ import { useUserContext } from '../contexts/UserContext';
 
 import { logger } from '../utils/logger';
 
+export const getItemPendingQty = (item: { quantityRequested?: number; shortageQty?: number; quantityDispatched?: number; quantityPending?: number }): number => {
+  const req = Number(item.quantityRequested || 0);
+  const shortage = Number(item.shortageQty || 0);
+  const dispatched = Number(item.quantityDispatched || 0);
+  const calculated = Math.max(0, req - shortage - dispatched);
+
+  if (item.quantityPending !== undefined && item.quantityPending >= 0) {
+    return Math.min(Number(item.quantityPending), calculated);
+  }
+  return calculated;
+};
+
 export const useDispatch = (currentUser: User | null) => {
   const { authReady } = useUserContext();
   const [requests, setRequests] = useState<MaterialRequest[]>([]);
@@ -142,13 +154,18 @@ export const useDispatch = (currentUser: User | null) => {
                 const currentStock = itemDoc.data().stock || 0;
                 const newStock = currentStock - item.dispatchQty;
                 const currentReserved = itemDoc.data().reserved || 0;
+                const pendingQty = getItemPendingQty(item);
 
                 if (newStock < 0) {
                     throw new Error(`Stock insuficiente para ${itemDoc.data().description}. Stock actual: ${currentStock}, Intento de despacho: ${item.dispatchQty}`);
                 }
 
-                if (currentReserved < item.quantityRequested) {
-                    throw new Error(`Inconsistencia de reserva para ${itemDoc.data().description}. Reserva actual: ${currentReserved}, Solicitado: ${item.quantityRequested}`);
+                if (item.dispatchQty > pendingQty) {
+                    throw new Error(`El ítem ${itemDoc.data().description || item.code} excede la cantidad pendiente (${pendingQty}). Intento de despacho: ${item.dispatchQty}`);
+                }
+
+                if (item.dispatchQty > 0 && currentReserved < item.dispatchQty) {
+                    throw new Error(`Inconsistencia de reserva para ${itemDoc.data().description}. Reserva actual: ${currentReserved}, A despachar: ${item.dispatchQty}`);
                 }
             }
 
@@ -163,10 +180,13 @@ export const useDispatch = (currentUser: User | null) => {
                 
                 const currentDispatched = Number(reqItem.quantityDispatched || 0);
                 const newDispatchedQty = currentDispatched + dispatchQty;
-                const newPendingQty = Math.max(0, reqItem.quantityRequested - newDispatchedQty);
-                // El faltante se reduce solo si despachamos más de lo que había originalmente disponible
-                const originalShortage = reqItem.shortageQty || 0;
-                const newShortageQty = Math.min(originalShortage, newPendingQty);
+                
+                const originalRequested = Number(reqItem.quantityRequested || 0);
+                const originalShortage = Number(reqItem.shortageQty || 0);
+                
+                // La cantidad pendiente real considera lo solicitado, el faltante registrado y lo ya despachado acumulado
+                const newPendingQty = Math.max(0, originalRequested - originalShortage - newDispatchedQty);
+                const newShortageQty = originalShortage;
                 
                 const itemStatus = newPendingQty <= 0 ? 'completed' : (newDispatchedQty > 0 ? 'partial' : 'pending');
 
@@ -332,8 +352,8 @@ export const useDispatch = (currentUser: User | null) => {
         return { success: true };
 
     } catch (e: any) {
-        logger.error("Error en transacción de despacho:", e);
-        throw new Error(e.message || "Error al procesar el despacho.");
+        logger.error("Error en transacción de despacho:", e?.message || e);
+        throw new Error(e?.message || "Error al procesar el despacho.");
     }
   }, [currentUser]);
 

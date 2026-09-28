@@ -117,19 +117,19 @@ const JobItem = React.memo(({
   return (
     <>
       <div 
-        className="bg-white p-3 lg:p-2.5 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.98] transition-transform flex flex-col h-full" 
+        className="bg-white p-3 lg:p-2.5 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.98] transition-transform flex flex-col h-full overflow-hidden min-w-0" 
         onClick={() => onSelect(trabajo)}
       >
-        <div className="flex justify-between items-start mb-0.5">
-          <div className="flex flex-col flex-1 mr-2">
+        <div className="flex justify-between items-start mb-0.5 min-w-0 w-full gap-2">
+          <div className="flex flex-col flex-1 min-w-0 mr-1">
             {(trabajo?.projectNumber || trabajo?.projectName) && (
-              <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest truncate mb-0.5">
+              <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-0.5 break-words [overflow-wrap:anywhere] leading-snug">
                 📁 {trabajo.projectNumber ? `${trabajo.projectNumber} — ` : ''}{trabajo.projectName || ''}
               </span>
             )}
             {trabajo?.otCode && (
-              <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest truncate max-w-[150px]">
+              <div className="flex flex-wrap items-center gap-1.5 mb-0.5 min-w-0">
+                <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest break-words max-w-full">
                   {trabajo.otCode} • {trabajo?.tipo_trabajo || ""}
                 </span>
                 {trabajo.esSubTrabajo ? (
@@ -139,14 +139,14 @@ const JobItem = React.memo(({
                 )}
               </div>
             )}
-            <h3 className="font-black text-blue-950 text-xs lg:text-[13px] uppercase tracking-tight leading-tight line-clamp-2">
+            <h3 className="font-black text-blue-950 text-xs lg:text-[13px] uppercase tracking-tight leading-tight line-clamp-2 break-words [overflow-wrap:anywhere] min-w-0">
                {trabajo?.titulo || trabajo?.tipo_trabajo || ""}
             </h3>
           </div>
           <StatusBadge 
             label={getStatusLabel(displayEstado || '')} 
             variant={getStatusVariant(displayEstado || '') as any} 
-            className="shrink-0 max-w-[75px] scale-90 origin-top-right"
+            className="shrink-0 max-w-[85px] scale-90 origin-top-right self-start ml-auto"
           />
         </div>
         

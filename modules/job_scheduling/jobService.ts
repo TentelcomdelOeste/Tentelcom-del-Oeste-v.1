@@ -242,21 +242,26 @@ export const getTrabajos = (callback: (trabajos: Trabajo[]) => void) => {
           globalSearchEngine.removeDocument(`job_${change.doc.id}`);
         } else {
           const job = mapDocToTrabajo(change.doc);
-          globalSearchEngine.upsertDocument(jobSearchPlugin.mapToSearchableItem(job));
+          if (job.deleted) {
+            globalSearchEngine.removeDocument(`job_${change.doc.id}`);
+          } else {
+            globalSearchEngine.upsertDocument(jobSearchPlugin.mapToSearchableItem(job));
+          }
         }
       });
     } catch (e) {
        console.warn("[GlobalSearchEngine] Error en jobs:", e);
     }
 
-    const serverTrabajos = snapshot.docs.map(mapDocToTrabajo);
+    const allServerTrabajos = snapshot.docs.map(mapDocToTrabajo);
+    const activeServerTrabajos = allServerTrabajos.filter(j => !j.deleted);
     
-    // Entregar directamente a la UI los datos recibidos desde Firebase sin depender de SQLite
-    callback(serverTrabajos);
+    // Entregar directamente a la UI los datos activos recibidos desde Firebase
+    callback(activeServerTrabajos);
 
     // Actualizar el caché local en segundo plano sin retrasar la visualización
     setTimeout(() => {
-      localDocStore.saveLocalDocsBatch(COLLECTION_NAME, serverTrabajos).catch((err) => {
+      localDocStore.saveLocalDocsBatch(COLLECTION_NAME, allServerTrabajos).catch((err) => {
         console.warn("[jobService] Error actualizando caché local en segundo plano:", err);
       });
     }, 0);

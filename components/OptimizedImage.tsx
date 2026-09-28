@@ -172,7 +172,7 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = React.memo(({
         alt={alt}
         loading={effectiveLoading}
         decoding={decoding}
-        {...(fetchPriority ? { fetchPriority } : {})}
+        {...(fetchPriority ? ({ fetchpriority: fetchPriority } as any) : {})}
         onError={handleImageError}
         onLoad={handleImageLoad}
         onClick={onClick}
