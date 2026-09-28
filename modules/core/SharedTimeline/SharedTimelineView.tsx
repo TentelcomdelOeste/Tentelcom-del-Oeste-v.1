@@ -1415,22 +1415,9 @@ const getDynamicTitleSize = (title: string) => {
               <FiActivity className="w-8 h-8 text-slate-300" />
             </div>
             <h3 className="text-slate-900 font-black uppercase tracking-tight mb-2">Sin actividad</h3>
-            <p className="text-slate-500 text-xs font-bold leading-relaxed mb-6">
-              No hay registros en la bitácora para este canal operativo.
+            <p className="text-slate-500 text-xs font-medium leading-relaxed">
+              No hay registros en la bitácora para este canal operativo. Escribe un mensaje abajo para comenzar la conversación.
             </p>
-            
-            {/* DIAGNOSTIC BLOCK - MOVED HERE FOR VISIBILITY */}
-            <div className="mb-4 p-3 bg-red-50 rounded-2xl border border-red-100 text-left">
-                <span className="text-[8px] uppercase font-black text-red-400 block mb-1">TRACE ID (DIAGNÓSTICO)</span>
-                <code className="text-[10px] font-mono font-bold text-red-600 break-all select-all block mb-2">
-                    {resolvedTimelineId || "N/A"}
-                </code>
-                <p className="text-[8px] text-red-400 leading-tight">
-                  Si este ID es nulo o incorrecto, el pipeline está desconectado.
-                </p>
-            </div>
-
-            {/* HERRAMIENTA DE RECUPERACIÓN ELIMINADA POR REGLAS DE ARQUITECTURA */}
           </div>
         </div>
       ) : (
