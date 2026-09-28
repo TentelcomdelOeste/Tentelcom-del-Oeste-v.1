@@ -528,7 +528,9 @@ function App() {
       let handle: number;
       if ('requestIdleCallback' in window) {
         handle = (window as any).requestIdleCallback(() => {
-          if (Notification.permission === 'granted') {
+          if (typeof Notification === 'undefined') {
+            subscribeUserToPush(currentUser.uid);
+          } else if (Notification.permission === 'granted') {
             subscribeUserToPush(currentUser.uid);
           } else if (Notification.permission === 'default') {
             requestNotificationPermission();
@@ -536,7 +538,9 @@ function App() {
         }, { timeout: 5000 });
       } else {
         handle = window.setTimeout(() => {
-          if (Notification.permission === 'granted') {
+          if (typeof Notification === 'undefined') {
+            subscribeUserToPush(currentUser.uid);
+          } else if (Notification.permission === 'granted') {
             subscribeUserToPush(currentUser.uid);
           } else {
             requestNotificationPermission();
