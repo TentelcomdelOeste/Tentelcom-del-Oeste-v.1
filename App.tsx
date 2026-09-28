@@ -565,13 +565,16 @@ function App() {
     const notificationTrabajoId = params.get('trabajoId');
     const notificationComentarioId = params.get('comentarioId');
     const notificationParentCollection = params.get('parentCollection');
+    const notificationParentId = params.get('parentId');
+    const notificationTimelineId = params.get('timelineId');
     if (notificationTrabajoId) {
       navigate(`/bitacora/${notificationTrabajoId}`, {
         replace: true,
         state: {
           selectedId: notificationTrabajoId,
-          parentId: notificationTrabajoId,
+          parentId: notificationParentId || notificationTrabajoId,
           parentCollection: notificationParentCollection || 'trabajos',
+          timelineId: notificationTimelineId || undefined,
           scrollToCommentId: notificationComentarioId
         }
       });
@@ -594,11 +597,15 @@ function App() {
       const pending = JSON.parse(raw) as {
         trabajoId?: string;
         comentarioId?: string;
+        parentId?: string;
         parentCollection?: string;
+        timelineId?: string;
+        projectName?: string;
+        projectNumber?: string;
         notificationId?: string;
       };
 
-      const trabajoId = pending.trabajoId || '';
+      const trabajoId = pending.trabajoId || pending.parentId || '';
       if (!trabajoId) {
         localStorage.removeItem(storageKey);
         return;
@@ -610,8 +617,9 @@ function App() {
         replace: true,
         state: {
           selectedId: trabajoId,
-          parentId: trabajoId,
+          parentId: pending.parentId || trabajoId,
           parentCollection: pending.parentCollection || 'trabajos',
+          timelineId: pending.timelineId || undefined,
           scrollToCommentId: pending.comentarioId || undefined
         }
       });
