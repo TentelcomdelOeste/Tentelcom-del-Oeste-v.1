@@ -89,7 +89,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
   const [controlDocs, setControlDocs] = useState<VehicleDocument[]>([]);
   const [controlMaints, setControlMaints] = useState<VehicleMaintenance[]>([]);
   const [catalogVehicles, setCatalogVehicles] = useState<Vehicle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => localDocuments.length === 0);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterYear, setFilterYear] = useState<number>(() => new Date().getFullYear());
   const [filterMonth, setFilterMonth] = useState<string>(() => String(new Date().getMonth() + 1));
@@ -241,6 +241,12 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
   }, [logs, selectedId, setSelectedLog, setIsModalOpen]);
 
   useEffect(() => {
+    if (localDocuments.length > 0) {
+      setIsLoading(false);
+    }
+  }, [localDocuments]);
+
+  useEffect(() => {
     if (!authReady || !currentUser) return;
     
     // Limpiar posibles lápidas/tombstones residuales para asegurar recuperación íntegra
@@ -250,7 +256,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
     reconcileUnlinkedMaintenanceExpenses().catch(console.error);
 
     // Solo mostramos loader si no hay datos locales para evitar parpadeo (SWR pattern)
-    if (logs.length === 0) {
+    if (localDocuments.length === 0) {
       setIsLoading(true);
     }
 
@@ -911,7 +917,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
                 </div>
               </ModuleToolbar>
 
-              {isLoading ? (
+              {isLoading && localDocuments.length === 0 ? (
                 <div className="text-center py-20 text-slate-500">
                   <FiRefreshCcw className="inline-block animate-spin mr-2" />
                   Cargando registros...
