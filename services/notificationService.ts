@@ -101,6 +101,10 @@ export const initializeNativePushNotifications = async (userId: string) => {
               "tentelcom_pending_push_navigation",
               JSON.stringify({
                 trabajoId: data.trabajoId || "",
+                parentId: data.parentId || data.trabajoId || "",
+                timelineId: data.timelineId || "",
+                projectName: data.projectName || "",
+                projectNumber: data.projectNumber || "",
                 comentarioId: data.comentarioId || "",
                 parentCollection: data.parentCollection || "trabajos",
                 notificationId: data.notificationId || "",
