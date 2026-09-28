@@ -251,7 +251,8 @@ export const onNotificationCreated = functions.firestore
       trabajoTitle, 
       comentarioTexto, 
       trabajoId, 
-      comentarioId 
+      comentarioId,
+      parentCollection
     } = data;
 
     if (!targetUserId) return;
@@ -305,12 +306,22 @@ export const onNotificationCreated = functions.firestore
           type: type || "default",
           title: title,
           body: body,
+          parentCollection: parentCollection || "trabajos",
+        },
+
+        notification: {
+          title,
+          body,
         },
 
         // ── Android — alta prioridad + canal explícito ────
         android: {
           priority: "high",
           ttl: 86400000,
+          notification: {
+            channelId: "tentelcom_mentions",
+            sound: "default",
+          },
         },
 
         // ── Web Push — Chrome Android y Desktop ───────────
