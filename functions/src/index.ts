@@ -250,7 +250,11 @@ export const onNotificationCreated = functions.firestore
       triggeredByName, 
       trabajoTitle, 
       comentarioTexto, 
-      trabajoId, 
+      trabajoId,
+      parentId,
+      timelineId,
+      projectName,
+      projectNumber,
       comentarioId,
       parentCollection
     } = data;
@@ -291,8 +295,12 @@ export const onNotificationCreated = functions.firestore
           body = `${triggeredByName} realizó una acción en ${trabajoTitle || "un trabajo"}`;
       }
 
+      if (projectName) {
+        body += `\n📁 ${projectNumber ? projectNumber + " · " : ""}${projectName}`;
+      }
+
       if (comentarioTexto) {
-        body += `\n"${comentarioTexto.substring(0, 50)}${comentarioTexto.length > 50 ? "..." : ""}"`;
+        body += `\n💬 "${comentarioTexto.substring(0, 80)}${comentarioTexto.length > 80 ? "..." : ""}"`;
       }
 
       const message: admin.messaging.MulticastMessage = {
@@ -301,6 +309,10 @@ export const onNotificationCreated = functions.firestore
         // ── Data puro — el SW construye la notificación ──
         data: {
           trabajoId: trabajoId || "",
+          parentId: parentId || trabajoId || "",
+          timelineId: timelineId || "",
+          projectName: projectName || "",
+          projectNumber: projectNumber || "",
           comentarioId: comentarioId || "",
           notificationId: context.params.notificationId,
           type: type || "default",
@@ -335,13 +347,17 @@ export const onNotificationCreated = functions.firestore
           // El SW construye la notificación con todas las opciones custom.
           data: {
             trabajoId: trabajoId || "",
+            parentId: parentId || trabajoId || "",
+            timelineId: timelineId || "",
+            projectName: projectName || "",
+            projectNumber: projectNumber || "",
             comentarioId: comentarioId || "",
             notificationId: context.params.notificationId,
             type: type || "default",
             title: title,
             body: body,
             parentCollection: parentCollection || "trabajos",
-            url: trabajoId ? `/bitacora/${trabajoId}` : "/",
+            url: trabajoId ? `/bitacora/${trabajoId}?comentarioId=${encodeURIComponent(comentarioId || "")}&parentId=${encodeURIComponent(parentId || trabajoId || "")}&parentCollection=${encodeURIComponent(parentCollection || "trabajos")}&timelineId=${encodeURIComponent(timelineId || "")}` : "/",
           },
           fcmOptions: {
             link: trabajoId ? `/bitacora/${trabajoId}` : "/",
