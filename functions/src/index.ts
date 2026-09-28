@@ -360,7 +360,7 @@ export const onNotificationCreated = functions.firestore
             url: trabajoId ? `/bitacora/${trabajoId}?comentarioId=${encodeURIComponent(comentarioId || "")}&parentId=${encodeURIComponent(parentId || trabajoId || "")}&parentCollection=${encodeURIComponent(parentCollection || "trabajos")}&timelineId=${encodeURIComponent(timelineId || "")}` : "/",
           },
           fcmOptions: {
-            link: trabajoId ? `/bitacora/${trabajoId}` : "/",
+            link: trabajoId ? `/bitacora/${trabajoId}?trabajoId=${encodeURIComponent(trabajoId)}&comentarioId=${encodeURIComponent(comentarioId || "")}&parentId=${encodeURIComponent(parentId || trabajoId || "")}&parentCollection=${encodeURIComponent(parentCollection || "trabajos")}&timelineId=${encodeURIComponent(timelineId || "")}` : "/",
           },
         },
 
