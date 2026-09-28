@@ -32,7 +32,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         selectedId: data.trabajoId,
         state: {
           scrollToCommentId: data.comentarioId || undefined,
+          parentId: data.parentId || data.trabajoId,
           parentCollection: data.parentCollection || "trabajos",
+          timelineId: data.timelineId || undefined,
         },
       });
     };
@@ -87,9 +89,12 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         module: "operational_log",
         selectedId: notification.trabajoId,
         state: { 
-          parentId: notification.trabajoId,
-          parentCollection: "bitacora_vehiculos",
-          scrollToCommentId: notification.comentarioId 
+          parentId: notification.parentId || notification.trabajoId,
+          parentCollection: notification.parentCollection || "bitacora_vehiculos",
+          timelineId: notification.timelineId || undefined,
+          scrollToCommentId: notification.comentarioId,
+          timelineId: notification.timelineId || undefined,
+          parentId: notification.parentId || notification.trabajoId
         },
       });
     } else {
@@ -99,7 +104,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         selectedId: notification.trabajoId,
         state: { 
           scrollToCommentId: notification.comentarioId,
-          parentCollection: "trabajos"
+          parentId: notification.parentId || notification.trabajoId,
+          parentCollection: notification.parentCollection || "trabajos",
+          timelineId: notification.timelineId || undefined
         },
       });
     }
@@ -285,6 +292,12 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                             <>Nuevo comentario en <span className="text-slate-900 font-bold">{n.trabajoTitle || "Trabajo"}</span></>
                           )}
                         </p>
+
+                        {n.projectName && (
+                          <div className="mt-1 text-[11px] text-slate-500 font-medium truncate">
+                            📁 {n.projectNumber ? `${n.projectNumber} · ` : ""}{n.projectName}
+                          </div>
+                        )}
 
                         {n.comentarioTexto && (
                           <div className="mt-2 pl-3 border-l-2 border-slate-200/60 py-0.5">
