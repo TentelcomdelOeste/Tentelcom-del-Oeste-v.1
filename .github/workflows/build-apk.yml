@@ -306,16 +306,18 @@ jobs:
           # Every new workflow run receives a higher versionCode so Android
           # recognizes the APK as an update rather than an older/equal build.
           VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
-          python3 - <<PY
+          python3 - "$VERSION_CODE" <<'PY'
           from pathlib import Path
           import re
+          import sys
+          version_code = int(sys.argv[1])
           path = Path("android/app/build.gradle")
           text = path.read_text()
-          updated, count = re.subn(r'(?m)^\\s*versionCode\\s+\\d+', f'        versionCode {VERSION_CODE}', text, count=1)
+          updated, count = re.subn(r'(?m)^\\s*versionCode\\s+\\d+', f'        versionCode {version_code}', text, count=1)
           if count != 1:
               raise SystemExit("Could not locate Android versionCode in android/app/build.gradle")
           path.write_text(updated)
-          print(f"Android versionCode set to {VERSION_CODE}")
+          print(f"Android versionCode set to {version_code}")
           PY
 
       - name: Configure Stable Debug Signing
