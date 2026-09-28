@@ -96,6 +96,7 @@ export interface SharedTimelineProps {
     scrollToCommentId?: string;
     parentId?: string;
     parentCollection?: string;
+    timelineId?: string;
   };
   currentUser?: User;
   isExpanded?: boolean;
@@ -136,7 +137,7 @@ export default function SharedTimeline({
     console.log("[TRACE][SharedTimeline] RENDER");
   });
 
-  const resolvedId = providedParentId || trabajoId;
+  const resolvedId = navigationState?.parentId || providedParentId || trabajoId;
 
   useAuditPermanence({
     module: 'Programación de Trabajos',
@@ -734,20 +735,17 @@ export default function SharedTimeline({
     }
   };
 
+  const lastNotificationCommentRef = useRef<string | null>(null);
+
   useEffect(() => {
     const commentId = navigationState?.scrollToCommentId || location.state?.scrollToCommentId;
-    if (timelineWithSeparators?.length > 0 && commentId) {
-      // We clear the state so it doesn't scroll again on re-renders, but since location is immutable,
-      // we just track if we already scrolled
-      const hasScrolledKey = `hasScrolled_${commentId}`;
-      if (!sessionStorage.getItem(hasScrolledKey)) {
-        setTimeout(() => {
-          scrollToMessage(commentId);
-          sessionStorage.setItem(hasScrolledKey, "true");
-        }, 1000); // Give time for virtualization to settle
-      }
+    if (timelineWithSeparators?.length > 0 && commentId && lastNotificationCommentRef.current !== commentId) {
+      lastNotificationCommentRef.current = commentId;
+      setTimeout(() => {
+        scrollToMessage(commentId);
+      }, 1000);
     }
-  }, [timelineWithSeparators?.length, location.state]);
+  }, [timelineWithSeparators?.length, navigationState?.scrollToCommentId, location.state]);
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
