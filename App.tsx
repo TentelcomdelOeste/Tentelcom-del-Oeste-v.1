@@ -578,6 +578,49 @@ function App() {
     }
   }, [isLoggedIn, currentUser, location.search, navigate]);
 
+  // Fallback para notificaciones nativas cuando Android abre la app desde
+  // segundo plano o completamente cerrada. notificationService guarda los
+  // datos del toque antes de emitir el evento; aquí los consumimos después
+  // de que autenticación y navegación estén listas.
+  useEffect(() => {
+    if (!isLoggedIn || !currentUser) return;
+
+    const storageKey = 'tentelcom_pending_push_navigation';
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+
+      const pending = JSON.parse(raw) as {
+        trabajoId?: string;
+        comentarioId?: string;
+        parentCollection?: string;
+        notificationId?: string;
+      };
+
+      const trabajoId = pending.trabajoId || '';
+      if (!trabajoId) {
+        localStorage.removeItem(storageKey);
+        return;
+      }
+
+      localStorage.removeItem(storageKey);
+
+      navigate(`/bitacora/${trabajoId}`, {
+        replace: true,
+        state: {
+          selectedId: trabajoId,
+          parentId: trabajoId,
+          parentCollection: pending.parentCollection || 'trabajos',
+          scrollToCommentId: pending.comentarioId || undefined
+        }
+      });
+    } catch (error) {
+      console.error('[FCM] Error procesando navegación pendiente:', error);
+      localStorage.removeItem(storageKey);
+    }
+  }, [isLoggedIn, currentUser, navigate]);
+
   useEffect(() => {
     const errorHandler = (msg: any, url: any, line: any, col: any, error: any) => {
       console.error("GLOBAL ERROR:", msg, "at", url, ":", line, col, error);
