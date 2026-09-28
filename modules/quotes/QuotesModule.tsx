@@ -20,6 +20,7 @@ import {
   SearchInput, 
   ActionButton, 
   StatusBadge,
+  useConfirm,
 } from '../../design-system';
 import { generateQuotePDF } from '../../utils/pdfGenerator';
 import { triggerFileDownload } from '../../utils/fileUtils';
@@ -40,6 +41,7 @@ const MONTH_NAMES = [
 ];
 
 export const QuotesModule: React.FC<QuotesModuleProps> = ({ currentUser, selectedId, selectedKey, onClearSelectedId }) => {
+  const confirm = useConfirm();
   const now = new Date();
   const [filterYear, setFilterYear] = useState<number>(now.getFullYear());
   const [filterMonth, setFilterMonth] = useState<string>((now.getMonth() + 1).toString());
@@ -480,6 +482,11 @@ export const QuotesModule: React.FC<QuotesModuleProps> = ({ currentUser, selecte
             show={showModal} 
             onClose={() => { setShowModal(false); setEditingQuote(null); onClearSelectedId?.(); }} 
             onSave={handleSave} 
+            onDelete={async (quoteToDelete) => {
+                setShowModal(false);
+                setEditingQuote(null);
+                await handleDelete(quoteToDelete);
+            }}
             quote={editingQuote} 
             currentUser={currentUser} 
         />
