@@ -39,4 +39,4 @@ jobs:
         run: npm run build
 
       - name: Deploy Only onNotificationCreated
-        run: firebase deploy --only functions:onNotificationCreated --project tentelcom-del-oeste
+        run: firebase deploy --only functions:onNotificationCreated --project tentelcom-del-oeste --debug
