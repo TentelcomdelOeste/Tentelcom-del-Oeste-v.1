@@ -8,8 +8,12 @@ export interface MiniUser {
 
 export interface DispatchNotificationParams {
   trabajoId?: string | null;
+  parentId?: string | null;
   parentCollection?: string | null;
   trabajoTitle?: string | null;
+  projectName?: string | null;
+  projectNumber?: string | null;
+  timelineId?: string | null;
   comentarioId?: string | null;
   mensaje: string;
   mentions: { userId: string; userName: string; email?: string }[];
@@ -47,8 +51,12 @@ export function detectMentionsInText(text: string, employees: { id: string; name
  */
 export async function dispatchNotifications({
   trabajoId,
+  parentId,
   parentCollection,
   trabajoTitle = "Trabajo",
+  projectName,
+  projectNumber,
+  timelineId,
   comentarioId,
   mensaje,
   mentions,
@@ -64,8 +72,12 @@ export async function dispatchNotifications({
     const notifiedUserIds = new Set<string>();
 
     const safeTrabajoId = trabajoId !== undefined ? trabajoId : null;
+    const safeParentId = parentId !== undefined ? parentId : safeTrabajoId;
     const safeParentCollection = parentCollection !== undefined ? parentCollection : null;
     const safeTrabajoTitle = trabajoTitle !== undefined ? trabajoTitle : null;
+    const safeProjectName = projectName !== undefined ? projectName : null;
+    const safeProjectNumber = projectNumber !== undefined ? projectNumber : null;
+    const safeTimelineId = timelineId !== undefined ? timelineId : null;
     const safeComentarioId = comentarioId !== undefined ? comentarioId : null;
     const safeMensaje = mensaje || "";
 
@@ -79,8 +91,12 @@ export async function dispatchNotifications({
         triggeredBy: currentUser.id,
         triggeredByName: currentUser.name || "Usuario",
         trabajoId: safeTrabajoId,
+        parentId: safeParentId,
         parentCollection: safeParentCollection,
         trabajoTitle: safeTrabajoTitle,
+        projectName: safeProjectName,
+        projectNumber: safeProjectNumber,
+        timelineId: safeTimelineId,
         comentarioId: safeComentarioId,
         comentarioTexto: safeMensaje,
         read: false,
