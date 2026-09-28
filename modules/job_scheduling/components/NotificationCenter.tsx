@@ -92,9 +92,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           parentId: notification.parentId || notification.trabajoId,
           parentCollection: notification.parentCollection || "bitacora_vehiculos",
           timelineId: notification.timelineId || undefined,
-          scrollToCommentId: notification.comentarioId,
-          timelineId: notification.timelineId || undefined,
-          parentId: notification.parentId || notification.trabajoId
+          scrollToCommentId: notification.comentarioId
         },
       });
     } else {
