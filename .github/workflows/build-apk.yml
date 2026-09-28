@@ -50,7 +50,9 @@ jobs:
           # - solid adaptive background
           # - explicit adaptive-icon XML
           # ============================================================
-          convert public/icon-512x512.png -trim +repage /tmp/tentelcom-logo-trimmed.png
+          # Use the stored 512x512 artwork directly, exactly like Field Trace.
+          # Do NOT trim or otherwise crop the source image before scaling.
+          cp public/icon-512x512.png /tmp/tentelcom-source.png
 
           mkdir -p android/app/src/main/res/mipmap-mdpi
           mkdir -p android/app/src/main/res/mipmap-hdpi
@@ -60,12 +62,12 @@ jobs:
           mkdir -p android/app/src/main/res/mipmap-anydpi-v26
           mkdir -p android/app/src/main/res/values
 
-          # Legacy launcher icons: keep the same artwork centered on a white canvas.
+          # Legacy launcher icons use the same stored source artwork, matching Field Trace.
           for spec in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
             density="${spec%%:*}"
             size="${spec##*:}"
             convert -size "${size}x${size}" canvas:white "/tmp/icon-${density}.png"
-            convert /tmp/tentelcom-logo-trimmed.png \
+            convert /tmp/tentelcom-source.png \
               -resize 72% \
               -gravity center \
               -background white \
@@ -75,36 +77,38 @@ jobs:
           done
 
           # Adaptive foreground: transparent artwork only.
-          # 72% matches the proven Field Trace implementation.
-          convert /tmp/tentelcom-logo-trimmed.png \
+          # Exact Field Trace geometry: source artwork at 72% inside each
+          # density's foreground canvas. For xxxhdpi this is 311x311
+          # artwork inside a 432x432 transparent canvas.
+          convert /tmp/tentelcom-source.png \
             -resize 72% \
             -gravity center \
             -background none \
             -extent 432x432 \
             android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png
 
-          convert /tmp/tentelcom-logo-trimmed.png \
+          convert /tmp/tentelcom-source.png \
             -resize 72% \
             -gravity center \
             -background none \
             -extent 108x108 \
             android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png
 
-          convert /tmp/tentelcom-logo-trimmed.png \
+          convert /tmp/tentelcom-source.png \
             -resize 72% \
             -gravity center \
             -background none \
             -extent 162x162 \
             android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png
 
-          convert /tmp/tentelcom-logo-trimmed.png \
+          convert /tmp/tentelcom-source.png \
             -resize 72% \
             -gravity center \
             -background none \
             -extent 216x216 \
             android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png
 
-          convert /tmp/tentelcom-logo-trimmed.png \
+          convert /tmp/tentelcom-source.png \
             -resize 72% \
             -gravity center \
             -background none \
@@ -138,7 +142,7 @@ jobs:
           mkdir -p android/app/src/main/res/drawable
           mkdir -p android/app/src/main/res/values-night
 
-          convert /tmp/tentelcom-logo-trimmed.png \
+          convert /tmp/tentelcom-source.png \
             -resize 66% \
             -gravity center \
             -background white \
