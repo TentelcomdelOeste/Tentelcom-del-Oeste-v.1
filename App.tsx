@@ -1325,6 +1325,7 @@ function App() {
                           onBack={() => setActiveModule('job_scheduling')}
                           onSetActiveModule={setActiveModule} // Added for navigation
                           currentUser={currentUser}
+                          navigationState={activeModule.state}
                         />
                       )
                       : <div className="flex h-full items-center justify-center"><p className="text-slate-400 font-bold">Acceso Restringido</p></div>
