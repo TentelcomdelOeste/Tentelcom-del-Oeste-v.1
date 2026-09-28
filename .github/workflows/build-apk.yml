@@ -418,7 +418,8 @@ jobs:
           echo "$SIGNATURE_OUTPUT" | grep -Eq "Verified using v2 scheme \(APK Signature Scheme v2\): true"
           echo "APK signature: valid v2 signature."
 
-          keytool -printcert -jarfile "$APK" | grep -E "Owner:|SHA256:"
+          echo "=== APK certificate information ==="
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
 
       - name: Prepare APK Artifact
         if: steps.gradle_build.outcome == 'success'
