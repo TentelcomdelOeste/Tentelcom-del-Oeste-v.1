@@ -37,119 +37,253 @@ jobs:
         run: |
           mkdir -p assets
 
-          # Ensure ImageMagick is available on the runner.
           if ! command -v convert >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y imagemagick
           fi
 
-          # GitHub Ubuntu currently provides ImageMagick through the "convert"
-          # command. Use that command explicitly for compatibility.
-          # The original PNG contains a large white canvas around the logo.
-          # Trim that canvas first so the logo can be scaled independently.
+          # ============================================================
+          # TENTELCOM LAUNCHER ICON
+          # Same architecture used by Field Trace:
+          # - legacy density icons
+          # - transparent adaptive foreground
+          # - solid adaptive background
+          # - explicit adaptive-icon XML
+          # ============================================================
           convert public/icon-512x512.png -trim +repage /tmp/tentelcom-logo-trimmed.png
 
-          # Android adaptive/launcher icon:
-          # maximize the logo inside the 1024x1024 foreground while keeping
-          # a small safety margin for Android/One UI adaptive-icon masking.
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          mkdir -p android/app/src/main/res/mipmap-anydpi-v26
+          mkdir -p android/app/src/main/res/values
+
+          # Legacy launcher icons: keep the same artwork centered on a white canvas.
+          for spec in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
+            density="${spec%%:*}"
+            size="${spec##*:}"
+            convert -size "${size}x${size}" canvas:white "/tmp/icon-${density}.png"
+            convert /tmp/tentelcom-logo-trimmed.png \
+              -resize 72% \
+              -gravity center \
+              -background white \
+              -extent "${size}x${size}" "/tmp/icon-${density}.png"
+            cp "/tmp/icon-${density}.png" "android/app/src/main/res/mipmap-${density}/ic_launcher.png"
+            cp "/tmp/icon-${density}.png" "android/app/src/main/res/mipmap-${density}/ic_launcher_round.png"
+          done
+
+          # Adaptive foreground: transparent artwork only.
+          # 72% matches the proven Field Trace implementation.
           convert /tmp/tentelcom-logo-trimmed.png \
-            -resize 90% \
+            -resize 72% \
             -gravity center \
             -background none \
-            -extent 1024x1024 \
-            assets/icon-only.png
+            -extent 432x432 \
+            android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png
 
-          # Foreground layer uses the same large transparent logo.
-          cp assets/icon-only.png assets/icon-foreground.png
-
-          # Keep the launcher adaptive background white. Android/One UI controls
-          # the outer icon shape, but the artwork itself is now substantially larger.
-          convert -size 1024x1024 canvas:white assets/icon-background.png
-
-          # Splash artwork: transparent logo only. Android 12+ will place this
-          # artwork over the splash background instead of showing the launcher
-          # icon's white rounded-square container.
           convert /tmp/tentelcom-logo-trimmed.png \
-            -resize 75% \
+            -resize 72% \
             -gravity center \
             -background none \
-            -extent 1024x1024 \
-            assets/splash-icon.png
+            -extent 108x108 \
+            android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png
 
-          # Full splash fallback for Android 11 and below.
           convert /tmp/tentelcom-logo-trimmed.png \
-            -resize 1600x1600 \
+            -resize 72% \
+            -gravity center \
+            -background none \
+            -extent 162x162 \
+            android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png
+
+          convert /tmp/tentelcom-logo-trimmed.png \
+            -resize 72% \
+            -gravity center \
+            -background none \
+            -extent 216x216 \
+            android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png
+
+          convert /tmp/tentelcom-logo-trimmed.png \
+            -resize 72% \
+            -gravity center \
+            -background none \
+            -extent 324x324 \
+            android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png
+
+          cat > android/app/src/main/res/values/ic_launcher_background.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="ic_launcher_background">#FFFFFF</color>
+          </resources>
+          EOF
+
+          cat > android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background" />
+              <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+          </adaptive-icon>
+          EOF
+
+          cp android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml \
+             android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+
+          # ============================================================
+          # ANDROIDX SPLASH + NATIVE OVERLAY
+          # The system splash uses a transparent 1dp icon so Android does
+          # not apply its launcher-icon mask. MainActivity then draws the
+          # real Tentelcom splash image as a normal full-content overlay.
+          # ============================================================
+          mkdir -p android/app/src/main/res/drawable
+          mkdir -p android/app/src/main/res/values-night
+
+          convert /tmp/tentelcom-logo-trimmed.png \
+            -resize 66% \
             -gravity center \
             -background white \
-            -extent 2732x2732 \
-            assets/splash.png
-          cp assets/splash.png assets/splash-dark.png
+            -extent 512x512 \
+            android/app/src/main/res/drawable/splash_icon.png
 
-          # Generate the native resources.
-          npx -y @capacitor/assets generate \
-            --android \
-            --assetPath assets \
-            --splashBackgroundColor "#ffffff" \
-            --splashBackgroundColorDark "#ffffff"
-
-          # Android 12+ does not use the full-screen splash.png. It uses the
-          # system SplashScreen API, which must be configured explicitly.
-          # Force a white background in both light and dark mode and use the
-          # transparent logo artwork as the centered splash icon.
-          mkdir -p android/app/src/main/res/drawable
-          cp assets/splash-icon.png android/app/src/main/res/drawable/splash_icon.png
+          cat > android/app/src/main/res/drawable/splash_system_icon.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="1dp"
+              android:height="1dp"
+              android:viewportWidth="1"
+              android:viewportHeight="1">
+              <path
+                  android:fillColor="#00000000"
+                  android:pathData="M0,0" />
+          </vector>
+          EOF
 
           python3 - <<'PY'
           from pathlib import Path
           import re
 
-          styles = Path("android/app/src/main/res/values/styles.xml")
-          text = styles.read_text()
+          # Ensure the AndroidX SplashScreen dependency exists.
+          gradle = Path("android/app/build.gradle")
+          gt = gradle.read_text()
+          if "androidx.core:core-splashscreen" not in gt:
+              match = re.search(r"(dependencies\s*\{)", gt)
+              if not match:
+                  raise SystemExit("Could not locate dependencies block in app/build.gradle")
+              gt = gt[:match.end()] + '\n    implementation "androidx.core:core-splashscreen:1.2.0"' + gt[match.end():]
+              gradle.write_text(gt)
 
-          replacement = r'''\1
-                  <item name="windowSplashScreenBackground">#ffffff</item>
-                  <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
-                  <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>'''
+          # Configure the generated launch theme exactly once.
+          for path in [
+              Path("android/app/src/main/res/values/styles.xml"),
+              Path("android/app/src/main/res/values-v31/styles.xml"),
+              Path("android/app/src/main/res/values-night/styles.xml"),
+          ]:
+              if not path.exists():
+                  path.parent.mkdir(parents=True, exist_ok=True)
+                  path.write_text("<resources>\n</resources>\n")
 
-          pattern = r'(<style name="AppTheme\.NoActionBarLaunch"[^>]*>)(.*?)(</style>)'
-          new_text, count = re.subn(
-              pattern,
-              lambda m: m.group(1) + replacement.replace(r"\1", "") + m.group(2) + m.group(3),
-              text,
-              count=1,
-              flags=re.S
-          )
+              text = path.read_text()
+              block = '''<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+                  <item name="windowSplashScreenBackground">#FFFFFF</item>
+                  <item name="windowSplashScreenAnimatedIcon">@drawable/splash_system_icon</item>
+                  <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+              </style>'''
 
-          if count != 1:
-              raise SystemExit("Could not locate AppTheme.NoActionBarLaunch in styles.xml")
+              pattern = r'<style\s+name="AppTheme\.NoActionBarLaunch"[^>]*>.*?</style>'
+              if re.search(pattern, text, flags=re.S):
+                  text = re.sub(pattern, block, text, count=1, flags=re.S)
+              else:
+                  text = text.replace("</resources>", f"    {block}\n</resources>")
+              path.write_text(text)
 
-          styles.write_text(new_text)
+          # Force MainActivity to use the launch theme.
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          mt = manifest.read_text()
 
-          night_dir = Path("android/app/src/main/res/values-night")
-          night_dir.mkdir(parents=True, exist_ok=True)
-          night = night_dir / "styles.xml"
-          if night.exists():
-              nt = night.read_text()
-              if "AppTheme.NoActionBarLaunch" in nt:
-                  nt, _ = re.subn(
-                      pattern,
-                      lambda m: m.group(1) +
-                                '\n        <item name="windowSplashScreenBackground">#ffffff</item>' +
-                                '\n        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>' +
-                                '\n        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>' +
-                                m.group(2) + m.group(3),
-                      nt, count=1, flags=re.S
-                  )
-                  night.write_text(nt)
+          activity_pattern = r'<activity\b(?=[^>]*android:name="\.MainActivity")[^>]*>'
+          match = re.search(activity_pattern, mt, flags=re.S)
+          if not match:
+              raise SystemExit("Could not locate .MainActivity in AndroidManifest.xml")
+
+          activity = match.group(0)
+          if re.search(r'android:theme="[^"]*"', activity):
+              activity = re.sub(
+                  r'android:theme="[^"]*"',
+                  'android:theme="@style/AppTheme.NoActionBarLaunch"',
+                  activity,
+                  count=1
+              )
           else:
-              night.write_text('''<resources>
-              <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-                  <item name="windowSplashScreenBackground">#ffffff</item>
-                  <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
-                  <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
-              </style>
-          </resources>
+              activity = activity[:-1] + '\n            android:theme="@style/AppTheme.NoActionBarLaunch">'
+          mt = mt[:match.start()] + activity + mt[match.end():]
+          manifest.write_text(mt)
+
+          # MainActivity follows Field Trace's native overlay pattern.
+          main = Path("android/app/src/main/java/com/tentelcom/portal/MainActivity.java")
+          main.parent.mkdir(parents=True, exist_ok=True)
+          main.write_text(r'''package com.tentelcom.portal;
+
+          import android.graphics.Color;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.view.View;
+          import android.widget.FrameLayout;
+          import android.widget.ImageView;
+
+          import androidx.core.splashscreen.SplashScreen;
+
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  SplashScreen.installSplashScreen(this);
+                  super.onCreate(savedInstanceState);
+                  showTentelcomLaunchSplash();
+              }
+
+              private void showTentelcomLaunchSplash() {
+                  final FrameLayout root = findViewById(android.R.id.content);
+                  if (root == null) return;
+
+                  final FrameLayout overlay = new FrameLayout(this);
+                  overlay.setBackgroundColor(Color.WHITE);
+                  overlay.setAlpha(1f);
+
+                  final ImageView logo = new ImageView(this);
+                  logo.setImageResource(R.drawable.splash_icon);
+                  logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                  logo.setAdjustViewBounds(false);
+
+                  overlay.addView(
+                      logo,
+                      new FrameLayout.LayoutParams(
+                          FrameLayout.LayoutParams.MATCH_PARENT,
+                          FrameLayout.LayoutParams.MATCH_PARENT
+                      )
+                  );
+
+                  root.addView(
+                      overlay,
+                      new FrameLayout.LayoutParams(
+                          FrameLayout.LayoutParams.MATCH_PARENT,
+                          FrameLayout.LayoutParams.MATCH_PARENT
+                      )
+                  );
+
+                  new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                      overlay.animate()
+                          .alpha(0f)
+                          .setDuration(140L)
+                          .withEndAction(() -> root.removeView(overlay))
+                          .start();
+                  }, 650L);
+              }
+          }
           ''')
+
+          print("Android branding prepared: adaptive launcher icon + AndroidX system splash + native overlay.")
           PY
 
       - name: Build Debug APK with Gradle
