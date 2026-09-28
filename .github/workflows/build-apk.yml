@@ -313,9 +313,15 @@ jobs:
           version_code = int(sys.argv[1])
           path = Path("android/app/build.gradle")
           text = path.read_text()
-          updated, count = re.subn(r'(?m)^\\s*versionCode\\s+\\d+', f'        versionCode {version_code}', text, count=1)
+          pattern = r'(defaultConfig\\s*\\{)'
+          updated, count = re.subn(
+              pattern,
+              lambda m: m.group(1) + f'\\n        versionCode {version_code}',
+              text,
+              count=1
+          )
           if count != 1:
-              raise SystemExit("Could not locate Android versionCode in android/app/build.gradle")
+              raise SystemExit("Could not locate Android defaultConfig in android/app/build.gradle")
           path.write_text(updated)
           print(f"Android versionCode set to {version_code}")
           PY
