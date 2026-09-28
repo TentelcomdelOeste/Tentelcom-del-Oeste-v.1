@@ -145,8 +145,11 @@ jobs:
           mkdir -p android/app/src/main/res/drawable
           mkdir -p android/app/src/main/res/values-night
 
-          convert /tmp/tentelcom-source.png \
-            -resize 66% \
+          # High-resolution splash source uploaded separately from the launcher icon.
+          # Preserve its aspect ratio and fit the visible artwork to the same 338px
+          # geometry used by Field Trace (66% of a 512x512 canvas).
+          convert public/tentelcom-splash-source.png \
+            -resize 338x338 \
             -gravity center \
             -background white \
             -extent 512x512 \
