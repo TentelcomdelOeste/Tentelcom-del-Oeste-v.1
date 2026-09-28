@@ -863,8 +863,12 @@ export default function SharedTimeline({
       if (navigator.onLine) {
         dispatchNotifications({
           trabajoId: activeParentId,
+          parentId: activeParentId,
           parentCollection: currentCollection,
           trabajoTitle: jobTitle,
+          projectName: fetchedTrabajoDetails?.projectName || "",
+          projectNumber: fetchedTrabajoDetails?.projectNumber || "",
+          timelineId: resolvedTimelineId || "",
           comentarioId: eventId,
           mensaje: newMessage.trim(),
           mentions: mentions,
