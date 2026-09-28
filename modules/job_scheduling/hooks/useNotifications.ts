@@ -21,7 +21,11 @@ export interface NotificationDoc {
   triggeredBy: string;
   triggeredByName: string;
   trabajoId: string;
+  parentId?: string | null;
   parentCollection?: string | null;
+  timelineId?: string | null;
+  projectName?: string | null;
+  projectNumber?: string | null;
   trabajoTitle?: string;
   comentarioId?: string;
   comentarioTexto?: string;
