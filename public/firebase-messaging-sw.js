@@ -46,6 +46,9 @@ messaging.onBackgroundMessage((payload) => {
   if (!title && !body) return;
 
   const trabajoId      = data.trabajoId      || '';
+  const parentId      = data.parentId      || trabajoId;
+  const parentCollection = data.parentCollection || 'trabajos';
+  const timelineId     = data.timelineId     || '';
   const comentarioId   = data.comentarioId   || '';
   const notificationId = data.notificationId || String(Date.now());
 
@@ -61,9 +64,12 @@ messaging.onBackgroundMessage((payload) => {
     sound:    'default',
     data: {
       trabajoId,
+      parentId,
+      parentCollection,
+      timelineId,
       comentarioId,
       notificationId,
-      url: trabajoId ? `/bitacora/${trabajoId}` : '/'
+      url: trabajoId ? `/bitacora/${trabajoId}?comentarioId=${encodeURIComponent(comentarioId)}&parentId=${encodeURIComponent(parentId)}&parentCollection=${encodeURIComponent(parentCollection)}&timelineId=${encodeURIComponent(timelineId)}` : '/'
     },
     actions: [
       { action: 'view',    title: '📋 Ver mensaje' },
@@ -81,11 +87,14 @@ self.addEventListener('notificationclick', (event) => {
   const action = event.action;
   const data = event.notification.data || {};
   const trabajoId = data.trabajoId || '';
+  const parentId = data.parentId || trabajoId;
+  const parentCollection = data.parentCollection || 'trabajos';
+  const timelineId = data.timelineId || '';
   const comentarioId = data.comentarioId || '';
   
   if (action === 'dismiss') return;
 
-  const targetUrlStr = data.url || (trabajoId ? `/bitacora/${trabajoId}` : '/');
+  const targetUrlStr = data.url || (trabajoId ? `/bitacora/${trabajoId}?comentarioId=${encodeURIComponent(comentarioId)}&parentId=${encodeURIComponent(parentId)}&parentCollection=${encodeURIComponent(parentCollection)}&timelineId=${encodeURIComponent(timelineId)}` : '/');
   const targetUrl = new URL(targetUrlStr, self.location.origin);
 
   // Acción confirmación rápida (Legacy support)
