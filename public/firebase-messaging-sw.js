@@ -69,7 +69,7 @@ messaging.onBackgroundMessage((payload) => {
       timelineId,
       comentarioId,
       notificationId,
-      url: trabajoId ? `/bitacora/${trabajoId}?comentarioId=${encodeURIComponent(comentarioId)}&parentId=${encodeURIComponent(parentId)}&parentCollection=${encodeURIComponent(parentCollection)}&timelineId=${encodeURIComponent(timelineId)}` : '/'
+      url: trabajoId ? `/bitacora/${trabajoId}?trabajoId=${encodeURIComponent(trabajoId)}&comentarioId=${encodeURIComponent(comentarioId)}&parentId=${encodeURIComponent(parentId)}&parentCollection=${encodeURIComponent(parentCollection)}&timelineId=${encodeURIComponent(timelineId)}` : '/'
     },
     actions: [
       { action: 'view',    title: '📋 Ver mensaje' },
@@ -94,7 +94,7 @@ self.addEventListener('notificationclick', (event) => {
   
   if (action === 'dismiss') return;
 
-  const targetUrlStr = data.url || (trabajoId ? `/bitacora/${trabajoId}?comentarioId=${encodeURIComponent(comentarioId)}&parentId=${encodeURIComponent(parentId)}&parentCollection=${encodeURIComponent(parentCollection)}&timelineId=${encodeURIComponent(timelineId)}` : '/');
+  const targetUrlStr = data.url || (trabajoId ? `/bitacora/${trabajoId}?trabajoId=${encodeURIComponent(trabajoId)}&comentarioId=${encodeURIComponent(comentarioId)}&parentId=${encodeURIComponent(parentId)}&parentCollection=${encodeURIComponent(parentCollection)}&timelineId=${encodeURIComponent(timelineId)}` : '/');
   const targetUrl = new URL(targetUrlStr, self.location.origin);
 
   // Acción confirmación rápida (Legacy support)
