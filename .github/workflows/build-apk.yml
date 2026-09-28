@@ -78,41 +78,41 @@ jobs:
 
           # Adaptive foreground: transparent artwork only.
           # Exact Field Trace geometry:
-          # mdpi 108x108 canvas / 68x68 artwork
-          # hdpi 162x162 canvas / 101x101 artwork
-          # xhdpi 216x216 canvas / 135x135 artwork
-          # xxhdpi 324x324 canvas / 203x203 artwork
-          # xxxhdpi 432x432 canvas / 270x270 artwork
+          # mdpi 108x108 canvas / 65x65 artwork
+          # hdpi 162x162 canvas / 98x98 artwork
+          # xhdpi 216x216 canvas / 130x130 artwork
+          # xxhdpi 324x324 canvas / 195x195 artwork
+          # xxxhdpi 432x432 canvas / 260x260 artwork
           convert /tmp/tentelcom-source.png \
-            -resize 68x68 \
+            -resize 65x65 \
             -gravity center \
             -background none \
             -extent 108x108 \
             android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png
 
           convert /tmp/tentelcom-source.png \
-            -resize 101x101 \
+            -resize 98x98 \
             -gravity center \
             -background none \
             -extent 162x162 \
             android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png
 
           convert /tmp/tentelcom-source.png \
-            -resize 135x135 \
+            -resize 130x130 \
             -gravity center \
             -background none \
             -extent 216x216 \
             android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png
 
           convert /tmp/tentelcom-source.png \
-            -resize 203x203 \
+            -resize 195x195 \
             -gravity center \
             -background none \
             -extent 324x324 \
             android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png
 
           convert /tmp/tentelcom-source.png \
-            -resize 270x270 \
+            -resize 260x260 \
             -gravity center \
             -background none \
             -extent 432x432 \
