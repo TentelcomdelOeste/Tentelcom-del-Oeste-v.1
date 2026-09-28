@@ -85,7 +85,11 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const action = event.action;
-  const data = event.notification.data || {};
+  const rawNotificationData = event.notification.data || {};
+  // FCM puede envolver los datos originales dentro de FCM_MSG cuando
+  // la notificación fue mostrada automáticamente por Android/Chrome.
+  const fcmData = rawNotificationData.FCM_MSG?.data || {};
+  const data = { ...fcmData, ...rawNotificationData };
   const trabajoId = data.trabajoId || '';
   const parentId = data.parentId || trabajoId;
   const parentCollection = data.parentCollection || 'trabajos';
