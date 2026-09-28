@@ -6,6 +6,7 @@ import { setVersionedDocOffline, updateVersionedDocOffline } from "../../core/ve
 import { globalSearchEngine, jobSearchPlugin } from '../../core/search';
 
 import { localDocStore } from "../../core/offline/localDocStore";
+import { networkProbe } from "../../core/offline/networkProbe";
 import { SystemEventPayload } from "./types/systemEvents";
 import { eventBus } from "../core/eventBus";
 import { createSystemEventPayload } from "./utils/systemEventNormalizer";
