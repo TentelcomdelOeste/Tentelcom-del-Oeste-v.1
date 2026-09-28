@@ -110,11 +110,7 @@ export const initializeNativePushNotifications = async (userId: string) => {
             // La navegación inmediata también se emite por evento.
           }
 
-          window.dispatchEvent(
-            new CustomEvent("tentelcom-push-action", {
-              detail: data,
-            })
-          );
+          window.dispatchEvent(new CustomEvent("tentelcom-push-action", { detail: data }));
         }
       );
 
