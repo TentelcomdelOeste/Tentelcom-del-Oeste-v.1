@@ -33,6 +33,11 @@ jobs:
       - name: Add Android Platform & Sync Capacitor
         run: npx cap add android || npx cap sync android
 
+      - name: Configure Firebase Android
+        run: |
+          mkdir -p android/app
+          cp firebase/google-services.json android/app/google-services.json
+
       - name: Prepare Android Icons and Splash
         run: |
           mkdir -p assets
