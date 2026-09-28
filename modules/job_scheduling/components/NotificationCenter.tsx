@@ -21,6 +21,26 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
 
+  // Native FCM notification tap.
+  useEffect(() => {
+    const handleNativePushAction = (event: Event) => {
+      const data = (event as CustomEvent).detail || {};
+      if (!data.trabajoId) return;
+
+      setActiveModule({
+        module: "operational_log",
+        selectedId: data.trabajoId,
+        state: {
+          scrollToCommentId: data.comentarioId || undefined,
+          parentCollection: data.parentCollection || "trabajos",
+        },
+      });
+    };
+
+    window.addEventListener("tentelcom-push-action", handleNativePushAction);
+    return () => window.removeEventListener("tentelcom-push-action", handleNativePushAction);
+  }, [setActiveModule]);
+
   // Close when clicking outside - only relevant for desktop popover
   useEffect(() => {
     if (!isOpen) return;
