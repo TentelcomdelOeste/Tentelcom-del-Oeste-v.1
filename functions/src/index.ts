@@ -340,6 +340,7 @@ export const onNotificationCreated = functions.firestore
             type: type || "default",
             title: title,
             body: body,
+            parentCollection: parentCollection || "trabajos",
             url: trabajoId ? `/bitacora/${trabajoId}` : "/",
           },
           fcmOptions: {
