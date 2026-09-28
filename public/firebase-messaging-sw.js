@@ -34,6 +34,10 @@ messaging.onBackgroundMessage((payload) => {
   const data = payload.data || {};
   const notif = payload.notification || {};
 
+  // Cuando FCM incluye payload.notification, Chrome/Android Web ya muestra
+  // la notificación automáticamente. Evitamos duplicarla desde este SW.
+  if (payload.notification) return;
+
   // Si no hay data.title ni notif.title, algo está mal — abortar silenciosamente
   const title = data.title || notif.title || 'Tentelcom';
   const body  = data.body  || notif.body  || 'Tienes una nueva notificación';
