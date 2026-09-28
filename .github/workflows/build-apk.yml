@@ -326,23 +326,65 @@ jobs:
           print(f"Android versionCode set to {version_code}")
           PY
 
+      - name: Restore Stable Debug Keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: tentelcom-debug-keystore-v1
+
       - name: Configure Stable Debug Signing
         run: |
-          # Use one fixed debug keystore stored in the repository so every
-          # GitHub-hosted runner signs Tentelcom with the same certificate.
+          # Keep one signing certificate across GitHub-hosted runners.
+          # The first successful build creates it; subsequent builds restore it
+          # from the GitHub Actions cache.
           mkdir -p "$HOME/.android"
-          base64 --decode tools/tentelcom-debug.keystore.b64 > "$HOME/.android/debug.keystore"
-          keytool -list -keystore "$HOME/.android/debug.keystore" \
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storetype JKS \
+              -storepass android \
+              -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          keytool -list \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storetype JKS \
             -storepass android \
             -alias androiddebugkey \
             -v | grep "SHA256:"
 
       - name: Build Debug APK with Gradle
+        id: gradle_build
         working-directory: android
+        continue-on-error: true
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Tentelcom.apk
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace --info 2>&1 | tee ../gradle-build.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Upload Gradle Diagnostic Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tentelcom-gradle-diagnostic
+          path: gradle-build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail if Gradle build failed
+        if: steps.gradle_build.outcome == 'failure'
+        run: exit 1
+
+      - name: Prepare APK Artifact
+        if: steps.gradle_build.outcome == 'success'
+        working-directory: android
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Tentelcom.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
