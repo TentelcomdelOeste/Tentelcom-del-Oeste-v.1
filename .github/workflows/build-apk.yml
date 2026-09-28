@@ -313,7 +313,7 @@ jobs:
           version_code = int(sys.argv[1])
           path = Path("android/app/build.gradle")
           text = path.read_text()
-          pattern = r'(defaultConfig\\s*\\{)'
+          pattern = r'(defaultConfig\s*\{)'
           updated, count = re.subn(
               pattern,
               lambda m: m.group(1) + f'\\n        versionCode {version_code}',
