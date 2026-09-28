@@ -7,6 +7,7 @@ export default function OperationalLogView(
   return (
     <SharedTimelineView
       {...timelineProps}
+      timelineId={initialState?.timelineId}
       navigationState={initialState}
     />
   );
