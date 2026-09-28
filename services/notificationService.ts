@@ -68,7 +68,10 @@ export const initializeNativePushNotifications = async (userId: string) => {
   try {
     if (!nativeListenersInitialized) {
       await PushNotifications.addListener("registration", async (token: Token) => {
-        await saveFcmToken(userId, token.value, Capacitor.getPlatform());
+        const activeUserId = auth.currentUser?.uid || userId;
+        if (activeUserId) {
+          await saveFcmToken(activeUserId, token.value, Capacitor.getPlatform());
+        }
       });
 
       await PushNotifications.addListener(
