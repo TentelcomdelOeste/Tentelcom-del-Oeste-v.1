@@ -1,0 +1,69 @@
+{
+  "project_info": {
+    "project_number": "669263702822",
+    "firebase_url": "https://tentelcom-del-oeste-default-rtdb.firebaseio.com",
+    "project_id": "tentelcom-del-oeste",
+    "storage_bucket": "tentelcom-del-oeste.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:669263702822:android:eab902573ad483ec062fe7",
+        "android_client_info": {
+          "package_name": "com.tentelcom.gps"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "669263702822-3tpm2bs653ti49najbumdon76ri2mkht.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAejEcUgYsq15EMyBU3VEPsi9te0DafiPw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "669263702822-3tpm2bs653ti49najbumdon76ri2mkht.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:669263702822:android:5bedbf04784c1898062fe7",
+        "android_client_info": {
+          "package_name": "com.tentelcom.portal"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "669263702822-3tpm2bs653ti49najbumdon76ri2mkht.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAejEcUgYsq15EMyBU3VEPsi9te0DafiPw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "669263702822-3tpm2bs653ti49najbumdon76ri2mkht.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
