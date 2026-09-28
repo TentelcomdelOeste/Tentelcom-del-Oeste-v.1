@@ -92,6 +92,11 @@ export interface SharedTimelineProps {
   timelineId?: string;
   onBack: () => void;
   onSetActiveModule?: (module: any) => void; // Added for navigation
+  navigationState?: {
+    scrollToCommentId?: string;
+    parentId?: string;
+    parentCollection?: string;
+  };
   currentUser?: User;
   isExpanded?: boolean;
   onExpandToggle?: () => void;
@@ -111,6 +116,7 @@ export default function SharedTimeline({
   timelineId,
   onBack,
   onSetActiveModule, // Added for navigation
+  navigationState,
   currentUser,
   isExpanded,
   onExpandToggle,
@@ -729,8 +735,8 @@ export default function SharedTimeline({
   };
 
   useEffect(() => {
-    if (timelineWithSeparators?.length > 0 && location.state?.scrollToCommentId) {
-      const commentId = location.state.scrollToCommentId;
+    const commentId = navigationState?.scrollToCommentId || location.state?.scrollToCommentId;
+    if (timelineWithSeparators?.length > 0 && commentId) {
       // We clear the state so it doesn't scroll again on re-renders, but since location is immutable,
       // we just track if we already scrolled
       const hasScrolledKey = `hasScrolled_${commentId}`;
