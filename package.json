@@ -65,7 +65,8 @@
     "tailwindcss": "^4.2.1",
     "tsx": "^4.22.4",
     "uuid": "^9.0.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "@capacitor/push-notifications": "^8.1.2"
   },
   "overrides": {
     "react": "18.3.1",
