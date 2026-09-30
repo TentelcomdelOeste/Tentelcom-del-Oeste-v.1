@@ -11,9 +11,6 @@ import { Capacitor } from '@capacitor/core';
 let isSyncingPdf = false;
 const STORAGE_TIMEOUT_MS = 15000;
 
-/**
- * Envoltura para proteger operaciones asíncronas con un temporizador de rechazo.
- */
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number = STORAGE_TIMEOUT_MS, errorMsg: string = "Operación de Storage excedió el tiempo límite"): Promise<T> {
     return Promise.race([
         promise,
@@ -23,9 +20,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number = STORAGE_T
     ]);
 }
 
-/**
- * Ejecuta un ciclo asíncrono para verificar y subir PDFs pendientes en la cola offline.
- */
 export async function runPdfSyncCycle(): Promise<void> {
     if (isSyncingPdf) {
         console.log("[PdfStorageSync] Ciclo de sincronización de PDFs ya activo. Ignorando.");
@@ -41,7 +35,6 @@ export async function runPdfSyncCycle(): Promise<void> {
     console.log("[PdfStorageSync] Iniciando ciclo de sincronización de PDFs...");
 
     try {
-        // Purgar entradas antiguas completadas para mantener la cola limpia
         await pdfOfflineQueue.purgeCompletedUploads();
 
         const pending = await pdfOfflineQueue.getPendingUploads();
@@ -53,13 +46,11 @@ export async function runPdfSyncCycle(): Promise<void> {
         console.log(`[PdfStorageSync] Encontrados ${pending.length} PDFs pendientes por subir.`);
 
         for (const entry of pending) {
-            // Validar red antes de cada elemento para pausar a tiempo ante una desconexión
             if (!networkProbe.isOnline()) {
                 console.warn("[PdfStorageSync] Se perdió la conexión a internet. Pausando ciclo de PDFs.");
                 break;
             }
 
-            // Excedió límite de reintentos
             if (entry.attempts >= 5) {
                 console.error(`[PdfStorageSync] El archivo ${entry.fileName} excedió el límite de reintentos.`);
                 await pdfOfflineQueue.markUploadStatus(entry.id, 'dead', 'Límite de reintentos excedido');
@@ -67,7 +58,6 @@ export async function runPdfSyncCycle(): Promise<void> {
             }
 
             try {
-                // 1. Validar existencia del archivo físico si estamos en plataforma nativa
                 if (Capacitor.isNativePlatform()) {
                     const exists = await pdfFileEngine.fileExists(entry.fileName);
                     if (!exists) {
@@ -77,22 +67,17 @@ export async function runPdfSyncCycle(): Promise<void> {
                     }
                 }
 
-                // 2. Obtener Blob para upload y validar checksum
                 let blob: Blob;
                 if (Capacitor.isNativePlatform()) {
                     blob = await pdfFileEngine.readPdfFromDevice(entry.fileName);
                 } else {
-                    // Fallback Web: buscar en el offlineMediaStore usando la clave localPath
                     const cachedBlob = await getBlob(entry.localPath);
-                    if (cachedBlob) {
-                        blob = cachedBlob;
-                    } else {
-                        console.warn(`[PdfStorageSync] Blob no encontrado en IndexedDB para web fallback: ${entry.localPath}. Creando mock.`);
-                        blob = new Blob([`mock-pdf-content-for-${entry.fileName}`], { type: entry.mimeType });
+                    if (!cachedBlob) {
+                        throw new Error(`Blob original no encontrado en almacenamiento offline: ${entry.localPath}`);
                     }
+                    blob = cachedBlob;
                 }
 
-                // 3. Chequear Idempotencia (Evitar uploads redundantes o duplicados)
                 let alreadyUploadedPath: string | null = null;
                 let alreadyUploadedUrl: string | null = null;
 
@@ -110,14 +95,23 @@ export async function runPdfSyncCycle(): Promise<void> {
                     }
                 }
 
+                const isAttachment = entry.targetCollection.endsWith('/attachments');
+                const attachmentParent = isAttachment
+                    ? entry.targetCollection.replace(/\/attachments$/, '')
+                    : '';
+
                 const orgId = "tentelcom";
-                const firebasePath = entry.module === 'vehicles' ? entry.localPath : (alreadyUploadedPath || `uploads/${orgId}/${entry.module}/${entry.targetDocId}/${entry.fileName}`);
+                const firebasePath = entry.module === 'vehicles'
+                    ? entry.localPath
+                    : isAttachment
+                        ? `${attachmentParent}/attachments/${entry.targetDocId}-${entry.fileName}`
+                        : (alreadyUploadedPath || `uploads/${orgId}/${entry.module}/${entry.targetDocId}/${entry.fileName}`);
+
                 const storageRef = ref(storage, firebasePath);
 
                 await pdfOfflineQueue.markUploadStatus(entry.id, 'uploading');
 
-                // Si ya fue subido según el checksum, saltamos la fase de bytes y sólo pedimos URL
-                if (alreadyUploadedPath) {
+                if (alreadyUploadedPath && !isAttachment) {
                     try {
                         alreadyUploadedUrl = await withTimeout(
                             getDownloadURL(storageRef),
@@ -132,10 +126,7 @@ export async function runPdfSyncCycle(): Promise<void> {
 
                 let finalDownloadUrl = alreadyUploadedUrl;
 
-                if (!alreadyUploadedPath) {
-                    // Para fotos de vehículos, recuperamos el nombre completo de la unidad
-                    // (ej. "U1 - NISSAN PATHFINDER - 532995") desde el registro de bitácora,
-                    // para que la función de sincronización a OneDrive nombre la carpeta correctamente.
+                if (!alreadyUploadedUrl) {
                     let unidadCompleta: string | undefined;
                     if (entry.module === 'vehicles' && entry.targetDocId && entry.targetDocId !== 'temp_id') {
                         try {
@@ -148,7 +139,6 @@ export async function runPdfSyncCycle(): Promise<void> {
                         }
                     }
 
-                    // Subir archivo real con protección de timeout estricto
                     console.log(`[PdfStorageSync] Subiendo archivo "${entry.fileName}" a "${firebasePath}"...`);
                     const uploadPromise = uploadBytes(storageRef, blob, {
                         contentType: entry.mimeType,
@@ -162,7 +152,6 @@ export async function runPdfSyncCycle(): Promise<void> {
 
                     await withTimeout(uploadPromise, STORAGE_TIMEOUT_MS, "Timeout alcanzado al subir archivo a Firebase Storage");
 
-                    // Obtener URL de descarga con timeout
                     finalDownloadUrl = await withTimeout(
                         getDownloadURL(storageRef),
                         STORAGE_TIMEOUT_MS,
@@ -174,10 +163,9 @@ export async function runPdfSyncCycle(): Promise<void> {
                     throw new Error("No se pudo resolver la URL de descarga para el archivo");
                 }
 
-                // 4. Actualizar el documento de Firestore de forma segura (sólo tras la confirmación de Storage)
                 console.log(`[PdfStorageSync] Actualizando documento Firestore: ${entry.targetCollection}/${entry.targetDocId}...`);
                 const docRef = doc(db, entry.targetCollection, entry.targetDocId);
-                
+
                 let firestoreUpdatePayload: any;
                 if (entry.targetCollection === 'external_products') {
                     firestoreUpdatePayload = {
@@ -198,7 +186,6 @@ export async function runPdfSyncCycle(): Promise<void> {
                 const firestorePromise = updateDoc(docRef, firestoreUpdatePayload);
                 await withTimeout(firestorePromise, STORAGE_TIMEOUT_MS, "Timeout alcanzado al actualizar el documento en Firestore");
 
-                // Sincronización exitosa
                 console.log(`[PdfStorageSync] Sincronización exitosa del archivo ${entry.fileName}. URL: ${finalDownloadUrl}`);
                 await pdfOfflineQueue.markUploadStatus(entry.id, 'completed', undefined, firebasePath);
 
