@@ -1,4 +1,3 @@
-
 import { db, storage, auth } from '../../firebase';
 import { collection, doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
@@ -9,6 +8,8 @@ import { pdfFileEngine } from '../../core/pdf/pdfFileEngine';
 import { networkProbe } from '../../core/offline/networkProbe';
 import { runPdfSyncCycle } from '../../core/pdf/pdfStorageSync';
 import { auditService } from '../../services/auditService';
+import { storeBlob } from '../../services/offlineMediaStore';
+import { Capacitor } from '@capacitor/core';
 
 enum OperationType {
   CREATE = 'create',
@@ -66,12 +67,20 @@ export const uploadFileAndCreateAttachmentDoc = async (
   const filePath = `${entityType}/${entityId}/attachments/${fileId}-${file.name}`;
 
   try {
-    // 1. Guardar localmente primero (Filesystem First)
+    // 1. Guardar el archivo localmente según la plataforma.
+    // Native: Documents. Web/PWA: IndexedDB, para que el sincronizador
+    // pueda recuperar el Blob real y no genere un contenido ficticio.
     let physicalPath = file.name;
-    try {
-      physicalPath = await pdfFileEngine.savePdfToDevice(file.name, file);
-    } catch (saveErr) {
-      console.warn("attachments: Error guardando PDF físico en dispositivo, procediendo con nombre", saveErr);
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        physicalPath = await pdfFileEngine.savePdfToDevice(file.name, file);
+      } catch (saveErr) {
+        console.warn("attachments: Error guardando PDF físico en dispositivo, procediendo con nombre", saveErr);
+      }
+    } else {
+      physicalPath = filePath;
+      await storeBlob(physicalPath, file);
     }
 
     // 2. Calcular Checksum SHA-256 del archivo
@@ -83,7 +92,7 @@ export const uploadFileAndCreateAttachmentDoc = async (
     
     await setDoc(attachmentDocRef, {
       name: file.name,
-      url: "", // Se llenará en segundo plano tras completarse el upload
+      url: "",
       downloadURL: "",
       downloadUrl: "",
       type: type,
@@ -93,15 +102,15 @@ export const uploadFileAndCreateAttachmentDoc = async (
       isOffline: true
     });
 
-    // 4. Encolar upload en SQLite (Queue Second)
+    // 4. Encolar upload en SQLite / Web fallback
     const targetColl = `${entityType}/${entityId.toString()}/attachments`;
     await pdfOfflineQueue.enqueuePdfUpload(
       physicalPath,
       file.name,
       file.type,
-      entityType, // module
-      targetColl, // targetCollection
-      fileId, // targetDocId
+      entityType,
+      targetColl,
+      fileId,
       checksum
     );
 
@@ -114,7 +123,7 @@ export const uploadFileAndCreateAttachmentDoc = async (
       route: '/attachments'
     });
 
-    // 5. Si está online, disparar ciclo de sync en segundo plano (Sync Third)
+    // 5. Si está online, disparar ciclo de sync en segundo plano
     if (networkProbe.isOnline()) {
       runPdfSyncCycle().catch((err) => {
         console.error("attachments: Error al correr runPdfSyncCycle posterior a encolar", err);
