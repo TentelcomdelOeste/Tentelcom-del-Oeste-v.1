@@ -226,3 +226,147 @@ export const downloadFileSafely = async (
   throw new Error('No se pudo descargar el archivo. Por favor verifique su conexión o elimine y vuelva a adjuntar el documento.');
 };
 
+/**
+ * Obtiene el Blob binario de un archivo de manera segura usando la misma jerarquía (IndexedDB / DataURL / Proxy / Storage).
+ */
+export const fetchFileBlobSafely = async (
+  rawUrl: string | undefined | null,
+  fileName: string,
+  storagePath?: string
+): Promise<Blob> => {
+  let fileUrl = rawUrl?.trim() || '';
+
+  if (!fileUrl && storagePath) {
+    try {
+      const { ref, getDownloadURL } = await import('firebase/storage');
+      const { storage } = await import('../firebase');
+      const storageRef = ref(storage, storagePath);
+      fileUrl = await getDownloadURL(storageRef);
+    } catch (err) {
+      console.warn('[fetchFileBlobSafely] No se pudo resolver getDownloadURL desde storagePath:', err);
+    }
+  }
+
+  if (fileUrl.startsWith('data:')) {
+    const blob = dataUrlToBlob(fileUrl);
+    const isPdf = fileName.toLowerCase().endsWith('.pdf');
+    if (!isPdf || (await isValidPdfBlob(blob))) {
+      return blob;
+    }
+  }
+
+  if (fileUrl.startsWith('blob:')) {
+    const resp = await fetch(fileUrl);
+    return await resp.blob();
+  }
+
+  const proxyUrl = `/api/download-proxy?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(fileName)}`;
+  try {
+    const response = await fetch(proxyUrl);
+    if (response.ok) {
+      const blob = await response.blob();
+      if (blob.size > 0) {
+        if (fileName.toLowerCase().endsWith('.pdf')) {
+          const isValid = await isValidPdfBlob(blob);
+          if (!isValid) {
+            throw new FileCorruptedError('El archivo en el servidor está dañado o incompleto.');
+          }
+        }
+        return blob;
+      }
+    }
+  } catch (proxyErr) {
+    if (proxyErr instanceof FileCorruptedError) throw proxyErr;
+  }
+
+  const directResponse = await fetch(fileUrl);
+  if (directResponse.ok) {
+    const directBlob = await directResponse.blob();
+    if (directBlob.size > 0) {
+      if (fileName.toLowerCase().endsWith('.pdf')) {
+        const isValid = await isValidPdfBlob(directBlob);
+        if (!isValid) {
+          throw new FileCorruptedError('El archivo en el servidor está dañado o incompleto.');
+        }
+      }
+      return directBlob;
+    }
+  }
+
+  throw new Error('No se pudo recuperar el archivo para procesarlo.');
+};
+
+/**
+ * Abre el diálogo nativo de compartir del teléfono o computadora con el archivo adjunto real.
+ */
+export const shareFileSafely = async (
+  blobOrUrl: Blob | string | undefined | null,
+  fileName: string,
+  storagePath?: string
+): Promise<void> => {
+  let blob: Blob;
+  if (blobOrUrl instanceof Blob) {
+    blob = blobOrUrl;
+  } else {
+    blob = await fetchFileBlobSafely(blobOrUrl, fileName, storagePath);
+  }
+
+  // 1. Plataforma Nativa (Android / iOS Capacitor)
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { Share } = await import('@capacitor/share');
+      const savedUri = await pdfFileEngine.savePdfToDevice(fileName, blob);
+      await Share.share({
+        title: fileName,
+        text: `Documento adjunto: ${fileName}`,
+        url: savedUri,
+        dialogTitle: `Compartir ${fileName}`,
+      });
+      return;
+    } catch (nativeShareErr: any) {
+      if (nativeShareErr?.message?.includes('canceled') || nativeShareErr?.name === 'AbortError') {
+        return;
+      }
+      console.warn('[shareFileSafely] Share nativo cancelado o falló, probando Web Share:', nativeShareErr);
+    }
+  }
+
+  // 2. Web Share API (Chrome en Android, Safari en iOS/Mac, Edge en Windows)
+  if (typeof navigator !== 'undefined') {
+    const mimeType = blob.type || (fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+    const file = new File([blob], fileName, { type: mimeType });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          title: fileName,
+          text: `Documento: ${fileName}`,
+          files: [file],
+        });
+        return;
+      } catch (shareErr: any) {
+        if (shareErr?.name === 'AbortError') {
+          return;
+        }
+        console.warn('[shareFileSafely] navigator.share con archivos:', shareErr);
+      }
+    }
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: fileName,
+          text: `Documento: ${fileName}`,
+        });
+        return;
+      } catch (shareErr: any) {
+        if (shareErr?.name === 'AbortError') return;
+      }
+    }
+  }
+
+  // 3. Si no hay soporte de Web Share, descargar el archivo directamente
+  await triggerFileDownload(blob, fileName);
+};
+
+

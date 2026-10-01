@@ -503,7 +503,7 @@ export const QuotesModule: React.FC<QuotesModuleProps> = ({ currentUser, selecte
 
         {/* Modal de Archivos Restaurado */}
         {attachmentQuote && createPortal(
-            <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[700] p-4 animate-in fade-in duration-300">
+            <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[700] p-2.5 sm:p-4 md:p-6 animate-in fade-in duration-300 overflow-x-hidden">
                 <AttachmentUploader 
                     entityType="invoices"
                     entityId={attachmentQuote.docId || attachmentQuote.id}
