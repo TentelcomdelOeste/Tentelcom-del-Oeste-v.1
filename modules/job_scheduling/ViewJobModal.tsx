@@ -143,80 +143,84 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
         
         {/* INFORMACIÓN GENERAL */}
         <section>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="bg-blue-100 text-blue-700 p-1.5 rounded-lg">
-              <FiInfo className="text-sm" />
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-100 text-blue-700 p-1.5 rounded-lg">
+                <FiInfo className="text-sm" />
+              </div>
+              <h4 className="font-black text-blue-950 uppercase tracking-tight text-sm">Información General</h4>
             </div>
-            <h4 className="font-black text-blue-950 uppercase tracking-tight text-sm">Información General</h4>
+            <div className="flex items-center gap-2">
+              {renderStatus(trabajo.estado)}
+            </div>
           </div>
           
-          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 shadow-sm">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-sm">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
               
-              {/* Col 1 */}
-              <div className="space-y-4">
-                <div className="grid grid-cols-[30px_1fr] items-center">
-                  <FiFolder className="text-indigo-500 text-sm" />
-                  <div className="flex items-center">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Proyecto:</span>
-                    <span className="text-xs text-indigo-700 font-black uppercase truncate ml-2 text-left">
+              {/* Columna Principal (2 Tercios de ancho en Desktop) */}
+              <div className="lg:col-span-2 space-y-3">
+                {/* Proyecto */}
+                <div className="flex items-start gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+                  <FiFolder className="text-indigo-600 text-base flex-shrink-0 mt-0.5" />
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Proyecto</span>
+                    <span className="text-xs sm:text-sm text-indigo-900 font-black uppercase break-words leading-snug">
                       {trabajo.projectNumber || trabajo.projectName ? `${trabajo.projectNumber ? trabajo.projectNumber + ' — ' : ''}${trabajo.projectName || ''}` : 'Sin proyecto asociado'}
                     </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-[30px_1fr] items-center">
-                  <FiTag className="text-slate-400 text-sm" />
-                  <div className="flex items-center">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Título:</span>
-                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">{trabajo.titulo || 'No registrado'}</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[30px_1fr] items-center">
-                  <FiTag className="text-slate-400 text-sm" />
-                  <div className="flex items-center">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Tipo:</span>
-                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">{trabajo.tipo_trabajo || 'No registrado'}</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[30px_1fr] items-center">
-                  <FiCalendar className="text-slate-400 text-sm" />
-                  <div className="flex items-center">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Fecha:</span>
-                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">
-                      {formatJobDateRange(trabajo.fecha_inicio, trabajo.fecha_fin)}
+                {/* Título */}
+                <div className="flex items-start gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+                  <FiTag className="text-blue-600 text-base flex-shrink-0 mt-0.5" />
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Título del Trabajo</span>
+                    <span className="text-xs sm:text-sm text-slate-900 font-black uppercase break-words leading-snug">
+                      {trabajo.titulo || 'No registrado'}
                     </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-[30px_1fr] items-center">
-                  <FiClock className="text-slate-400 text-sm" />
-                  <div className="flex items-center">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider w-16 flex-shrink-0">Hora:</span>
-                    <span className="text-xs text-slate-900 font-black uppercase truncate ml-2 text-left">
-                      {isMultiday ? 'MÚLTIPLES HORARIOS POR DÍA' : `${trabajo.hora_inicio || 'N/D'} - ${trabajo.hora_fin || 'N/D'}`}
-                    </span>
+                {/* Detalles Secundarios (Tipo, Fecha, Hora) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  {/* Tipo */}
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 flex items-center gap-2.5">
+                    <FiTag className="text-slate-400 text-xs flex-shrink-0" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[9px] text-slate-400 font-black uppercase">Tipo</span>
+                      <span className="text-xs text-slate-900 font-bold uppercase truncate">{trabajo.tipo_trabajo || 'N/D'}</span>
+                    </div>
+                  </div>
+
+                  {/* Fecha */}
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 flex items-center gap-2.5">
+                    <FiCalendar className="text-slate-400 text-xs flex-shrink-0" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[9px] text-slate-400 font-black uppercase">Fecha</span>
+                      <span className="text-xs text-slate-900 font-bold uppercase truncate">
+                        {formatJobDateRange(trabajo.fecha_inicio, trabajo.fecha_fin)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Hora */}
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 flex items-center gap-2.5">
+                    <FiClock className="text-slate-400 text-xs flex-shrink-0" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[9px] text-slate-400 font-black uppercase">Hora</span>
+                      <span className="text-xs text-slate-900 font-bold uppercase truncate">
+                        {isMultiday ? 'MÚLTIPLES HORARIOS' : `${trabajo.hora_inicio || 'N/D'} - ${trabajo.hora_fin || 'N/D'}`}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Col 2 */}
-              <div className="space-y-4">
-                <div className="grid grid-cols-[30px_1fr] items-center">
-                  <FiClipboard className="text-slate-400 text-sm" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Estado:</span>
-                    <div className="flex justify-end ml-2">{renderStatus(trabajo.estado)}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Col 3: Descripción separada */}
-              <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col h-full shadow-sm">
+              {/* Columna Lateral: Descripción */}
+              <div className="bg-white border border-slate-200/90 rounded-xl p-4 flex flex-col h-full shadow-2xs">
                 <span className="text-[10px] font-black text-blue-900 uppercase tracking-widest mb-2 block">Descripción</span>
-                <p className="text-xs text-slate-700 font-medium leading-relaxed overflow-y-auto max-h-[120px] custom-scrollbar">
+                <p className="text-xs text-slate-700 font-medium leading-relaxed overflow-y-auto max-h-[180px] custom-scrollbar">
                   {trabajo.descripcion || 'Sin descripción registrada.'}
                 </p>
               </div>
