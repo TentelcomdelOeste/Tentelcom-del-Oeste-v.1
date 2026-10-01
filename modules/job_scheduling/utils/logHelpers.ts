@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { triggerFileDownload } from '../../../utils/fileUtils';
+import { triggerFileDownload, downloadFileSafely } from '../../../utils/fileUtils';
 
 export function isImageFile(name?: string, url?: string): boolean {
   if (!name && !url) return false;
@@ -33,22 +33,11 @@ export function isImageFile(name?: string, url?: string): boolean {
 
 export async function forceDownloadFile(url: string, fileName: string) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("Fetch failed");
-    const blob = await response.blob();
-    await triggerFileDownload(blob, fileName || "archivo");
+    await downloadFileSafely(url, fileName || "archivo");
   } catch (err) {
     console.error("forceDownloadFile error:", err);
     if (Capacitor.isNativePlatform()) {
         throw new Error(`No se pudo descargar el archivo de forma segura. Detalles: ${err}`);
-    } else {
-        // En entorno web, usar a.click() para el URL directo como último recurso
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName || "archivo";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
     }
   }
 }

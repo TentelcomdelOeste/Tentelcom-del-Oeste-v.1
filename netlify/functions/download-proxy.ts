@@ -100,15 +100,14 @@ export const handler = async (event: HandlerEvent): Promise<HandlerResponse> => 
     
     // Safety check: ensure response from storage is not HTML or text error
     if (
-      rawContentType.startsWith('text/') ||
       rawContentType.includes('html') ||
-      rawContentType.includes('json')
+      (rawContentType.includes('json') && !requestedName.toLowerCase().endsWith('.json'))
     ) {
       return {
         statusCode: 502,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          error: 'La respuesta del almacenamiento no contiene una imagen válida.'
+          error: 'La respuesta del almacenamiento no contiene un archivo válido.'
         })
       };
     }
@@ -125,9 +124,32 @@ export const handler = async (event: HandlerEvent): Promise<HandlerResponse> => 
     }
 
     // Determine clean content type
-    let finalContentType = rawContentType || 'image/jpeg';
-    if (!finalContentType.startsWith('image/')) {
+    let finalContentType = rawContentType || 'application/octet-stream';
+    const lowerName = requestedName.toLowerCase();
+    if (lowerName.endsWith('.pdf') || rawContentType.includes('pdf')) {
+      finalContentType = 'application/pdf';
+    } else if (lowerName.endsWith('.png') || rawContentType.includes('png')) {
+      finalContentType = 'image/png';
+    } else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || rawContentType.includes('jpeg')) {
       finalContentType = 'image/jpeg';
+    } else if (lowerName.endsWith('.webp') || rawContentType.includes('webp')) {
+      finalContentType = 'image/webp';
+    } else if (lowerName.endsWith('.gif') || rawContentType.includes('gif')) {
+      finalContentType = 'image/gif';
+    } else if (lowerName.endsWith('.svg') || rawContentType.includes('svg')) {
+      finalContentType = 'image/svg+xml';
+    } else if (lowerName.endsWith('.xlsx')) {
+      finalContentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    } else if (lowerName.endsWith('.xls')) {
+      finalContentType = 'application/vnd.ms-excel';
+    } else if (lowerName.endsWith('.docx')) {
+      finalContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    } else if (lowerName.endsWith('.doc')) {
+      finalContentType = 'application/msword';
+    } else if (lowerName.endsWith('.csv')) {
+      finalContentType = 'text/csv';
+    } else if (lowerName.endsWith('.txt')) {
+      finalContentType = 'text/plain';
     }
 
     // Clean filename for header

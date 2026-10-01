@@ -214,7 +214,9 @@ async function startServer() {
   app.get("/api/download-proxy", async (req, res) => {
     try {
       const fileUrl = req.query.url as string;
-      const requestedName = (req.query.filename as string) || "imagen_original.jpg";
+      const requestedName = (req.query.filename as string) || "archivo_descargado";
+
+      console.log(`[download-proxy] GET "${requestedName}" - URL: ${fileUrl?.substring(0, 80)}...`);
 
       if (!fileUrl) {
         res.status(400).json({ error: "URL is required" });
@@ -252,12 +254,12 @@ async function startServer() {
       }
 
       const rawContentType = (response.headers.get("content-type") || "").toLowerCase();
+      // Solo rechazar si la respuesta es una página de error HTML o JSON de error inesperado
       if (
-        rawContentType.startsWith("text/") ||
         rawContentType.includes("html") ||
-        rawContentType.includes("json")
+        (rawContentType.includes("json") && !requestedName.toLowerCase().endsWith(".json"))
       ) {
-        res.status(502).json({ error: "La respuesta del almacenamiento no contiene una imagen válida." });
+        res.status(502).json({ error: "La respuesta del almacenamiento no contiene un archivo válido." });
         return;
       }
 
@@ -269,22 +271,59 @@ async function startServer() {
         return;
       }
 
-      let finalContentType = rawContentType || "image/jpeg";
-      if (!finalContentType.startsWith("image/")) {
+      // Determinar Content-Type adecuado según el archivo
+      let finalContentType = rawContentType || "application/octet-stream";
+      const lowerName = requestedName.toLowerCase();
+      if (lowerName.endsWith(".pdf") || rawContentType.includes("pdf")) {
+        finalContentType = "application/pdf";
+      } else if (lowerName.endsWith(".png") || rawContentType.includes("png")) {
+        finalContentType = "image/png";
+      } else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || rawContentType.includes("jpeg")) {
         finalContentType = "image/jpeg";
+      } else if (lowerName.endsWith(".webp") || rawContentType.includes("webp")) {
+        finalContentType = "image/webp";
+      } else if (lowerName.endsWith(".gif") || rawContentType.includes("gif")) {
+        finalContentType = "image/gif";
+      } else if (lowerName.endsWith(".svg") || rawContentType.includes("svg")) {
+        finalContentType = "image/svg+xml";
+      } else if (lowerName.endsWith(".xlsx")) {
+        finalContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      } else if (lowerName.endsWith(".xls")) {
+        finalContentType = "application/vnd.ms-excel";
+      } else if (lowerName.endsWith(".docx")) {
+        finalContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      } else if (lowerName.endsWith(".doc")) {
+        finalContentType = "application/msword";
+      } else if (lowerName.endsWith(".csv")) {
+        finalContentType = "text/csv";
+      } else if (lowerName.endsWith(".txt")) {
+        finalContentType = "text/plain";
       }
+
+      const safeFileName = requestedName.replace(/["\r\n\\]/g, "_");
 
       res.setHeader("Content-Type", finalContentType);
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(requestedName)}"`
+        `attachment; filename="${encodeURIComponent(safeFileName)}"`
       );
       res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.send(buffer);
     } catch (error: any) {
       console.error("Error in download-proxy:", error);
       res.status(500).json({ error: error?.message || "Error proxying download" });
     }
+  });
+
+  app.options("/api/download-proxy", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
   });
 
   app.post("/api/openai", async (req, res) => {

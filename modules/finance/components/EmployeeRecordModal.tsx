@@ -9,7 +9,7 @@ import { generatePaystubPDF } from '../../../utils/pdfGenerator';
 import { useEmployeeHistory } from '../payroll/services/useEmployeeHistory';
 import { useUserContext } from '../../../contexts/UserContext';
 import { isAdmin } from '../../../utils/permissions';
-import { triggerFileDownload } from '../../../utils/fileUtils';
+import { triggerFileDownload, downloadFileSafely } from '../../../utils/fileUtils';
 
 interface EmployeeRecordModalProps {
   show: boolean;
@@ -356,21 +356,10 @@ export const EmployeeRecordModal: React.FC<EmployeeRecordModalProps> = ({
                                                     icon={<FiUploadCloud />} 
                                                     onClick={async () => {
                                                         try {
-                                                            const response = await fetch(file.downloadUrl);
-                                                            const blob = await response.blob();
-                                                            await triggerFileDownload(blob, file.name);
-                                                        } catch(e) {
+                                                            await downloadFileSafely(file.downloadUrl, file.name, file.storagePath);
+                                                        } catch(e: any) {
                                                             console.error("Error downloading file:", e);
-                                                            if (typeof window !== 'undefined' && !(window as any).Capacitor?.isNativePlatform()) {
-                                                                const link = document.createElement('a');
-                                                                link.href = file.downloadUrl;
-                                                                link.download = file.name;
-                                                                document.body.appendChild(link);
-                                                                link.click();
-                                                                document.body.removeChild(link);
-                                                            } else {
-                                                                alert(`No se pudo descargar el archivo: ${e}`);
-                                                            }
+                                                            alert(`No se pudo descargar el archivo: ${e?.message || e}`);
                                                         }
                                                     }} 
                                                     variant="secondary" 

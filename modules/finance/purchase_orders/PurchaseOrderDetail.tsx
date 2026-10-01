@@ -12,7 +12,7 @@ import { useAuditPermanence } from '@/hooks/useAuditPermanence';
 import { EditApplicationModal } from './EditApplicationModal';
 import { FiX, FiDownload, FiFolder, FiFileText } from "react-icons/fi";
 import { FaFileInvoice } from "react-icons/fa";
-import { triggerFileDownload } from '../../../utils/fileUtils';
+import { triggerFileDownload, downloadFileSafely } from '../../../utils/fileUtils';
 
 // Fix: Added missing interface for PurchaseOrderDetail
 interface PurchaseOrderDetailProps {
@@ -165,21 +165,10 @@ export const PurchaseOrderDetail: React.FC<PurchaseOrderDetailProps> = ({
                       <button 
                         onClick={async () => {
                             try {
-                                const response = await fetch(file.url);
-                                const blob = await response.blob();
-                                await triggerFileDownload(blob, file.name);
-                            } catch(e) {
+                                await downloadFileSafely(file.url, file.name, file.path);
+                            } catch(e: any) {
                                 console.error("Error downloading file:", e);
-                                if (typeof window !== 'undefined' && !(window as any).Capacitor?.isNativePlatform()) {
-                                    const link = document.createElement('a');
-                                    link.href = file.url;
-                                    link.download = file.name;
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
-                                } else {
-                                    alert(`No se pudo descargar el archivo: ${e}`);
-                                }
+                                alert(`No se pudo descargar el archivo: ${e?.message || e}`);
                             }
                         }}
                         className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 hover:text-blue-600 shadow-sm border border-slate-100 transition-all"

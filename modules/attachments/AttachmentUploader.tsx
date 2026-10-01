@@ -4,7 +4,8 @@ import { useAttachments } from './useAttachments';
 import { Attachment, AttachmentType } from './attachment.types';
 import { ConfirmModal, IconButton, ActionButton } from '../../design-system';
 import { FiFileText, FiLoader, FiDownload, FiTrash2, FiPlus, FiX, FiShoppingCart, FiFile } from "react-icons/fi";
-import { triggerFileDownload } from '../../utils/fileUtils';
+import { downloadFileSafely } from '../../utils/fileUtils';
+import { toast } from 'react-hot-toast';
 
 interface AttachmentUploaderProps {
   entityType: string;
@@ -15,61 +16,106 @@ interface AttachmentUploaderProps {
   isReadOnly?: boolean;
 }
 
-const AttachmentRow: React.FC<{ attachment: Attachment; onDelete: () => void; isLoading: boolean; isReadOnly?: boolean }> = ({ attachment, onDelete, isLoading, isReadOnly }) => (
-  <div className="group flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100/80 hover:bg-slate-50/50 transition-all duration-200">
-    <div className="flex items-center gap-3 overflow-hidden">
-      <FiFileText className="text-slate-400 flex-none"  />
-      <div className="flex flex-col overflow-hidden">
-        <span className="text-xs font-bold text-blue-950 truncate" title={attachment.name}>{attachment.name}</span>
-        <span className="text-[9px] font-semibold text-slate-400">{new Date(attachment.createdAt).toLocaleDateString()}</span>
-      </div>
-    </div>
-    <div className="flex items-center gap-1.5 flex-none pl-2">
-      {isLoading ? (
-        <div className="w-5 h-5 flex items-center justify-center">
-            <FiLoader className="text-slate-400 animate-spin"  />
+const AttachmentRow: React.FC<{ 
+  attachment: Attachment; 
+  onDelete: () => void; 
+  isLoading: boolean; 
+  isReadOnly?: boolean 
+}> = ({ attachment, onDelete, isLoading, isReadOnly }) => {
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      // 1. Verificar si existe copia binaria intacta en IndexedDB de este navegador
+      try {
+        const { getBlob } = await import('../../services/offlineMediaStore');
+        const { isValidPdfBlob, triggerFileDownload } = await import('../../utils/fileUtils');
+        const keys = [attachment.id, attachment.path, attachment.name].filter(Boolean) as string[];
+        for (const k of keys) {
+          const cachedBlob = await getBlob(k);
+          if (cachedBlob && cachedBlob.size > 100) {
+            if (attachment.name.toLowerCase().endsWith('.pdf')) {
+              const valid = await isValidPdfBlob(cachedBlob);
+              if (valid) {
+                await triggerFileDownload(cachedBlob, attachment.name);
+                return;
+              }
+            } else {
+              await triggerFileDownload(cachedBlob, attachment.name);
+              return;
+            }
+          }
+        }
+      } catch (idbErr) {
+        console.warn("Verificación local en IndexedDB omitida:", idbErr);
+      }
+
+      // 2. Probar dataUrl si existe y es válido
+      if (attachment.dataUrl) {
+        try {
+          const { dataUrlToBlob, isValidPdfBlob, triggerFileDownload } = await import('../../utils/fileUtils');
+          const blob = dataUrlToBlob(attachment.dataUrl);
+          const isPdf = attachment.name.toLowerCase().endsWith('.pdf');
+          if (!isPdf || (await isValidPdfBlob(blob))) {
+            await triggerFileDownload(blob, attachment.name);
+            return;
+          }
+        } catch (dErr) {
+          console.warn("dataUrl local no válido, reintentando con almacenamiento en la nube:", dErr);
+        }
+      }
+
+      // 3. Descarga remota desde Firebase Storage
+      const remoteUrl = attachment.url || attachment.downloadURL || attachment.downloadUrl;
+      await downloadFileSafely(remoteUrl, attachment.name, attachment.path);
+    } catch (e: any) {
+      console.error("Error downloading attachment:", e);
+      alert(e?.message || 'Error al descargar adjunto.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  return (
+    <div className="group flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100/80 hover:bg-slate-50/50 transition-all duration-200">
+      <div className="flex items-center gap-3 overflow-hidden">
+        <FiFileText className="text-slate-400 flex-none" />
+        <div className="flex flex-col overflow-hidden">
+          <span className="text-xs font-bold text-blue-950 truncate" title={attachment.name}>{attachment.name}</span>
+          <span className="text-[9px] font-semibold text-slate-400">{new Date(attachment.createdAt).toLocaleDateString()}</span>
         </div>
-      ) : (
-        <>
-          <IconButton
-            icon={<FiDownload />}
-            onClick={async () => {
-                try {
-                    const response = await fetch(attachment.url);
-                    const blob = await response.blob();
-                    await triggerFileDownload(blob, attachment.name);
-                } catch(e) {
-                    console.error("Error downloading attachment:", e);
-                    if (typeof window !== 'undefined' && !(window as any).Capacitor?.isNativePlatform()) {
-                        const link = document.createElement('a');
-                        link.href = attachment.url;
-                        link.download = attachment.name;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    } else {
-                        alert(`Error descargando adjunto: ${e}`);
-                    }
-                }
-            }}
-            variant="secondary"
-            title="Descargar"
-            className="w-8 h-8 flex items-center justify-center transition-colors rounded-lg"
-          />
-          {!isReadOnly && (
-            <IconButton 
-              icon={<FiTrash2 />} 
-              onClick={onDelete} 
-              variant="danger" 
-              title="Eliminar"
+      </div>
+      <div className="flex items-center gap-1.5 flex-none pl-2">
+        {isLoading || isDownloading ? (
+          <div className="w-8 h-8 flex items-center justify-center">
+            <FiLoader className="text-blue-600 animate-spin" />
+          </div>
+        ) : (
+          <>
+            <IconButton
+              icon={<FiDownload />}
+              onClick={handleDownload}
+              variant="secondary"
+              title="Descargar"
               className="w-8 h-8 flex items-center justify-center transition-colors rounded-lg"
             />
-          )}
-        </>
-      )}
+            {!isReadOnly && (
+              <IconButton 
+                icon={<FiTrash2 />} 
+                onClick={onDelete} 
+                variant="danger" 
+                title="Eliminar"
+                className="w-8 h-8 flex items-center justify-center transition-colors rounded-lg"
+              />
+            )}
+          </>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const UploadSection: React.FC<{ 
   title: string; 

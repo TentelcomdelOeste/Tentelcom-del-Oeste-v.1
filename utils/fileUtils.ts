@@ -44,3 +44,185 @@ export const triggerFileDownload = async (blob: Blob, fileName: string) => {
     }, 10000);
 };
 
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const parts = dataUrl.split(',');
+  if (parts.length < 2) {
+    throw new Error('Formato de Data URL inválido');
+  }
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'application/pdf';
+  const byteString = atob(parts[1]);
+  const n = byteString.length;
+  const u8arr = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    u8arr[i] = byteString.charCodeAt(i);
+  }
+  return new Blob([u8arr], { type: mimeType });
+}
+
+export async function isValidPdfBlob(blob: Blob): Promise<boolean> {
+  if (!blob || blob.size < 50) return false;
+  try {
+    const slice = blob.slice(0, 1024);
+    const text = await slice.text();
+    if (text.startsWith('mock-pdf-content') || text.includes('<!DOCTYPE') || text.includes('<html')) {
+      return false;
+    }
+    return text.includes('%PDF');
+  } catch {
+    return false;
+  }
+}
+
+export class FileCorruptedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FileCorruptedError';
+  }
+}
+
+/**
+ * Descarga cualquier archivo (PDF, imagen, documentos) de forma segura y transparente,
+ * evitando bloqueos de CORS de Firebase Storage a través del proxy del servidor o descarga directa.
+ */
+export const downloadFileSafely = async (
+  rawUrl: string | undefined | null,
+  fileName: string,
+  storagePath?: string
+): Promise<void> => {
+  let fileUrl = rawUrl?.trim() || '';
+
+  // 1. Si la URL está vacía pero tenemos storagePath, obtener la URL fresca de Firebase Storage
+  if (!fileUrl && storagePath) {
+    try {
+      const { ref, getDownloadURL } = await import('firebase/storage');
+      const { storage } = await import('../firebase');
+      const storageRef = ref(storage, storagePath);
+      fileUrl = await getDownloadURL(storageRef);
+    } catch (err) {
+      console.warn('[downloadFileSafely] No se pudo resolver getDownloadURL desde storagePath:', err);
+    }
+  }
+
+  if (!fileUrl) {
+    throw new Error('No se encontró una URL de descarga válida. Es posible que el archivo aún se esté subiendo o sincronizando.');
+  }
+
+  // 2. Si estamos en plataforma nativa (Android / iOS con Capacitor)
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const exists = await pdfFileEngine.fileExists(fileName);
+      if (exists) {
+        await pdfFileEngine.openPdf(fileName);
+        return;
+      }
+    } catch (checkErr) {
+      console.warn('[downloadFileSafely] Verificación de archivo local nativo:', checkErr);
+    }
+  }
+
+  // 3. Si es una URL de datos (data:), decodificar sincrónicamente a Blob
+  if (fileUrl.startsWith('data:')) {
+    try {
+      const blob = dataUrlToBlob(fileUrl);
+      const isPdf = fileName.toLowerCase().endsWith('.pdf');
+      if (!isPdf || (await isValidPdfBlob(blob))) {
+        await triggerFileDownload(blob, fileName);
+        return;
+      }
+      console.warn('[downloadFileSafely] Data URL local incompleto o corrupto, intentando desde Firebase Storage...');
+    } catch (dataErr) {
+      console.warn('[downloadFileSafely] Falló decodificación de data URL, intentando desde Firebase Storage:', dataErr);
+    }
+  }
+
+  // Si es un Blob URL del navegador (blob:), descargar directamente
+  if (fileUrl.startsWith('blob:')) {
+    try {
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = fileName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    } catch (blobErr) {
+      console.error('[downloadFileSafely] Error descargando blob URL:', blobErr);
+      throw blobErr;
+    }
+  }
+
+  // 4. Intentar descarga a través del proxy del servidor (bypasea CORS sin exponer credenciales)
+  const candidateProxyEndpoints = [
+    `/api/download-proxy?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(fileName)}`
+  ];
+
+  let proxySuccess = false;
+
+  for (const proxyUrl of candidateProxyEndpoints) {
+    try {
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        throw new Error(`Proxy HTTP ${response.status}`);
+      }
+
+      const contentType = (response.headers.get('content-type') || '').toLowerCase();
+      // Si el servidor devolvió HTML (fallback SPA del frontend), ignorar
+      if (contentType.includes('html')) {
+        throw new Error('El servidor devolvió contenido HTML en lugar del archivo binario.');
+      }
+
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error('Archivo recibido vacío');
+      }
+
+      // Verificación estricta de integridad si es PDF
+      if (fileName.toLowerCase().endsWith('.pdf')) {
+        const isValid = await isValidPdfBlob(blob);
+        if (!isValid) {
+          throw new FileCorruptedError('Este archivo en el servidor se guardó de forma incompleta antes de la actualización. Por favor, elimínelo pulsando el icono rojo de la papelera 🗑️ y vuelva a subir el documento original con "+ ADJUNTAR".');
+        }
+      }
+
+      await triggerFileDownload(blob, fileName);
+      proxySuccess = true;
+      return;
+    } catch (proxyErr) {
+      if (proxyErr instanceof FileCorruptedError) {
+        throw proxyErr;
+      }
+      console.warn(`[downloadFileSafely] Falló proxy ${proxyUrl}:`, proxyErr);
+    }
+  }
+
+  // 5. Fallback: Intento de fetch directo (funciona si CORS está habilitado)
+  if (!proxySuccess) {
+    try {
+      const directResponse = await fetch(fileUrl);
+      if (directResponse.ok) {
+        const directBlob = await directResponse.blob();
+        if (directBlob.size > 0) {
+          if (fileName.toLowerCase().endsWith('.pdf')) {
+            const isValid = await isValidPdfBlob(directBlob);
+            if (!isValid) {
+              throw new FileCorruptedError('Este archivo en el servidor se guardó de forma incompleta antes de la actualización. Por favor, elimínelo pulsando el icono rojo de la papelera 🗑️ y vuelva a subir el documento original con "+ ADJUNTAR".');
+            }
+          }
+          await triggerFileDownload(directBlob, fileName);
+          return;
+        }
+      }
+    } catch (directFetchErr) {
+      if (directFetchErr instanceof FileCorruptedError) {
+        throw directFetchErr;
+      }
+      console.warn('[downloadFileSafely] Fetch directo bloqueado:', directFetchErr);
+    }
+  }
+
+  // Si falló tanto el proxy como la lectura directa, notificar al usuario en vez de descargar un enlace roto
+  throw new Error('No se pudo descargar el archivo. Por favor verifique su conexión o elimine y vuelva a adjuntar el documento.');
+};
+

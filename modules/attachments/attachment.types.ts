@@ -12,4 +12,8 @@ export interface Attachment {
   type: AttachmentType; // 'OC' o 'Factura'.
   createdAt: string; // Fecha de subida en formato ISO.
   path: string; // Ruta en Firebase Storage para poder eliminarlo.
+  downloadURL?: string;
+  downloadUrl?: string;
+  dataUrl?: string;
+  size?: number;
 }
