@@ -1,19 +1,35 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '../../utils/types';
-import { ActionButton, useConfirm } from '../../design-system';
+import { ActionButton, useConfirm, Select } from '../../design-system';
 import { ModulePage } from '../../components/ui/ModulePage';
 import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
 import { VehicleLog, extraerUnidad, extraerPlaca, VehicleExpense } from '../../types/vehicle.types';
 import { db } from '../../firebase';
 import { useAuth } from '../../hooks/useAuth';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { AnalysisPopoverProvider } from './components/AnalysisPopoverContext';
 import { FiEye } from 'react-icons/fi';
 import { FuelConsumptionPopover } from './components/FuelConsumptionPopover';
 import { TotalCostPopover } from './components/TotalCostPopover';
 import { useLocalCollection } from '../../hooks/useLocalCollection';
 import { localDocStore } from '../../core/offline/localDocStore';
+import { startOfWeek, endOfWeek, format } from 'date-fns';
+
+const MONTH_NAMES = [
+  { value: "1", label: "Enero" },
+  { value: "2", label: "Febrero" },
+  { value: "3", label: "Marzo" },
+  { value: "4", label: "Abril" },
+  { value: "5", label: "Mayo" },
+  { value: "6", label: "Junio" },
+  { value: "7", label: "Julio" },
+  { value: "8", label: "Agosto" },
+  { value: "9", label: "Septiembre" },
+  { value: "10", label: "Octubre" },
+  { value: "11", label: "Noviembre" },
+  { value: "12", label: "Diciembre" },
+];
 
 interface VehicleAnalysisProps {
     currentUser: User;
@@ -24,7 +40,8 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
     const navigate = useNavigate();
     const confirm = useConfirm();
     const [isLoading, setIsLoading] = useState(true);
-    const [dateRange, setDateRange] = useState("todos");
+    const [filterYear, setFilterYear] = useState<number>(() => new Date().getFullYear());
+    const [filterMonth, setFilterMonth] = useState<string>(() => String(new Date().getMonth() + 1));
     const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
     const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
     const localDocuments = useLocalCollection("bitacora_vehiculos");
@@ -38,20 +55,9 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
         return localExpenses.map(d => ({ ...d.data, id: d.docId } as VehicleExpense));
     }, [localExpenses]);
 
-    const getDateRange = (range: string) => {
-        const now = new Date();
-        const startDate = new Date();
-        if (range === 'semana') startDate.setDate(now.getDate() - 7);
-        else if (range === 'mes') startDate.setMonth(now.getMonth() - 1);
-        else if (range === 'año') startDate.setFullYear(now.getFullYear() - 1);
-        else return { startDate: new Date(2000, 0, 1), endDate: new Date(3000, 0, 1) };
-        return { startDate, endDate: now };
-    };
-
     useEffect(() => {
         if (!authReady || !currentUser) return;
         
-        // Evitamos parpadeo: solo cargando si no hay datos en el memo derivado de localDocuments
         if (allLogs.length === 0) {
             setIsLoading(true);
         }
@@ -66,7 +72,6 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                 .map(doc => ({ ...doc.data(), id: doc.id } as VehicleLog));
 
             setIsLoading(false);
-            // Sync silent
             await localDocStore.saveLocalDocsBatch("bitacora_vehiculos", data);
         }, (error) => {
             console.error("Firestore bitacora_vehiculos listener error:", error);
@@ -92,37 +97,45 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
     }, [authReady, currentUser]);
 
     const logs = useMemo(() => {
-        const { startDate, endDate } = getDateRange(dateRange);
-        const startStr = startDate.toISOString().split('T')[0];
-        const endStr = endDate.toISOString().split('T')[0];
-
         return allLogs.filter(log => {
             if (log.isDeleted) return false;
             const logDate = log.fecha || "";
-            if (logDate < startStr || logDate > endStr) return false;
+            if (!logDate) return false;
+
+            if (filterYear !== 0) {
+                if (!logDate.startsWith(String(filterYear))) return false;
+                if (filterMonth !== "all" && !filterMonth.startsWith("week:")) {
+                    const m = filterMonth.padStart(2, "0");
+                    if (logDate.substring(5, 7) !== m) return false;
+                }
+            }
 
             const unidad = log.unidad || extraerUnidad(log.unidadId);
             if (selectedUnit && selectedUnit !== "all" && unidad !== selectedUnit) return false;
             if (selectedDriver && selectedDriver !== "all" && log.conductorId !== selectedDriver) return false;
             return true;
         });
-    }, [allLogs, selectedUnit, selectedDriver, dateRange]);
+    }, [allLogs, selectedUnit, selectedDriver, filterYear, filterMonth]);
 
     const filteredExpenses = useMemo(() => {
-        const { startDate, endDate } = getDateRange(dateRange);
-        const startStr = startDate.toISOString().split('T')[0];
-        const endStr = endDate.toISOString().split('T')[0];
-
         return allExpenses.filter(exp => {
             if (exp.isDeleted) return false;
             const expDate = exp.fecha || "";
-            if (expDate < startStr || expDate > endStr) return false;
+            if (!expDate) return false;
+            
+            if (filterYear !== 0) {
+                if (!expDate.startsWith(String(filterYear))) return false;
+                if (filterMonth !== "all" && !filterMonth.startsWith("week:")) {
+                    const m = filterMonth.padStart(2, "0");
+                    if (expDate.substring(5, 7) !== m) return false;
+                }
+            }
             
             const expUnidad = exp.unidad;
             if (selectedUnit && selectedUnit !== "all" && expUnidad !== selectedUnit) return false;
             return true;
         });
-    }, [allExpenses, selectedUnit, dateRange]);
+    }, [allExpenses, selectedUnit, filterYear, filterMonth]);
 
     const litrosAGalones = (litros: number) => litros / 3.785;
 
@@ -175,7 +188,7 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
         const totalGalones = litrosAGalones(totalLitros);
         const consumoPromedio = totalGalones > 0 ? totalKm / totalGalones : 0;
         const costoPorKm = totalKm > 0 ? costoTotal / totalKm : 0;
-
+        
         return { totalKm, totalLitros, costoTotal, consumoPromedio, costoPorKm, totalEventos };
     }, [logs, filteredExpenses]);
 
@@ -200,6 +213,29 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
         });
         return Array.from(vMap.entries()).map(([id, name]) => ({ id, name }));
     }, [allLogs]);
+
+    const availableYears = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        const years = [currentYear];
+        allLogs.forEach((log) => {
+            const dateStr = log.fecha || log.createdAt || "";
+            if (!dateStr) return;
+            const y = parseInt(dateStr.split("-")[0]);
+            if (y && !isNaN(y) && !years.includes(y)) years.push(y);
+        });
+        return Array.from(new Set(years)).sort((a, b) => b - a);
+    }, [allLogs]);
+
+    const yearOptions = useMemo(() => [
+        { label: "Todos los años", value: 0 },
+        ...availableYears.map((y) => ({ label: String(y), value: y })),
+    ], [availableYears]);
+
+    const monthOptions = useMemo(() => {
+        const options = [{ label: "Todos los meses", value: "all" }];
+        MONTH_NAMES.forEach(m => options.push({ label: m.label.toUpperCase(), value: m.value }));
+        return options;
+    }, []);
 
     const groupedByUnit = useMemo(() => {
         const groups: Record<string, any> = {};
@@ -299,7 +335,6 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
     }, [logs, filteredExpenses]);
 
 
-
     if (!currentUser) {
         return <div className="p-4 bg-yellow-100 text-yellow-800">Cargando datos de usuario...</div>;
     }
@@ -316,51 +351,44 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                 subtitle="Análisis de rendimiento, consumos y eventos de la flota vehicular."
             >
                 <ModuleToolbar>
-                    <div className="grid grid-cols-2 md:grid-cols-1 lg:flex lg:flex-row items-end gap-2 w-full">
-                        <div className="w-full lg:flex-1 lg:min-w-[140px]">
-                            <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1 ml-1">Período</label>
-                            <select value={dateRange} onChange={e => setDateRange(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-bold outline-none w-full cursor-pointer h-[34px]">
-                                <option value="semana">Últimos 7 días</option>
-                                <option value="mes">Último mes</option>
-                                <option value="año">Último año</option>
-                                <option value="todos">Todos</option>
-                            </select>
+                    <div className="grid grid-cols-2 md:grid-cols-4 items-end gap-2 w-full">
+                        <div className="w-full">
+                            <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1 ml-1">Año</label>
+                            <Select value={filterYear} onChange={setFilterYear} options={yearOptions} isSearchable={false} />
                         </div>
-                        <div className="w-full lg:flex-1 lg:min-w-[140px]">
+                        <div className="w-full">
+                            <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1 ml-1">Mes</label>
+                            <Select value={filterMonth} onChange={setFilterMonth} options={monthOptions} isSearchable={false} />
+                        </div>
+                        <div className="w-full">
                             <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1 ml-1">Unidad</label>
                             <select value={selectedUnit || ''} onChange={e => setSelectedUnit(e.target.value || null)} className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-xs font-bold outline-none h-[34px]">
                                 <option value="">Todas las unidades</option>
                                 {uniqueVehicles.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                         </div>
-                        <div className="w-full lg:flex-1 lg:min-w-[140px]">
+                        <div className="w-full">
                             <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1 ml-1">Conductor</label>
                             <select value={selectedDriver || ''} onChange={e => setSelectedDriver(e.target.value || null)} className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-xs font-bold outline-none h-[34px]">
                                 <option value="">Todos los conductores</option>
                                 {uniqueDrivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                             </select>
                         </div>
-                        <div className="w-full lg:w-auto lg:ml-auto pb-[1px]">
-                            <label className="block lg:hidden text-[9px] font-bold text-transparent mb-1 ml-1 select-none">Exportar</label>
-                            <ActionButton
-                                label={
-                                    <>
-                                        <span className="hidden sm:inline">Exportar Reporte</span>
-                                        <span className="sm:hidden">Exportar</span>
-                                    </>
-                                }
-                                variant="secondary"
-                                className="w-full md:w-auto !h-[34px] !min-h-0 flex items-center justify-center"
-                                onClick={async () => {
-                                    await confirm({
-                                        title: 'Exportar Reporte',
-                                        description: '¿Desea generar el reporte de análisis de flota para el período seleccionado?',
-                                        confirmLabel: 'EXPORTAR',
-                                        variant: 'primary'
-                                    });
-                                }}
-                            />
-                        </div>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
+                        <ActionButton
+                            label="Exportar Reporte"
+                            variant="secondary"
+                            className="!h-[34px] !min-h-0 flex items-center justify-center"
+                            onClick={async () => {
+                                await confirm({
+                                    title: 'Exportar Reporte',
+                                    description: '¿Desea generar el reporte de análisis de flota para el período seleccionado?',
+                                    confirmLabel: 'EXPORTAR',
+                                    variant: 'primary'
+                                });
+                            }}
+                        />
                     </div>
                 </ModuleToolbar>
 
@@ -368,7 +396,6 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                     <div className="flex justify-center items-center p-10">Cargando datos...</div>
                 ) : (
                     <div className="space-y-4">
-                        {/* LISTA DE RESUMEN POR UNIDAD */}
                         <div className="flex flex-col gap-4 mt-2">
                             <h3 className="text-sm font-bold text-slate-700 px-1">Rendimiento por Unidad</h3>
                             {groupedByUnit.length === 0 ? (

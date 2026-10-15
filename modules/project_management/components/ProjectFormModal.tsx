@@ -133,6 +133,26 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
         ]);
         setApprovedQuotes(quotes);
         setAllProjects(projects);
+
+        // Si se está editando un proyecto con cotización asociada, sincronizar y asegurar el cliente real de la cotización
+        if (initialData && (initialData.quoteId || initialData.quoteCommercialId || initialData.origin === 'Cotización')) {
+          const linkedQuote = quotes.find(q =>
+            (initialData.quoteId && (q.docId === initialData.quoteId || String(q.id) === initialData.quoteId)) ||
+            (initialData.quoteCommercialId && (String(q.id) === String(initialData.quoteCommercialId) || String(q.id).padStart(3, '0') === String(initialData.quoteCommercialId).padStart(3, '0')))
+          );
+          if (linkedQuote && linkedQuote.empresa && linkedQuote.empresa.trim()) {
+            const trueCompanyName = linkedQuote.empresa.trim();
+            if (!initialData.clientName || initialData.clientName.trim().toUpperCase() !== trueCompanyName.toUpperCase()) {
+              setClientName(trueCompanyName);
+              const matched = savedClients.find(c => c.empresa && c.empresa.trim().toUpperCase() === trueCompanyName.toUpperCase());
+              if (matched) {
+                setClientId(matched.id);
+              } else {
+                setClientId('');
+              }
+            }
+          }
+        }
       } catch (error) {
         console.error('Error loading approved quotes:', error);
         setQuotesError('No fue posible cargar las cotizaciones aprobadas.');
@@ -143,7 +163,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
     };
 
     loadFormOptions();
-  }, [show, initialData]);
+  }, [show, initialData, savedClients]);
 
   // Auto-save form draft to localStorage whenever active fields change
   useEffect(() => {
@@ -176,23 +196,39 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
     );
 
   const findClientForQuote = (quote: Quote): Client | null => {
-    if (quote.clientId) {
-      const byId = savedClients.find(client => client.id === quote.clientId);
-      if (byId) return byId;
+    const quoteEmpresa = quote.empresa?.trim();
+
+    // 1. Prioridad máxima y absoluta: Coincidencia por Nombre de Empresa (la fuente de verdad de la cotización)
+    if (quoteEmpresa) {
+      const quoteEmpresaNorm = quoteEmpresa.toLowerCase();
+      const byCompany = savedClients.find(
+        client => client.empresa && client.empresa.trim().toLowerCase() === quoteEmpresaNorm
+      );
+      if (byCompany) return byCompany;
     }
 
-    if (quote.codigoCliente) {
+    // 2. Coincidencia por clientId sólo si coincide o es compatible con la empresa de la cotización
+    if (quote.clientId) {
+      const byId = savedClients.find(client => client.id === quote.clientId);
+      if (byId) {
+        if (!quoteEmpresa) return byId;
+        const clientEmpresaNorm = byId.empresa?.trim().toLowerCase();
+        const quoteEmpresaNorm = quoteEmpresa.toLowerCase();
+        if (clientEmpresaNorm === quoteEmpresaNorm) return byId;
+      }
+    }
+
+    // 3. Coincidencia por codigoCliente sólo si coincide con la empresa de la cotización
+    if (quote.codigoCliente && quote.codigoCliente.trim()) {
       const byCode = savedClients.find(
         client => client.codigoCliente?.trim().toUpperCase() === quote.codigoCliente?.trim().toUpperCase()
       );
-      if (byCode) return byCode;
-    }
-
-    if (quote.empresa) {
-      const byCompany = savedClients.find(
-        client => client.empresa.trim().toLowerCase() === quote.empresa.trim().toLowerCase()
-      );
-      if (byCompany) return byCompany;
+      if (byCode) {
+        if (!quoteEmpresa) return byCode;
+        const clientEmpresaNorm = byCode.empresa?.trim().toLowerCase();
+        const quoteEmpresaNorm = quoteEmpresa.toLowerCase();
+        if (clientEmpresaNorm === quoteEmpresaNorm) return byCode;
+      }
     }
 
     return null;
@@ -217,8 +253,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       setClientId(client.id);
       setClientName(client.empresa);
     } else {
-      setClientId(quote.clientId || quote.codigoCliente || 'CLIENT_QUOTE');
-      setClientName(quote.empresa || 'Cliente de Cotización');
+      setClientId('');
+      setClientName(quote.empresa ? quote.empresa.trim() : 'Cliente de Cotización');
     }
   };
 
@@ -239,16 +275,9 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       return;
     }
 
-    if (originSelection === 'quote') {
-      if (!clientId.trim() || !clientName.trim()) {
-        setErrorMsg('Debe seleccionar un cliente del directorio.');
-        return;
-      }
-    } else {
-      if (!clientName.trim()) {
-        setErrorMsg('Debe ingresar un cliente.');
-        return;
-      }
+    if (!clientName.trim()) {
+      setErrorMsg('El cliente asociado es obligatorio.');
+      return;
     }
 
     if (!startDate) {
@@ -261,26 +290,26 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({ show, onClos
       let finalClientId = clientId.trim();
       let finalClientName = clientName.trim().toUpperCase();
 
-      if (originSelection === 'manual') {
-        const existingClient = savedClients.find(
-          c => c.empresa.trim().toUpperCase() === finalClientName
-        );
+      // Garantizar que finalClientName esté registrado en el directorio de clientes
+      const existingClient = savedClients.find(
+        c => c.empresa && c.empresa.trim().toUpperCase() === finalClientName
+      );
 
-        if (existingClient) {
-          finalClientId = existingClient.id;
-          finalClientName = existingClient.empresa;
-        } else {
-          // Create the new client in the directory!
-          const created = await addClient({
-            empresa: finalClientName,
-            contacto: 'Contacto Manual',
-            telefono: '',
-            correo: '',
-            isActive: true
-          });
-          finalClientId = created.id;
-          finalClientName = created.empresa;
-        }
+      if (existingClient) {
+        finalClientId = existingClient.id;
+        finalClientName = existingClient.empresa;
+      } else {
+        const quoteObj = selectedQuoteId ? findSelectedQuote(selectedQuoteId) : null;
+        // Crear el nuevo cliente en el directorio para asegurar integridad referencial
+        const created = await addClient({
+          empresa: finalClientName,
+          contacto: originSelection === 'quote' ? (quoteObj?.contacto || 'Contacto Cotización') : 'Contacto Manual',
+          telefono: originSelection === 'quote' ? (quoteObj?.telefono || '') : '',
+          correo: originSelection === 'quote' ? (quoteObj?.correo || '') : '',
+          isActive: true
+        });
+        finalClientId = created.id;
+        finalClientName = created.empresa;
       }
 
       let quoteCommercialId: string | undefined;

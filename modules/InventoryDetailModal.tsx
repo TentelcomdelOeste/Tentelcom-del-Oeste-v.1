@@ -3,11 +3,33 @@ import { createPortal } from 'react-dom';
 import { InventoryItem } from '../inventoryTypes';
 import { User } from '../utils/types';
 import { useInventoryMovements } from '../hooks/useInventoryMovements';
+import { useMaterialReports } from '../hooks/useMaterialReports';
 import useLockBodyScroll from '../hooks/useLockBodyScroll';
 import { useConfirm, DataTable, TableColumn, IconButton } from '../design-system';
 import { formatCurrency } from '../utils/formatCurrency';
 import { InventoryMovement } from '../inventoryMovementTypes';
-import { FiX, FiMapPin, FiBox, FiDatabase, FiTag, FiClock, FiCamera, FiTrash2, FiChevronLeft, FiChevronRight, FiUpload, FiRefreshCw, FiLoader } from "react-icons/fi";
+import { 
+  FiX, 
+  FiMapPin, 
+  FiBox, 
+  FiDatabase, 
+  FiTag, 
+  FiClock, 
+  FiCamera, 
+  FiTrash2, 
+  FiChevronLeft, 
+  FiChevronRight, 
+  FiUpload, 
+  FiRefreshCw, 
+  FiLoader,
+  FiChevronDown,
+  FiChevronUp,
+  FiFileText,
+  FiUser,
+  FiTruck,
+  FiCheckCircle,
+  FiAlertCircle
+} from "react-icons/fi";
 import { uploadImageToStorage, uploadProcessedImageToStorage, deleteImageFromStorage } from '../utils/storageUtils';
 import { ImageViewerModal } from '../components/ImageViewerModal';
 import { OptimizedImage } from '../components/OptimizedImage';
@@ -23,6 +45,266 @@ interface InventoryDetailModalProps {
   onImageUpdate?: (imageUrl: string, thumbnailUrl?: string, originalImageUrl?: string) => void;
   onImagesUpdate?: (imageUrls: string[], thumbnailUrls?: string[], originalImageUrls?: string[]) => void;
 }
+
+/**
+ * Tarjeta de Trazabilidad Completa de Movimientos de Inventario
+ */
+const MovementTraceabilityCard: React.FC<{
+  movement: InventoryMovement;
+  item: InventoryItem;
+  requestMap: Map<string, any>;
+}> = ({ movement, item, requestMap }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Parse date & time
+  const dateObj = new Date(movement.createdAt || movement.date);
+  const formattedDate = !isNaN(dateObj.getTime())
+    ? dateObj.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : movement.date || 'N/D';
+  const formattedTime = !isNaN(dateObj.getTime())
+    ? dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  // Get item-specific quantity, pricing and currency
+  let itemQty = movement.quantity || 0;
+  let itemUnitPrice = movement.unitPrice;
+  let itemCurrency: 'USD' | 'CRC' | undefined = undefined;
+  
+  if (movement.items && movement.items.length > 0) {
+    const detail = movement.items.find(i => i.inventoryItemId === item.id);
+    if (detail) {
+      itemQty = detail.quantity;
+      if (detail.unitPrice !== undefined) itemUnitPrice = detail.unitPrice;
+      if (detail.currency) itemCurrency = detail.currency;
+    }
+  }
+
+  // Si no está definido a nivel de ítem, verificar moneda a nivel de movimiento o campos legacy
+  if (!itemCurrency) {
+    if (movement.currency) {
+      itemCurrency = movement.currency;
+    } else if ((movement as any).moneda) {
+      itemCurrency = (movement as any).moneda;
+    }
+  }
+
+  // Fallback para movimientos históricos que no tengan moneda almacenada:
+  // Usa la moneda del material del inventario sin asumir la moneda del movimiento más reciente
+  const effectiveCurrency: 'USD' | 'CRC' = itemCurrency || item.currency || 'USD';
+
+  // Cross-reference related request if available
+  const relatedRequest = movement.linkedRequestId
+    ? requestMap.get(movement.linkedRequestId)
+    : movement.requestNumber
+    ? requestMap.get(movement.requestNumber)
+    : null;
+
+  const requesterName =
+    (relatedRequest as any)?.user ||
+    (relatedRequest as any)?.requestedBy ||
+    (relatedRequest as any)?.requesterName ||
+    movement.userName ||
+    'N/D';
+
+  const isEntrada = movement.type === 'Entrada';
+  const isSalida = movement.type === 'Salida';
+  const isDevolucion = movement.type === 'Devolución';
+
+  const badgeStyle = isEntrada
+    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+    : isSalida
+    ? 'bg-rose-100 text-rose-800 border-rose-200'
+    : isDevolucion
+    ? 'bg-blue-100 text-blue-800 border-blue-200'
+    : 'bg-indigo-100 text-indigo-800 border-indigo-200';
+
+  const qtySign = isEntrada || isDevolucion ? '+' : '-';
+  const qtyColor = isEntrada || isDevolucion ? 'text-emerald-700' : 'text-rose-700';
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs transition-all overflow-hidden">
+      {/* Resumen Superior */}
+      <div 
+        onClick={() => setIsExpanded(prev => !prev)}
+        className="p-3 sm:p-3.5 bg-slate-50/70 hover:bg-slate-100/60 cursor-pointer flex flex-wrap items-center justify-between gap-3 border-b border-slate-100"
+      >
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-2xs shrink-0 ${badgeStyle}`}>
+            {movement.type}
+          </span>
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 flex-wrap">
+              <span>{formattedDate}</span>
+              {formattedTime && <span className="text-[10px] text-slate-400 font-semibold">({formattedTime})</span>}
+            </span>
+            {movement.requestNumber && (
+              <span className="text-[10px] font-black text-blue-700 font-mono truncate">
+                {movement.requestNumber}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="flex flex-col items-end">
+            <span className={`text-sm font-black font-mono ${qtyColor}`}>
+              {qtySign}{Math.abs(itemQty)} {item.unit || 'Unid.'}
+            </span>
+            {itemUnitPrice !== undefined && itemUnitPrice > 0 && (
+              <span className="text-[10px] font-mono text-slate-500 font-bold">
+                {formatCurrency(itemUnitPrice, effectiveCurrency)} c/u
+              </span>
+            )}
+          </div>
+          <button 
+            type="button"
+            className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+            aria-label="Expandir detalle"
+          >
+            {isExpanded ? <FiChevronUp className="text-base" /> : <FiChevronDown className="text-base" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Detalle Desplegable de Trazabilidad */}
+      {isExpanded && (
+        <div className="p-3 sm:p-4 bg-white space-y-3 animate-in fade-in duration-200 text-xs">
+          
+          {/* CASO 1: SALIDA POR SOLICITUD / DESPACHO */}
+          {isSalida && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-rose-50/30 p-3 rounded-lg border border-rose-100/60">
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">N° Solicitud</span>
+                <span className="font-mono font-black text-blue-700 text-xs">
+                  {movement.requestNumber || (movement.linkedRequestId ? `SOL-${movement.linkedRequestId.slice(0, 6)}` : 'N/D')}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Solicitante</span>
+                <span className="font-bold text-slate-800">{requesterName}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Proyecto / Origen</span>
+                <span className="font-bold text-slate-800">
+                  {movement.projectName || movement.projectCode ? `${movement.projectCode ? movement.projectCode + ' - ' : ''}${movement.projectName || ''}` : movement.origin || 'N/D'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">FDH / Torre</span>
+                <span className="font-bold text-slate-800">{movement.fdh || movement.torre || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Lugar / Distrito</span>
+                <span className="font-bold text-slate-800">{movement.locationDetails || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Despachado / Registrado Por</span>
+                <span className="font-bold text-slate-800">{movement.userName || 'N/D'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* CASO 2: DEVOLUCIÓN */}
+          {isDevolucion && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-blue-50/30 p-3 rounded-lg border border-blue-100/60">
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">ID Devolución</span>
+                <span className="font-mono font-black text-blue-700 text-xs">
+                  {movement.requestNumber || movement.reference || 'N/D'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Proyecto / Código</span>
+                <span className="font-bold text-slate-800">
+                  {movement.projectName || movement.projectCode ? `${movement.projectCode ? movement.projectCode + ' - ' : ''}${movement.projectName || ''}` : 'N/D'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Torre / FDH</span>
+                <span className="font-bold text-slate-800">{movement.fdh || movement.torre || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Lugar / Distrito</span>
+                <span className="font-bold text-slate-800">{movement.locationDetails || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Persona que Entrega</span>
+                <span className="font-bold text-slate-800">{movement.userName || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Persona que Recibe</span>
+                <span className="font-bold text-slate-800">{movement.recipientName || movement.destination || 'N/D'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* CASO 3: ENTRADA DE PROVEEDOR */}
+          {isEntrada && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-emerald-50/30 p-3 rounded-lg border border-emerald-100/60">
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Proveedor</span>
+                <span className="font-bold text-slate-800">{movement.provider || movement.origin || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Precio Unit. (sin IVA)</span>
+                <span className="font-mono font-bold text-slate-800">
+                  {itemUnitPrice !== undefined ? formatCurrency(itemUnitPrice, effectiveCurrency) : 'N/D'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Precio con IVA (13%)</span>
+                <span className="font-mono font-black text-emerald-700">
+                  {itemUnitPrice !== undefined ? formatCurrency(itemUnitPrice * 1.13, effectiveCurrency) : 'N/D'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Factura / Referencia</span>
+                <span className="font-mono font-bold text-slate-800">{movement.reference || movement.requestNumber || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Registrado por</span>
+                <span className="font-bold text-slate-800">{movement.userName || 'N/D'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* CASO 4: OTROS MOVIMIENTOS / AJUSTES / TRANSFERENCIAS */}
+          {!isSalida && !isDevolucion && !isEntrada && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200/80">
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Origen / Subtipo</span>
+                <span className="font-bold text-slate-800">{movement.origin || movement.subtype || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Destino</span>
+                <span className="font-bold text-slate-800">{movement.destination || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Responsable</span>
+                <span className="font-bold text-slate-800">{movement.userName || movement.assignedBy || 'N/D'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Referencia</span>
+                <span className="font-mono font-bold text-slate-800">{movement.reference || movement.requestNumber || 'N/D'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* OBSERVACIONES / NOTAS */}
+          {(movement.observations || movement.reason) && (
+            <div className="pt-2 border-t border-slate-100">
+              <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block mb-0.5">Observaciones / Comentarios</span>
+              <p className="text-xs text-slate-600 font-medium italic bg-slate-50 p-2 rounded border border-slate-100">
+                {movement.observations || movement.reason}
+              </p>
+            </div>
+          )}
+
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show, onClose, item, currentUser, onImageUpdate, onImagesUpdate }) => {
   useLockBodyScroll(show);
@@ -336,6 +618,20 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     }
   };
 
+  const { reports } = useMaterialReports(currentUser);
+
+  const requestMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (Array.isArray(reports)) {
+      reports.forEach(r => {
+        if (r.id) map.set(r.id, r);
+        if (r.referenceId) map.set(r.referenceId, r);
+        if ((r as any).requestNumber) map.set((r as any).requestNumber, r);
+      });
+    }
+    return map;
+  }, [reports]);
+
   const itemMovements = useMemo(() => {
     if (!item) return [];
     return movements.filter(m => {
@@ -346,6 +642,21 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
         return false;
     });
   }, [movements, item]);
+
+  const sortedItemMovements = useMemo(() => {
+    const getMovementTimestamp = (m: InventoryMovement): number => {
+      if (m.createdAt) {
+        const d = new Date(m.createdAt);
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+      if (m.date) {
+        const d = new Date(m.date);
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+      return 0;
+    };
+    return [...itemMovements].sort((a, b) => getMovementTimestamp(b) - getMovementTimestamp(a));
+  }, [itemMovements]);
 
   if (!show || !item) return null;
 
@@ -430,19 +741,25 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
           align: 'right',
           render: (m) => {
               let price: number | undefined;
+              let movCurrency: 'USD' | 'CRC' | undefined = undefined;
               if (m.items && m.items.length > 0) {
                   const detail = m.items.find(i => i.inventoryItemId === item.id);
                   price = detail ? detail.unitPrice : undefined;
+                  if (detail?.currency) movCurrency = detail.currency;
               } else if (m.inventoryItemId === item.id) {
                   price = m.unitPrice;
               }
+              if (!movCurrency) {
+                  movCurrency = m.currency || (m as any).moneda;
+              }
+              const effCurrency = movCurrency || item.currency || 'USD';
               
               const ivaRate = (item as any).ivaRate ?? (item as any).iva ?? 0.13;
               const priceWithIva = price !== undefined ? price * (1 + ivaRate) : undefined;
               
               return (
                   <span className="font-mono font-bold text-slate-600 text-xs">
-                      {priceWithIva !== undefined ? formatCurrency(priceWithIva, item.currency || 'USD') : '-'}
+                      {priceWithIva !== undefined ? formatCurrency(priceWithIva, effCurrency) : '-'}
                   </span>
               );
           }
@@ -466,7 +783,7 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
         onClick={onClose}
     >
         <div 
-            className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden"
+            className="bg-white w-full max-w-6xl max-h-[92vh] rounded-3xl shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}
         >
             {/* Header */}
@@ -785,24 +1102,37 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                     </div>
                 )}
 
-                {/* History Section */}
+                {/* History Section con Trazabilidad Completa */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
-                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-wrap gap-2">
                         <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                            <FiClock className="text-slate-400"  /> Historial de Movimientos
+                            <FiClock className="text-slate-400" /> Historial de Movimientos & Trazabilidad
                         </h4>
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">
-                            {itemMovements.length} registros
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
+                            {sortedItemMovements.length} movimientos
                         </span>
                     </div>
-                    <div className="flex-1">
-                        <DataTable
-                            data={itemMovements}
-                            columns={columns}
-                            keyExtractor={(m) => m.id}
-                            isLoading={isLoading}
-                            emptyMessage="No hay movimientos registrados para este material."
-                        />
+                    <div className="p-4 space-y-3 flex-1 overflow-y-auto max-h-[550px]">
+                        {isLoading ? (
+                            <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+                                <FiLoader className="animate-spin text-lg" />
+                                <span className="text-xs font-bold">Cargando historial de movimientos...</span>
+                            </div>
+                        ) : sortedItemMovements.length === 0 ? (
+                            <div className="text-center py-12 text-slate-400">
+                                <FiClock className="text-2xl mx-auto mb-2 opacity-50" />
+                                <p className="text-xs font-bold">No hay movimientos registrados para este material.</p>
+                            </div>
+                        ) : (
+                            sortedItemMovements.map(m => (
+                                <MovementTraceabilityCard
+                                    key={m.id}
+                                    movement={m}
+                                    item={item}
+                                    requestMap={requestMap}
+                                />
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

@@ -151,8 +151,6 @@ export const JobForm: React.FC<JobFormProps> = ({
     // Normalizar a medianoche local para la iteración
     const currentDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
-    
-    const isRangeMultiday = start.getFullYear() !== end.getFullYear() || start.getMonth() !== end.getMonth() || start.getDate() !== end.getDate();
 
     const defaultStart = formData?.hora_inicio || '06:00';
     const defaultEnd = formData?.hora_fin || '16:00';
@@ -170,24 +168,36 @@ export const JobForm: React.FC<JobFormProps> = ({
       
       const found = existing?.find(d => getNominalKey(d.fecha) === currentKey);
       
-      const recursos_ajustados = isRangeMultiday ? true : (found ? found.recursos_ajustados : false);
+      const hasCustomCuadrilla = Boolean(found?.cuadrilla_diaria && found.cuadrilla_diaria.length > 0);
+      const hasCustomUnidades = Boolean(found?.unidades_diarias && found.unidades_diarias.length > 0);
+      const recursos_ajustados = found?.recursos_ajustados !== undefined 
+        ? found.recursos_ajustados 
+        : (hasCustomCuadrilla || hasCustomUnidades);
+
+      const cuadrilla_diaria = hasCustomCuadrilla
+        ? [...found.cuadrilla_diaria]
+        : (formData?.cuadrilla && formData.cuadrilla.length > 0 ? [...formData.cuadrilla] : []);
+
+      const unidades_diarias = hasCustomUnidades
+        ? [...found.unidades_diarias]
+        : (formData?.unidades && formData.unidades.length > 0 ? [...formData.unidades] : []);
 
       dias.push({
         fecha: new Date(currentDate.getTime()), // Guardar medianoche local
-        completado: found ? found.completado : false,
+        completado: found ? Boolean(found.completado) : false,
         completado_en: found?.completado_en ? found.completado_en : undefined,
         hora_inicio: found?.hora_inicio || defaultStart,
         hora_fin: found?.hora_fin || defaultEnd,
         recursos_ajustados,
-        cuadrilla_diaria: found?.cuadrilla_diaria || [],
-        unidades_diarias: found?.unidades_diarias || [],
+        cuadrilla_diaria,
+        unidades_diarias,
         estado: found?.estado || 'programado'
       });
       
       currentDate.setDate(currentDate.getDate() + 1);
     }
     return dias;
-  }, [formData?.hora_inicio, formData?.hora_fin]);
+  }, [formData?.hora_inicio, formData?.hora_fin, formData?.cuadrilla, formData?.unidades]);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -417,7 +427,6 @@ export const JobForm: React.FC<JobFormProps> = ({
     // Initial Manual Validations
     let validationError = null;
     if (!formData.tipo_trabajo?.trim()) validationError = 'El tipo de trabajo es obligatorio';
-    else if (!formData.projectId) validationError = 'Debe seleccionar un proyecto obligatorio para este trabajo';
     else if (!formData.titulo?.trim()) validationError = 'El título del trabajo es obligatorio';
     else if (!formData.descripcion?.trim()) validationError = 'La descripción es obligatoria';
     else if (!fechaInicio || !fechaFin) validationError = 'Las fechas son obligatorias';
@@ -429,13 +438,16 @@ export const JobForm: React.FC<JobFormProps> = ({
         validationError = "Debe generar los detalles de los días para un trabajo de varios días";
       } else {
         const indexSinHora = formData.dias_detalle.findIndex(d => !d.hora_inicio || !d.hora_fin);
-        const indexSinCuadrilla = formData.dias_detalle.findIndex(d => !d.cuadrilla_diaria || d.cuadrilla_diaria.length === 0);
+        const indexSinCuadrilla = formData.dias_detalle.findIndex(d => 
+          (!d.cuadrilla_diaria || d.cuadrilla_diaria.length === 0) &&
+          (!formData.cuadrilla || formData.cuadrilla.length === 0)
+        );
         if (indexSinHora !== -1) {
           const diaIndex = indexSinHora + 1;
           validationError = `Debe asignar hora de inicio y fin para el día ${diaIndex} en el Seguimiento por Día`;
         } else if (indexSinCuadrilla !== -1) {
           const diaIndex = indexSinCuadrilla + 1;
-          validationError = `Debe asignar al menos una persona en la cuadrilla para el día ${diaIndex} en el Seguimiento por Día`;
+          validationError = `Debe asignar al menos una persona en la cuadrilla para el trabajo o para el día ${diaIndex}`;
         }
       }
     }
@@ -507,24 +519,50 @@ export const JobForm: React.FC<JobFormProps> = ({
       const fecha_fin = new Date(baseEndDate);
       fecha_fin.setHours(hEnd, mEnd, 0, 0);
 
-      // Union of all daily resources for consistency in multiday jobs
-      let finalCuadrilla = formData.cuadrilla || [];
-      let finalUnidades = formData.unidades || [];
+      // Union of all daily resources AND base resources for consistency
+      const cuadrillaSet = new Set<string>(formData.cuadrilla || []);
+      const unidadesSet = new Set<string>(formData.unidades || []);
 
-      if (isMultiday && formData.dias_detalle) {
-        const cuadrillaSet = new Set<string>();
-        const unidadesSet = new Set<string>();
+      if (formData.dias_detalle && Array.isArray(formData.dias_detalle)) {
         formData.dias_detalle.forEach((dia: any) => {
-          if (dia.cuadrilla_diaria) {
-            dia.cuadrilla_diaria.forEach((p: string) => cuadrillaSet.add(p));
+          if (dia.cuadrilla_diaria && Array.isArray(dia.cuadrilla_diaria)) {
+            dia.cuadrilla_diaria.forEach((p: string) => {
+              if (p) cuadrillaSet.add(p);
+            });
           }
-          if (dia.unidades_diarias) {
-            dia.unidades_diarias.forEach((u: string) => unidadesSet.add(u));
+          if (dia.unidades_diarias && Array.isArray(dia.unidades_diarias)) {
+            dia.unidades_diarias.forEach((u: string) => {
+              if (u) unidadesSet.add(u);
+            });
           }
         });
-        finalCuadrilla = Array.from(cuadrillaSet);
-        finalUnidades = Array.from(unidadesSet);
       }
+
+      const finalCuadrilla = Array.from(cuadrillaSet);
+      const finalUnidades = Array.from(unidadesSet);
+
+      // Asegurar que cada día tenga asignaciones de cuadrilla y unidades resueltas
+      const rawDias = (formData.dias_detalle && formData.dias_detalle.length > 0)
+        ? formData.dias_detalle
+        : generateDiasDetalle(baseStartDate, baseEndDate);
+
+      const resolvedDiasDetalle = rawDias.map((dia: any) => {
+        const diaCuadrilla = (dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0)
+          ? dia.cuadrilla_diaria
+          : (finalCuadrilla.length > 0 ? [...finalCuadrilla] : []);
+
+        const diaUnidades = (dia.unidades_diarias && dia.unidades_diarias.length > 0)
+          ? dia.unidades_diarias
+          : (finalUnidades.length > 0 ? [...finalUnidades] : []);
+
+        return {
+          ...dia,
+          cuadrilla_diaria: diaCuadrilla,
+          unidades_diarias: diaUnidades,
+          hora_inicio: dia.hora_inicio || generalHoraInicio,
+          hora_fin: dia.hora_fin || generalHoraFin,
+        };
+      });
 
       const finalData: any = {
         ...(latestTrabajo || {}),
@@ -536,7 +574,8 @@ export const JobForm: React.FC<JobFormProps> = ({
         hora_inicio: generalHoraInicio,
         hora_fin: generalHoraFin,
         observaciones: formData.observaciones,
-        dias_detalle: formData.dias_detalle,
+        dias_detalle: resolvedDiasDetalle,
+        dias_programados: resolvedDiasDetalle.length,
         progreso: formData.progreso,
         tipo_trabajo: formData.tipo_trabajo,
         projectId: formData.projectId || '',
@@ -564,9 +603,8 @@ export const JobForm: React.FC<JobFormProps> = ({
       };
 
       if (mode === 'create' || mode === 'continuacion') {
-        const dias_detalle = generateDiasDetalle(baseStartDate, baseEndDate);
-        finalData.dias_detalle = dias_detalle;
-        finalData.dias_programados = dias_detalle.length;
+        finalData.dias_detalle = resolvedDiasDetalle;
+        finalData.dias_programados = resolvedDiasDetalle.length;
         
         if (parentId) {
             finalData.parentId = parentId;
@@ -576,25 +614,26 @@ export const JobForm: React.FC<JobFormProps> = ({
         syncSingleDayStatus(finalData);
         await fetchWithTimeout(createTrabajo(finalData as Omit<Trabajo, "id" | "creado_en" | "actualizado_en">), 10000);
       } else if (mode === 'edit' && latestTrabajo) {
-        // Detect dates changes
+        // Detect dates changes (comparing nominal YYYY-MM-DD to avoid triggering reprogram dialog on pure time changes)
         const currentFechaInicio = latestTrabajo.fecha_inicio instanceof Date ? latestTrabajo.fecha_inicio : (latestTrabajo.fecha_inicio as any)?.toDate?.() || new Date(latestTrabajo.fecha_inicio);
         const currentFechaFin = latestTrabajo.fecha_fin instanceof Date ? latestTrabajo.fecha_fin : (latestTrabajo.fecha_fin as any)?.toDate?.() || new Date(latestTrabajo.fecha_fin);
         
         const fechasModificadas = 
-          finalData.fecha_inicio.getTime() !== currentFechaInicio.getTime() ||
-          finalData.fecha_fin.getTime() !== currentFechaFin.getTime();
+          format(finalData.fecha_inicio, 'yyyy-MM-dd') !== format(currentFechaInicio, 'yyyy-MM-dd') ||
+          format(finalData.fecha_fin, 'yyyy-MM-dd') !== format(currentFechaFin, 'yyyy-MM-dd');
 
         if (fechasModificadas) {
-          const nuevosDias = generateDiasDetalle(baseStartDate, baseEndDate, formData.dias_detalle);
-          // Propagar horas nuevas en días que no hayan sido editados manualmente
+          const nuevosDias = generateDiasDetalle(baseStartDate, baseEndDate, resolvedDiasDetalle);
+          // Propagar horas nuevas y asegurar asignaciones en días que no hayan sido editados manualmente
           finalData.dias_detalle = nuevosDias.map((dia: any) => {
-            if (dia.recursos_ajustados) {
-              return dia;
-            }
+            const hasCustomC = dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0;
+            const hasCustomU = dia.unidades_diarias && dia.unidades_diarias.length > 0;
             return {
               ...dia,
-              hora_inicio: finalData.hora_inicio,
-              hora_fin: finalData.hora_fin,
+              cuadrilla_diaria: hasCustomC ? dia.cuadrilla_diaria : (finalCuadrilla.length > 0 ? [...finalCuadrilla] : []),
+              unidades_diarias: hasCustomU ? dia.unidades_diarias : (finalUnidades.length > 0 ? [...finalUnidades] : []),
+              hora_inicio: dia.recursos_ajustados ? dia.hora_inicio : finalData.hora_inicio,
+              hora_fin: dia.recursos_ajustados ? dia.hora_fin : finalData.hora_fin,
             };
           });
           finalData.dias_programados = finalData.dias_detalle.length;
@@ -620,18 +659,17 @@ export const JobForm: React.FC<JobFormProps> = ({
           }
         } else {
           // Propagar horas nuevas en días que no hayan sido editados manualmente si las fechas no se modificaron
-          if (finalData.dias_detalle && Array.isArray(finalData.dias_detalle)) {
-            finalData.dias_detalle = finalData.dias_detalle.map((dia: any) => {
-              if (dia.recursos_ajustados) {
-                return dia;
-              }
-              return {
-                ...dia,
-                hora_inicio: finalData.hora_inicio,
-                hora_fin: finalData.hora_fin,
-              };
-            });
-          }
+          finalData.dias_detalle = resolvedDiasDetalle.map((dia: any) => {
+            if (dia.recursos_ajustados) {
+              return dia;
+            }
+            return {
+              ...dia,
+              hora_inicio: finalData.hora_inicio,
+              hora_fin: finalData.hora_fin,
+            };
+          });
+          finalData.dias_programados = finalData.dias_detalle.length;
           syncSingleDayStatus(finalData);
           await fetchWithTimeout(updateTrabajo(latestTrabajo.id, finalData, latestTrabajo.actualizado_en?.toDate?.() || latestTrabajo.actualizado_en), 10000);
         }
@@ -730,22 +768,19 @@ export const JobForm: React.FC<JobFormProps> = ({
             placeholder="Seleccione o escriba tipo..."
           />
 
-          {/* SELECTOR DE PROYECTO OBLIGATORIO */}
+          {/* SELECTOR DE PROYECTO (OPCIONAL) */}
           <div>
             <label className={UI_TOKENS.TYPOGRAPHY.label + " text-slate-500 block mb-1"}>
-              PROYECTO <span className="text-red-500">*</span>
+              PROYECTO <span className="text-xs text-slate-400 font-normal lowercase">(opcional)</span>
             </label>
             <div className="relative">
               <select
                 value={formData.projectId || ''}
                 onChange={(e) => handleProjectChange(e.target.value)}
-                className={`w-full ${UI_TOKENS.SPACING.inputPadding} ${UI_TOKENS.SHAPE.roundedInput} border ${
-                  !formData.projectId && error ? 'border-red-300 bg-red-50/30' : UI_TOKENS.COLORS.border
-                } outline-none focus:ring-2 focus:ring-blue-100 text-sm font-medium bg-white appearance-none pr-8 cursor-pointer text-slate-800`}
-                required
+                className={`w-full ${UI_TOKENS.SPACING.inputPadding} ${UI_TOKENS.SHAPE.roundedInput} border ${UI_TOKENS.COLORS.border} outline-none focus:ring-2 focus:ring-blue-100 text-sm font-medium bg-white appearance-none pr-8 cursor-pointer text-slate-800`}
               >
                 <option value="">
-                  {loadingProjects ? 'Cargando proyectos...' : 'Seleccione un proyecto...'}
+                  {loadingProjects ? 'Cargando proyectos...' : 'Sin proyecto (Opcional)'}
                 </option>
                 {projectsList.map((proj) => (
                   <option key={proj.id} value={proj.id}>
@@ -966,8 +1001,8 @@ export const JobForm: React.FC<JobFormProps> = ({
             </label>
             
             {isMultiday && (
-              <span className="text-[10px] font-bold text-amber-600 block mb-2 uppercase bg-amber-50 border border-amber-100 rounded-lg p-2 leading-snug">
-                Configuración general bloqueada para trabajos multidía. Asigne la cuadrilla individualmente para cada día en el Seguimiento por Día.
+              <span className="text-[10px] font-bold text-blue-600 block mb-2 uppercase bg-blue-50 border border-blue-100 rounded-lg p-2 leading-snug">
+                Cuadrilla base para el trabajo. Puede ajustar colaboradores específicos por día en el Seguimiento por Día abajo.
               </span>
             )}
 
@@ -975,15 +1010,14 @@ export const JobForm: React.FC<JobFormProps> = ({
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
               <input
                 type="text"
-                placeholder={isMultiday ? "Bloqueado para trabajos multidía" : "Buscar colaborador..."}
+                placeholder="Buscar colaborador..."
                 value={searchTermEmployees}
                 onChange={(e) => setSearchTermEmployees(e.target.value)}
-                disabled={isMultiday}
-                className={`w-full pl-8 pr-3 py-1.5 border ${UI_TOKENS.COLORS.border} rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-blue-100 transition-all ${isMultiday ? 'bg-slate-100 cursor-not-allowed' : ''}`}
+                className={`w-full pl-8 pr-3 py-1.5 border ${UI_TOKENS.COLORS.border} rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-blue-100 transition-all bg-white`}
               />
             </div>
 
-            <div className={`border ${UI_TOKENS.COLORS.border} rounded-xl p-3 max-h-[150px] overflow-y-auto bg-slate-50 space-y-1 custom-scrollbar ${isMultiday ? 'opacity-60 cursor-not-allowed' : ''}`}>
+            <div className={`border ${UI_TOKENS.COLORS.border} rounded-xl p-3 max-h-[150px] overflow-y-auto bg-slate-50 space-y-1 custom-scrollbar`}>
               {employees
                 .filter(emp => emp.name.toLowerCase().includes(searchTermEmployees.toLowerCase()))
                 .sort((a, b) => {
@@ -995,11 +1029,10 @@ export const JobForm: React.FC<JobFormProps> = ({
                     return a.name.localeCompare(b.name);
                 })
                 .map(emp => (
-                <label key={emp.id} className={`flex items-center gap-2 p-1.5 hover:bg-white rounded-lg transition-colors text-xs font-bold text-slate-600 ${isMultiday ? 'pointer-events-none' : 'cursor-pointer'}`}>
+                <label key={emp.id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg transition-colors text-xs font-bold text-slate-600 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.cuadrilla?.includes(emp.name) || formData.cuadrilla?.includes(emp.id)}
-                    disabled={isMultiday}
                     onChange={() => {
                         let newCuadrilla = [...(formData.cuadrilla || [])];
                         const hasId = newCuadrilla.includes(emp.id);
@@ -1010,10 +1043,20 @@ export const JobForm: React.FC<JobFormProps> = ({
                         } else {
                             newCuadrilla.push(emp.name);
                         }
-                        setFormData({ ...formData, cuadrilla: newCuadrilla });
+
+                        // Propagar a días del seguimiento que no tengan ajustes específicos
+                        const newDias = (formData.dias_detalle || []).map(d => {
+                            if (d.recursos_ajustados) return d;
+                            return {
+                                ...d,
+                                cuadrilla_diaria: [...newCuadrilla]
+                            };
+                        });
+
+                        setFormData({ ...formData, cuadrilla: newCuadrilla, dias_detalle: newDias });
                         setSearchTermEmployees(''); // Clear search after selection
                     }}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-55"
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
                   {emp.name}
                 </label>
@@ -1032,12 +1075,12 @@ export const JobForm: React.FC<JobFormProps> = ({
             </label>
             
             {isMultiday && (
-              <span className="text-[10px] font-bold text-amber-600 block mb-2 uppercase bg-amber-50 border border-amber-100 rounded-lg p-2 leading-snug">
-                Unidades generales bloqueadas para trabajos multidía. Asigne las unidades de transporte individualmente para cada día en el Seguimiento por Día.
+              <span className="text-[10px] font-bold text-blue-600 block mb-2 uppercase bg-blue-50 border border-blue-100 rounded-lg p-2 leading-snug">
+                Unidades base para el trabajo. Puede ajustar unidades específicas por día en el Seguimiento por Día abajo.
               </span>
             )}
 
-            <div className={`border ${UI_TOKENS.COLORS.border} rounded-xl p-3 max-h-[120px] overflow-y-auto bg-slate-50 space-y-1 custom-scrollbar ${isMultiday ? 'opacity-60 cursor-not-allowed' : ''}`}>
+            <div className={`border ${UI_TOKENS.COLORS.border} rounded-xl p-3 max-h-[120px] overflow-y-auto bg-slate-50 space-y-1 custom-scrollbar`}>
               {[...VEHICLES].sort((a, b) => {
                 const isASelected = formData.unidades?.includes(a.value);
                 const isBSelected = formData.unidades?.includes(b.value);
@@ -1046,13 +1089,23 @@ export const JobForm: React.FC<JobFormProps> = ({
                 if (!isASelected && isBSelected) return 1;
                 return a.label.localeCompare(b.label);
               }).map(v => (
-                <label key={v.value} className={`flex items-center gap-2 p-1.5 hover:bg-white rounded-lg transition-colors text-xs font-bold text-slate-600 ${isMultiday ? 'pointer-events-none' : 'cursor-pointer'}`}>
+                <label key={v.value} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg transition-colors text-xs font-bold text-slate-600 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.unidades?.includes(v.value)}
-                    disabled={isMultiday}
-                    onChange={() => setFormData({ ...formData, unidades: toggleItem(formData.unidades || [], v.value) })}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-55"
+                    onChange={() => {
+                        const newUnidades = toggleItem(formData.unidades || [], v.value);
+                        // Propagar a días del seguimiento que no tengan ajustes específicos
+                        const newDias = (formData.dias_detalle || []).map(d => {
+                            if (d.recursos_ajustados) return d;
+                            return {
+                                ...d,
+                                unidades_diarias: [...newUnidades]
+                            };
+                        });
+                        setFormData({ ...formData, unidades: newUnidades, dias_detalle: newDias });
+                    }}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
                   {v.label}
                 </label>
@@ -1352,7 +1405,7 @@ export const JobForm: React.FC<JobFormProps> = ({
                         </div>
                       )}
 
-                      {dia.recursos_ajustados && (() => {
+                      {(isMultiday || dia.recursos_ajustados) && (() => {
                         const currentEmpList = dia.cuadrilla_diaria || [];
                         const filteredEmps = employees.filter(emp => emp.name.toLowerCase().includes(dayEmployeeSearch.toLowerCase()));
                         const selectedEmps = filteredEmps.filter(emp => currentEmpList.includes(emp.name) || currentEmpList.includes(emp.id));
@@ -1399,7 +1452,7 @@ export const JobForm: React.FC<JobFormProps> = ({
                                             setDayEmployeeSearch(''); // clear search on selection
                                           }
                                           const newDiasDetalle = [...(formData.dias_detalle || [])];
-                                          newDiasDetalle[index] = { ...dia, cuadrilla_diaria: newList };
+                                          newDiasDetalle[index] = { ...dia, cuadrilla_diaria: newList, recursos_ajustados: true };
                                           setFormData({ ...formData, dias_detalle: newDiasDetalle });
                                         }}
                                         className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 w-3.5 h-3.5"
@@ -1443,7 +1496,7 @@ export const JobForm: React.FC<JobFormProps> = ({
                                             setDayVehicleSearch(''); // clear search
                                           }
                                           const newDiasDetalle = [...(formData.dias_detalle || [])];
-                                          newDiasDetalle[index] = { ...dia, unidades_diarias: newList };
+                                          newDiasDetalle[index] = { ...dia, unidades_diarias: newList, recursos_ajustados: true };
                                           setFormData({ ...formData, dias_detalle: newDiasDetalle });
                                         }}
                                         className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 w-3.5 h-3.5"

@@ -107,10 +107,18 @@ const JobItem = React.memo(({
   const [selectedTrabajoView, setSelectedTrabajoView] = useState<Trabajo | null>(null);
   const { currentUser } = useAuth();
   
+  const resolvedCuadrilla = (trabajo.cuadrilla && trabajo.cuadrilla.length > 0)
+    ? trabajo.cuadrilla
+    : Array.from(new Set<string>((trabajo.dias_detalle || []).flatMap(d => d.cuadrilla_diaria || [])));
+
+  const resolvedUnidades = (trabajo.unidades && trabajo.unidades.length > 0)
+    ? trabajo.unidades
+    : Array.from(new Set<string>((trabajo.dias_detalle || []).flatMap(d => d.unidades_diarias || [])));
+
   const { estado: displayEstado, cuadrilla: displayCuadrilla, unidades: displayUnidades } = {
     estado: trabajo.estado,
-    cuadrilla: trabajo.cuadrilla || [],
-    unidades: trabajo.unidades || []
+    cuadrilla: resolvedCuadrilla,
+    unidades: resolvedUnidades
   };
   const estadoNormalizado = (displayEstado || '').toLowerCase().trim();
 

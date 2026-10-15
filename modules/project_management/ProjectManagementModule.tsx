@@ -3,17 +3,20 @@ import { ModulePage } from '../../components/ui/ModulePage';
 import { ModuleToolbar } from '../../components/ui/ModuleToolbar';
 import { ActionButton, SearchInput, ConfirmModal, StatusBadge } from '../../design-system';
 import { ActionButtons } from '../../components/ui/ActionButtons';
-import { User } from '../../utils/types';
+import { User, Quote } from '../../utils/types';
 import { can, isAdmin } from '../../utils/permissions';
 import { Project } from './types';
 import { ProjectFormModal } from './components/ProjectFormModal';
 import { toast } from 'react-hot-toast';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { 
   deleteProject, 
   subscribeToProjects, 
   searchProjectsInFirestore, 
   getProjectById, 
   getProjectByQuoteId,
+  getApprovedQuotes,
   parseCreatedAtDate
 } from './services/projectService';
 import ProjectExpediente from './ProjectExpediente';
@@ -59,6 +62,61 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [quotesMap, setQuotesMap] = useState<Map<string, Quote>>(new Map());
+
+  // Cargar cotizaciones aprobadas para resolver de forma infalible la empresa/cliente real
+  useEffect(() => {
+    getApprovedQuotes()
+      .then(quotesList => {
+        const map = new Map<string, Quote>();
+        quotesList.forEach(q => {
+          if (q.docId) map.set(q.docId, q);
+          if (q.id !== undefined) {
+            map.set(String(q.id), q);
+            map.set(String(q.id).padStart(3, '0'), q);
+          }
+        });
+        setQuotesMap(map);
+      })
+      .catch(err => {
+        console.warn("Could not load quotes in ProjectManagementModule:", err);
+      });
+  }, []);
+
+  // Función para obtener siempre el nombre real del cliente/empresa (resuelve cotización de origen)
+  const getProjectClientName = (p: Project): string => {
+    if (p.origin === 'Cotización') {
+      const linkedQuote = (p.quoteId && quotesMap.get(p.quoteId)) ||
+                          (p.quoteCommercialId && (quotesMap.get(p.quoteCommercialId) || quotesMap.get(String(p.quoteCommercialId).padStart(3, '0'))));
+      if (linkedQuote && linkedQuote.empresa && linkedQuote.empresa.trim()) {
+        return linkedQuote.empresa.trim();
+      }
+    }
+    return p.clientName || 'Sin cliente asignado';
+  };
+
+  // Auto-saneamiento en Firestore: si un proyecto vinculado a una cotización tiene un cliente desfasado, corregirlo
+  useEffect(() => {
+    if (quotesMap.size === 0 || projects.length === 0) return;
+    projects.forEach(p => {
+      if (p.origin === 'Cotización' && (p.quoteId || p.quoteCommercialId)) {
+        const linkedQuote = (p.quoteId && quotesMap.get(p.quoteId)) ||
+                            (p.quoteCommercialId && (quotesMap.get(p.quoteCommercialId) || quotesMap.get(String(p.quoteCommercialId).padStart(3, '0'))));
+        if (linkedQuote && linkedQuote.empresa && linkedQuote.empresa.trim()) {
+          const correctClientName = linkedQuote.empresa.trim().toUpperCase();
+          if (p.clientName && p.clientName.trim().toUpperCase() !== correctClientName) {
+            console.log(`[ProjectSync] Sincronizando cliente del proyecto ${p.projectNumber}: ${p.clientName} -> ${correctClientName}`);
+            updateDoc(doc(db, 'projects', p.id), {
+              clientName: correctClientName,
+              updatedAt: new Date().toISOString()
+            }).then(() => {
+              setProjects(prev => prev.map(item => item.id === p.id ? { ...item, clientName: correctClientName } : item));
+            }).catch(err => console.error("Error auto-healing project clientName:", err));
+          }
+        }
+      }
+    });
+  }, [projects, quotesMap]);
 
   // Lista de años disponibles basados en proyectos y año actual
   const availableYears = useMemo(() => {
@@ -165,14 +223,18 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
   };
 
   const handleEdit = (project: Project) => {
-    setProjectToEdit(project);
+    const fixedName = getProjectClientName(project);
+    setProjectToEdit({
+      ...project,
+      clientName: fixedName !== 'Sin cliente asignado' ? fixedName : project.clientName
+    });
     setShowModal(true);
   };
 
   const handleCopyProject = (project: Project) => {
     const name = (project.name || '').trim();
     const code = (project.projectNumber || '').trim();
-    const client = (project.clientName || '').trim();
+    const client = getProjectClientName(project);
     
     const textToCopy = `${name}/${code}/${client}`;
     
@@ -392,7 +454,15 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                     return (
                       <div
                         key={project.id}
-                        onClick={() => { if (canViewExpediente) setCurrentProject(project); }}
+                        onClick={() => { 
+                          if (canViewExpediente) {
+                            const fixedName = getProjectClientName(project);
+                            setCurrentProject({
+                              ...project,
+                              clientName: fixedName !== 'Sin cliente asignado' ? fixedName : project.clientName
+                            });
+                          }
+                        }}
                         className={`flex items-stretch px-4 hover:bg-blue-50/20 transition-colors border-b border-slate-200 group ${canViewExpediente ? 'cursor-pointer' : 'cursor-default'} ${
                           isHighlighted
                             ? 'bg-yellow-50 border-yellow-400 ring-2 ring-yellow-200/50 z-10 relative animate-in fade-in duration-500'
@@ -424,8 +494,8 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                         {/* Cliente / Empresa */}
                         <div className="text-xs font-bold text-left justify-start flex items-center text-blue-950 px-3 py-3 border-r border-slate-200/40 w-[200px] shrink-0">
                           <div className="flex flex-col truncate w-full">
-                            <span className="font-bold text-slate-700 text-xs truncate" title={project.clientName || 'Sin cliente asignado'}>
-                              {project.clientName || 'Sin cliente asignado'}
+                            <span className="font-bold text-slate-700 text-xs truncate" title={getProjectClientName(project)}>
+                              {getProjectClientName(project)}
                             </span>
                           </div>
                         </div>
@@ -486,7 +556,15 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
               {filteredProjects.map(project => (
                 <div
                   key={project.id}
-                  onClick={() => { if (canViewExpediente) setCurrentProject(project); }}
+                  onClick={() => { 
+                    if (canViewExpediente) {
+                      const fixedName = getProjectClientName(project);
+                      setCurrentProject({
+                        ...project,
+                        clientName: fixedName !== 'Sin cliente asignado' ? fixedName : project.clientName
+                      });
+                    }
+                  }}
                   className={`bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow relative flex flex-col ${canViewExpediente ? 'cursor-pointer' : 'cursor-default'}`}
                 >
                   {/* Header */}
@@ -539,7 +617,7 @@ const ProjectManagementModule: React.FC<ProjectManagementModuleProps> = ({ curre
                     
                     <div className="mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
                       <div className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Cliente / Empresa</div>
-                      <div className="font-bold text-slate-700 truncate">{project.clientName || 'No especificado'}</div>
+                      <div className="font-bold text-slate-700 truncate">{getProjectClientName(project)}</div>
                     </div>
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-const isDebug = import.meta.env.DEV;
+const isDebug = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.DEV : false;
 const isVerbose = typeof window !== 'undefined' && (localStorage.getItem('DEBUG_VERBOSE') === 'true');
 const isDiagnosticMode = typeof window !== 'undefined' && (window as any).__DISABLE_NON_CRITICAL_LOGS__ === true;
 import { maskObject } from './masking';

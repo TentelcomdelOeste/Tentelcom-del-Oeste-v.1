@@ -39,6 +39,62 @@ const STATUS_PRIORITY: Record<string, number> = {
   'finalizado': 4,
 };
 
+const getJobStartTimestamp = (t: Trabajo): number => {
+  if (!t || !t.fecha_inicio) return 0;
+  const raw = t.fecha_inicio;
+  if (raw instanceof Date) {
+    return isNaN(raw.getTime()) ? 0 : raw.getTime();
+  }
+  if (typeof (raw as any).toMillis === 'function') {
+    return (raw as any).toMillis();
+  }
+  if ((raw as any).seconds) {
+    return (raw as any).seconds * 1000;
+  }
+  const parsed = new Date(raw);
+  return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+const getJobEndTimestamp = (t: Trabajo): number => {
+  if (!t || !t.fecha_fin) return 0;
+  const raw = t.fecha_fin;
+  if (raw instanceof Date) {
+    return isNaN(raw.getTime()) ? 0 : raw.getTime();
+  }
+  if (typeof (raw as any).toMillis === 'function') {
+    return (raw as any).toMillis();
+  }
+  if ((raw as any).seconds) {
+    return (raw as any).seconds * 1000;
+  }
+  const parsed = new Date(raw);
+  return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+export const sortByFechaInicioAsc = (a: Trabajo, b: Trabajo): number => {
+  const tsStartA = getJobStartTimestamp(a);
+  const tsStartB = getJobStartTimestamp(b);
+
+  if (tsStartA !== tsStartB) {
+    return tsStartA - tsStartB;
+  }
+
+  // Orden secundario estable si la fecha de inicio es idéntica
+  const tsEndA = getJobEndTimestamp(a);
+  const tsEndB = getJobEndTimestamp(b);
+  if (tsEndA !== tsEndB) {
+    return tsEndA - tsEndB;
+  }
+
+  const timeA = a.hora_inicio || '00:00';
+  const timeB = b.hora_inicio || '00:00';
+  if (timeA !== timeB) {
+    return timeA.localeCompare(timeB);
+  }
+
+  return (a.otCode || a.id || '').localeCompare(b.otCode || b.id || '');
+};
+
 const sortTrabajos = (a: Trabajo, b: Trabajo) => {
   const priorityA = STATUS_PRIORITY[a.estado] || 5;
   const priorityB = STATUS_PRIORITY[b.estado] || 5;
@@ -302,7 +358,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
     // 3. Obtener todos los familiares (mismo rootId)
     const group = trabajos.filter(t => rootIds.has(t.id) || (t.parentId && rootIds.has(t.parentId)));
 
-    return group.sort(sortTrabajos);
+    return group.sort(sortByFechaInicioAsc);
   }, [searchTerm, trabajos, vehicleLogs]);
 
   useEffect(() => {
@@ -439,8 +495,12 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
           resource: { 
             ...t, 
             estado: dia.estado || t.estado,
-            cuadrilla: dia.recursos_ajustados && dia.cuadrilla_diaria ? dia.cuadrilla_diaria : t.cuadrilla,
-            unidades: dia.recursos_ajustados && dia.unidades_diarias ? dia.unidades_diarias : t.unidades,
+            cuadrilla: (dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0)
+              ? dia.cuadrilla_diaria
+              : (t.cuadrilla || []),
+            unidades: (dia.unidades_diarias && dia.unidades_diarias.length > 0)
+              ? dia.unidades_diarias
+              : (t.unidades || []),
             hora_inicio: dia.hora_inicio || t.hora_inicio,
             hora_fin: dia.hora_fin || t.hora_fin,
           },
@@ -512,10 +572,54 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
     return { dStart, dEnd, startDateTime, endDateTime };
   };
 
+  const calcHoursBetweenTimes = (hStart?: string, hEnd?: string): number => {
+    const [h1, m1] = (hStart || '00:00').split(':').map(Number);
+    const [h2, m2] = (hEnd || '00:00').split(':').map(Number);
+
+    const startMin = (isNaN(h1) ? 0 : h1) * 60 + (isNaN(m1) ? 0 : m1);
+    let endMin = (isNaN(h2) ? 0 : h2) * 60 + (isNaN(m2) ? 0 : m2);
+
+    if (endMin < startMin) {
+      endMin += 24 * 60; // Si cruza medianoche (ej. 22:00 a 06:00)
+    }
+
+    return Math.max(0, (endMin - startMin) / 60);
+  };
+
   const calcularHoras = (t: Trabajo) => {
-    const { startDateTime, endDateTime } = getJobDateTimes(t);
-    const diffInMs = endDateTime.getTime() - startDateTime.getTime();
-    return Math.max(0, diffInMs / (1000 * 60 * 60));
+    // 1. Si el trabajo tiene detalle explícito por día con horarios configurados
+    if (t.dias_detalle && t.dias_detalle.length > 0) {
+      const totalDetalle = t.dias_detalle.reduce((acc, dia) => {
+        const hInicio = dia.hora_inicio || t.hora_inicio || '00:00';
+        const hFin = dia.hora_fin || t.hora_fin || '00:00';
+        return acc + calcHoursBetweenTimes(hInicio, hFin);
+      }, 0);
+      if (totalDetalle > 0) return totalDetalle;
+    }
+
+    // 2. Horas de la jornada diaria (H. Fin - H. Inicio)
+    const horasDiarias = calcHoursBetweenTimes(t.hora_inicio, t.hora_fin);
+
+    // 3. Cantidad de días incluidos en el rango (fecha_inicio a fecha_fin)
+    const rawStart = t.fecha_inicio instanceof Date 
+      ? t.fecha_inicio 
+      : ((t.fecha_inicio as any)?.toDate?.() || new Date(t.fecha_inicio || new Date()));
+    
+    const rawEnd = t.fecha_fin instanceof Date 
+      ? t.fecha_fin 
+      : ((t.fecha_fin as any)?.toDate?.() || new Date(t.fecha_fin || rawStart));
+
+    const dStart = isNaN(rawStart.getTime()) ? new Date() : rawStart;
+    const dEnd = isNaN(rawEnd.getTime()) ? new Date(dStart) : rawEnd;
+
+    const startDay = new Date(dStart.getFullYear(), dStart.getMonth(), dStart.getDate());
+    const endDay = new Date(dEnd.getFullYear(), dEnd.getMonth(), dEnd.getDate());
+
+    const diffDays = Math.round((endDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24));
+    const cantidadDeDias = Math.max(1, t.dias_programados || (diffDays + 1));
+
+    // Duración total = cantidad de días × horas diarias
+    return cantidadDeDias * horasDiarias;
   };
 
   const formatJobDateLabel = (dStart: Date, dEnd: Date) => {

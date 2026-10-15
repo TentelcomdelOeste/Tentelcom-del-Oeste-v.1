@@ -142,23 +142,35 @@ const mapDataToTrabajo = (id: string, data: any): Trabajo => {
     return isNaN(d.getTime()) ? undefined : d;
   };
 
+  const rawDiasDetalle = data.dias_detalle?.map((d: any) => ({
+    ...d,
+    fecha: toDate(d.fecha) || new Date(),
+    completado_en: toDate(d.completado_en),
+    recursos_ajustados: d.recursos_ajustados || false,
+    cuadrilla_diaria: (d.cuadrilla_diaria && d.cuadrilla_diaria.length > 0) ? d.cuadrilla_diaria : (data.cuadrilla || []),
+    unidades_diarias: (d.unidades_diarias && d.unidades_diarias.length > 0) ? d.unidades_diarias : (data.unidades || []),
+    estado: d.estado || 'programado'
+  }));
+
+  const rootCuadrilla = (data.cuadrilla && data.cuadrilla.length > 0)
+    ? data.cuadrilla
+    : Array.from(new Set<string>((rawDiasDetalle || []).flatMap((d: any) => d.cuadrilla_diaria || [])));
+
+  const rootUnidades = (data.unidades && data.unidades.length > 0)
+    ? data.unidades
+    : Array.from(new Set<string>((rawDiasDetalle || []).flatMap((d: any) => d.unidades_diarias || [])));
+
   return {
     id: id,
     ...data,
+    cuadrilla: rootCuadrilla,
+    unidades: rootUnidades,
     fecha_inicio: toDate(data.fecha_inicio) || new Date(),
     fecha_fin: toDate(data.fecha_fin) || new Date(),
     fecha_inicio_real: toDate(data.fecha_inicio_real),
     fecha_fin_real: toDate(data.fecha_fin_real),
-    dias_programados: data.dias_programados,
-    dias_detalle: data.dias_detalle?.map((d: any) => ({
-      ...d,
-      fecha: toDate(d.fecha) || new Date(),
-      completado_en: toDate(d.completado_en),
-      recursos_ajustados: d.recursos_ajustados || false,
-      cuadrilla_diaria: d.cuadrilla_diaria || [],
-      unidades_diarias: d.unidades_diarias || [],
-      estado: d.estado || 'programado'
-    })),
+    dias_programados: data.dias_programados || rawDiasDetalle?.length,
+    dias_detalle: rawDiasDetalle,
     cerrado_manualmente: data.cerrado_manualmente,
     creado_en: toDate(data.creado_en) || new Date(),
     actualizado_en: toDate(data.actualizado_en) || new Date(),

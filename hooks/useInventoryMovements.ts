@@ -324,6 +324,7 @@ export const useInventoryMovements = (currentUser: User | null) => {
 
                 processedItems.push({
                     ...item,
+                    currency: item.currency || (inventoryState.get(item.inventoryItemId)?.currency) || 'USD',
                     previousStock: (invItem.stock || 0) + (movementData.type === 'Entrada' || movementData.type === 'Devolución' ? -quantity : quantity),
                     newStock: invItem.stock || 0
                 });
@@ -353,6 +354,8 @@ export const useInventoryMovements = (currentUser: User | null) => {
                 inventoryItemName: isMultiple ? `${mainItem.inventoryItemName} (+${processedItems.length - 1})` : (mainItem.inventoryItemName || oldData.inventoryItemName),
                 quantity: isMultiple ? 0 : (mainItem.quantity || 0),
                 unitPrice: mainItem.unitPrice || oldData.unitPrice || 0,
+                currency: mainItem.currency || oldData.currency || 'USD',
+                subtotal: mainItem.subtotal !== undefined ? mainItem.subtotal : (oldData.subtotal || 0),
                 
                 // Metadatos mutables
                 date: movementData.date,

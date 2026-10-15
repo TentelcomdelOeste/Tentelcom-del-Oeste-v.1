@@ -302,9 +302,15 @@ export const OperativoView: React.FC<OperativoViewProps> = ({ trabajos, onSelect
             if (dia.estado) dailyState = dia.estado;
             if (dia.hora_inicio) dailyHoraInicio = dia.hora_inicio;
             if (dia.hora_fin) dailyHoraFin = dia.hora_fin;
-            if (dia.recursos_ajustados) {
-              dailyCuadrilla = dia.cuadrilla_diaria || t.cuadrilla;
-              dailyUnidades = dia.unidades_diarias || t.unidades;
+            if (dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0) {
+              dailyCuadrilla = dia.cuadrilla_diaria;
+            } else if (t.cuadrilla && t.cuadrilla.length > 0) {
+              dailyCuadrilla = t.cuadrilla;
+            }
+            if (dia.unidades_diarias && dia.unidades_diarias.length > 0) {
+              dailyUnidades = dia.unidades_diarias;
+            } else if (t.unidades && t.unidades.length > 0) {
+              dailyUnidades = t.unidades;
             }
           }
         }

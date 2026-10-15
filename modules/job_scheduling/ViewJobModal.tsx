@@ -33,10 +33,8 @@ interface ViewJobModalProps {
 }
 
 export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, trabajo, onSetActiveModule }) => {
-  if (!trabajo) return null;
-
   const isMultiday = useMemo(() => {
-    if (!trabajo.fecha_inicio || !trabajo.fecha_fin) return false;
+    if (!trabajo || !trabajo.fecha_inicio || !trabajo.fecha_fin) return false;
     
     const getTimestamp = (date: any) => {
       if (!date) return 0;
@@ -53,7 +51,21 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
     const dStart = new Date(tsStart);
     const dEnd = new Date(tsEnd);
     return dStart.getFullYear() !== dEnd.getFullYear() || dStart.getMonth() !== dEnd.getMonth() || dStart.getDate() !== dEnd.getDate();
-  }, [trabajo.fecha_inicio, trabajo.fecha_fin]);
+  }, [trabajo]);
+
+  const resolvedCuadrilla = useMemo(() => {
+    if (!trabajo) return [];
+    if (trabajo.cuadrilla && trabajo.cuadrilla.length > 0) return trabajo.cuadrilla;
+    return Array.from(new Set<string>((trabajo.dias_detalle || []).flatMap(d => d.cuadrilla_diaria || [])));
+  }, [trabajo]);
+
+  const resolvedUnidades = useMemo(() => {
+    if (!trabajo) return [];
+    if (trabajo.unidades && trabajo.unidades.length > 0) return trabajo.unidades;
+    return Array.from(new Set<string>((trabajo.dias_detalle || []).flatMap(d => d.unidades_diarias || [])));
+  }, [trabajo]);
+
+  if (!trabajo) return null;
 
   // Helpers
   const getTimestamp = (date: any) => {
@@ -281,11 +293,11 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
           </div>
           
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-            {(!trabajo.cuadrilla || trabajo.cuadrilla.length === 0) ? (
+            {(!resolvedCuadrilla || resolvedCuadrilla.length === 0) ? (
               <p className="text-xs text-slate-400 font-bold italic">No hay personal asignado registrado.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {trabajo.cuadrilla.map((persona, index) => (
+                {resolvedCuadrilla.map((persona, index) => (
                   <div key={index} className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 hover:bg-indigo-100 transition-colors shadow-sm">
                     <div className="bg-indigo-200 text-indigo-700 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0">
                       <FiUser className="text-[10px]" />
@@ -343,7 +355,7 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
               <div className="flex flex-col min-w-0">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehículos</span>
                 <span className="text-xs font-bold text-slate-800 break-words">
-                  {(!trabajo.unidades || trabajo.unidades.length === 0) ? <span className="text-slate-400 italic font-medium">No registrado</span> : trabajo.unidades.join(', ')}
+                  {(!resolvedUnidades || resolvedUnidades.length === 0) ? <span className="text-slate-400 italic font-medium">No registrado</span> : resolvedUnidades.join(', ')}
                 </span>
               </div>
             </div>
@@ -389,18 +401,22 @@ export const ViewJobModal: React.FC<ViewJobModalProps> = ({ isOpen, onClose, tra
                       <div className="border-l border-slate-200 h-6 mx-1 hidden sm:block"></div>
                       
                       <div className="flex flex-col items-start sm:items-end min-w-[120px]">
-                        <span className="text-[9px] text-slate-400 font-bold uppercase">Colaboradores ({dia.cuadrilla_diaria?.length || 0})</span>
-                        <span className="text-[10px] font-bold text-slate-700 truncate max-w-[200px]" title={dia.cuadrilla_diaria?.join(', ')}>
-                          {dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0 ? dia.cuadrilla_diaria.join(', ') : 'Ninguno'}
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">Colaboradores ({(dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0 ? dia.cuadrilla_diaria : (trabajo.cuadrilla || []))?.length || 0})</span>
+                        <span className="text-[10px] font-bold text-slate-700 truncate max-w-[200px]" title={(dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0 ? dia.cuadrilla_diaria : (trabajo.cuadrilla || []))?.join(', ')}>
+                          {dia.cuadrilla_diaria && dia.cuadrilla_diaria.length > 0 
+                            ? dia.cuadrilla_diaria.join(', ') 
+                            : (trabajo.cuadrilla && trabajo.cuadrilla.length > 0 ? trabajo.cuadrilla.join(', ') : 'Ninguno')}
                         </span>
                       </div>
 
                       <div className="border-l border-slate-200 h-6 mx-1 hidden sm:block"></div>
 
                       <div className="flex flex-col items-start sm:items-end min-w-[100px]">
-                        <span className="text-[9px] text-slate-400 font-bold uppercase">Vehículos ({dia.unidades_diarias?.length || 0})</span>
-                        <span className="text-[10px] font-bold text-slate-700 truncate max-w-[150px]" title={dia.unidades_diarias?.join(', ')}>
-                          {dia.unidades_diarias && dia.unidades_diarias.length > 0 ? dia.unidades_diarias.join(', ') : 'Ninguno'}
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">Vehículos ({(dia.unidades_diarias && dia.unidades_diarias.length > 0 ? dia.unidades_diarias : (trabajo.unidades || []))?.length || 0})</span>
+                        <span className="text-[10px] font-bold text-slate-700 truncate max-w-[150px]" title={(dia.unidades_diarias && dia.unidades_diarias.length > 0 ? dia.unidades_diarias : (trabajo.unidades || []))?.join(', ')}>
+                          {dia.unidades_diarias && dia.unidades_diarias.length > 0 
+                            ? dia.unidades_diarias.join(', ') 
+                            : (trabajo.unidades && trabajo.unidades.length > 0 ? trabajo.unidades.join(', ') : 'Ninguno')}
                         </span>
                       </div>
                     </div>

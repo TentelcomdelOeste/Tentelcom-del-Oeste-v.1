@@ -178,6 +178,7 @@ export const guardarCotizacionSeguro = async (params: SaveQuoteParams) => {
     telefono: clientData.telefono.trim(),
     correo: clientData.correo.trim(),
     codigoCliente: finalCodigoCliente,
+    clientId: (savedClients.find(c => c && c.isActive !== false && c.empresa.trim().toLowerCase() === clientData.empresa.trim().toLowerCase()))?.id || null,
     items: processedItems.map(item => ({
         ...item,
         isNewLine: false,

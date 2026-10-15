@@ -243,7 +243,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                           unitPrice: i.unitPrice,
                           iva: i.iva,
                           total: i.total,
-                          currency: i.currency,
+                          currency: i.currency || initialData.currency || (initialData as any).moneda || invItem?.currency || 'USD',
                           notes: i.notes || ''
                       };
                   });
@@ -261,7 +261,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                       unitPrice: (initialData as any).unitPrice,
                       iva: (initialData as any).iva,
                       total: (initialData as any).total,
-                      currency: (initialData as any).currency
+                      currency: (initialData as any).currency || (initialData as any).moneda || invItem?.currency || 'USD'
                   }];
               }
               setAddedItems(itemsToHydrate);
@@ -523,8 +523,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
           const updatedList = [...currentList];
           newItems.forEach(newItem => {
               const existingIdx = updatedList.findIndex(i => i.inventoryItemId === newItem.inventoryItemId);
-              if (existingIdx > -1) {
-                  const existing = updatedList[existingIdx];
+              if (existingIdx > -1 && updatedList[existingIdx]) {
+                  const existing = updatedList[existingIdx]!;
                   const totalQty = existing.quantity + newItem.quantity;
                   const uIva = (newItem.unitPrice || 0) * 0.13;
                   updatedList[existingIdx] = {
@@ -532,7 +532,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                       quantity: totalQty,
                       unitPrice: newItem.unitPrice,
                       iva: uIva * totalQty,
-                      total: ((newItem.unitPrice || 0) + uIva) * totalQty
+                      total: ((newItem.unitPrice || 0) + uIva) * totalQty,
+                      currency: newItem.currency || existing.currency
                   };
               } else {
                   updatedList.push(newItem);
@@ -552,7 +553,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
           unitPrice: itemPrice,
           iva: itemIva,
           total: itemTotal,
-          currency: tempCurrency,
+          currency: (formData.type === 'Entrada' && formData.origin === 'Proveedor') ? tempCurrency : (selectedItem.currency || 'USD'),
           notes: tempNotes
       };
       itemsToAdd.push(clampItem);
@@ -696,7 +697,8 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                 items: addedItems.map(item => {
                     // Intentar obtener precio si no está definido (para Salidas)
                     const invItem = inventoryItems.find(i => i.id === item.inventoryItemId);
-                    const price = item.unitPrice || (invItem?.price || 0);
+                    const price = item.unitPrice !== undefined ? item.unitPrice : (invItem?.price || 0);
+                    const itemCurrency = item.currency || invItem?.currency || 'USD';
                     const iva = (price * item.quantity) * 0.13;
                     const total = (price * item.quantity) * 1.13;
 
@@ -708,10 +710,11 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                         unitPrice: price,
                         iva: item.iva !== undefined ? item.iva : iva,
                         total: item.total !== undefined ? item.total : total,
-                        currency: item.currency || 'USD',
+                        currency: itemCurrency,
                         notes: item.notes || null
                     };
                 }),
+                currency: addedItems[0]?.currency || (inventoryItems.find(i => i.id === addedItems[0]?.inventoryItemId)?.currency) || 'USD',
                 type: sanitizedFormData.type,
                 date: sanitizedFormData.date,
                 projectId: sanitizedFormData.projectId || null,
@@ -1033,8 +1036,9 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                     )}
                 </div>
 
-                <div className="flex gap-2 items-end">
-                    <div className="flex-1">
+
+                <div className="flex flex-wrap gap-2 items-end">
+                    <div className="w-full sm:flex-1">
                         <label className="text-[9px] font-bold text-slate-400 uppercase">Cantidad</label>
                         <div className="relative">
                             <input 
@@ -1155,6 +1159,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                         </>
                     )}
 
+
                     {/* Indicador Stock (Solo visual) */}
                     {selectedItem && (
                         <div className="bg-white border border-slate-200 px-3 py-1 rounded-lg h-[38px] flex flex-col justify-center min-w-[70px]">
@@ -1162,12 +1167,15 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                             <span className={`text-[10px] font-black ${projectedStock < 0 ? 'text-red-500' : 'text-slate-700'}`}>{`${selectedItem.stock} → ${projectedStock}`}</span>
                         </div>
                     )}
-                    <ActionButton 
-                        onClick={handleAddItem}
-                        disabled={!selectedItem || !tempQty}
-                        label="AGREGAR"
-                        variant="primary"
-                    />
+                    <div className="w-full sm:w-auto">
+                        <ActionButton 
+                            onClick={handleAddItem}
+                            disabled={!selectedItem || !tempQty}
+                            label="AGREGAR"
+                            variant="primary"
+                            className="w-full sm:w-auto"
+                        />
+                    </div>
                 </div>
             </div>
 

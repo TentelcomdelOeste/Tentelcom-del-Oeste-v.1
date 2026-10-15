@@ -558,6 +558,66 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
     [confirm, currentUser],
   );
 
+
+
+
+const getFuelFromLog = (l: any) => {
+    if (Array.isArray(l.recargas) && l.recargas.length > 0) {
+      return l.recargas.reduce((sum: number, recarga: any) => sum + (Number(recarga?.monto) || 0), 0);
+    }
+    return Number(l.monto) || 0;
+};
+
+const GastosCell = ({ total, breakdown, isOpen, onToggle, onHover, onAnalysisClick }: { total: number, breakdown: any[], isOpen: boolean, onToggle: () => void, onHover: (hover: boolean) => void, onAnalysisClick: () => void }) => {
+    return (
+        <div className="relative inline-flex items-center">
+            <button
+                onClick={onAnalysisClick}
+                className="text-xs font-black text-emerald-600 hover:text-emerald-700 transition-colors"
+            >
+                ₡{total.toLocaleString()}
+            </button>
+            <div
+                className="inline-flex items-center"
+                onMouseEnter={() => onHover(true)}
+                onMouseLeave={() => onHover(false)}
+                onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            >
+                <FiInfo className="w-4 h-4 text-slate-400 ml-1.5 cursor-pointer hover:text-emerald-600 transition-colors" />
+            </div>
+            {isOpen && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 w-52 bg-white border border-slate-200 shadow-xl text-[11px] p-3 rounded-lg z-50 text-left">
+                    <div className="font-black text-slate-800 mb-1 border-b border-slate-100 pb-1 uppercase tracking-wider">Detalle de Gastos</div>
+                    {breakdown.map((item, i) => (
+                        <div key={i} className="flex justify-between py-0.5">
+                            <span className="text-slate-600 truncate mr-2">{item.label}</span>
+                            <span className="font-mono font-medium text-slate-900 whitespace-nowrap">₡{item.monto.toLocaleString()}</span>
+                        </div>
+                    ))}
+                    <div className="border-t border-slate-200 mt-1 pt-1 flex justify-between font-black text-slate-900">
+                        <span>TOTAL:</span>
+                        <span className="font-mono">₡{total.toLocaleString()}</span>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ... inside VehicleLogs component
+// Add this state to VehicleLogs:
+// const [activePopoverId, setActivePopoverId] = useState<string | null>(null);
+// const [hoveredPopoverId, setHoveredPopoverId] = useState<string | null>(null);
+
+  const [activePopoverId, setActivePopoverId] = useState<string | null>(null);
+  const [hoveredPopoverId, setHoveredPopoverId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = () => setActivePopoverId(null);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+
   const columns = useMemo<TableColumn<VehicleLog>[]>(() => {
     return [
       {
@@ -684,24 +744,29 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
             }
             return false;
           });
-          const total = logExpenses.reduce((sum, e) => sum + (e.monto || 0), 0);
+
+          const fuelAmount = getFuelFromLog(l);
+          const existingTotal = logExpenses.reduce((sum, e) => sum + (e.monto || 0), 0);
+          const total = existingTotal + fuelAmount;
+          const breakdown = [
+            ...logExpenses.map(e => ({ label: e.category || 'Gasto', monto: e.monto || 0 })),
+            ...(fuelAmount > 0 ? [{ label: 'Combustible', monto: fuelAmount }] : [])
+          ];
           
-          if (logExpenses.length === 0) return <span className="text-slate-300 text-[10px] font-bold uppercase">---</span>;
+          if (breakdown.length === 0) return <span className="text-slate-300 text-[10px] font-bold uppercase">---</span>;
           
           return (
-            <button
-              onClick={() => {
+            <GastosCell
+              total={total}
+              breakdown={breakdown}
+              isOpen={activePopoverId === l.id || hoveredPopoverId === l.id}
+              onToggle={() => setActivePopoverId(activePopoverId === l.id ? null : l.id)}
+              onHover={(hover) => setHoveredPopoverId(hover ? l.id : null)}
+              onAnalysisClick={() => {
                 const unidad = l.unidad || extraerUnidad(l.unidadId);
                 onSetActiveModule?.({ module: 'analisis_costos', selectedId: unidad });
               }}
-              className="flex flex-col items-center leading-none group transition-transform active:scale-95"
-              title="Ver Análisis de Costos"
-            >
-              <span className="text-xs font-black text-emerald-600 mb-1 group-hover:text-emerald-700">₡{total.toLocaleString()}</span>
-              <span className="text-[9px] font-black text-emerald-600 uppercase bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 flex items-center gap-0.5 group-hover:bg-emerald-100 transition-colors">
-                {logExpenses.length} {logExpenses.length === 1 ? 'Gasto' : 'Gastos'} <FiArrowRight className="text-[7px]" />
-              </span>
-            </button>
+            />
           );
         }
       },
@@ -729,7 +794,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
         ),
       },
     ];
-  }, [handleDelete, setSelectedLog, setIsModalOpen, currentUser, expenses, onSetActiveModule]);
+  }, [handleDelete, setSelectedLog, setIsModalOpen, currentUser, expenses, onSetActiveModule, activePopoverId, hoveredPopoverId]);
 
   const getPeriodText = () => {
     if (filterYear === 0) return "Historico_Completo";

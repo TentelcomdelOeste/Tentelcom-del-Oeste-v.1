@@ -394,13 +394,24 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
           }
       } else {
           // Caso 1: Cliente completamente nuevo
+          // Si el código previo correspondía a una empresa distinta, limpiarlo para evitar que quede atado a otro cliente
+          if (clientData.codigoCliente) {
+              const belongsToOther = safeClients.some(c => 
+                  c && c.isActive !== false && 
+                  c.codigoCliente?.trim().toUpperCase() === clientData.codigoCliente?.trim().toUpperCase() &&
+                  c.empresa.trim().toLowerCase() !== empresaInput
+              );
+              if (belongsToOther) {
+                  setClientData(prev => ({ ...prev, codigoCliente: '' }));
+              }
+          }
           setClientStatus({
               status: 'new',
               message: 'Cliente completamente nuevo: Se creará automáticamente al guardar.',
           });
       }
 
-  }, [clientData.empresa, clientData.contacto, clientData.telefono, clientData.correo, savedClients]);
+  }, [clientData.empresa, clientData.contacto, clientData.telefono, clientData.correo, clientData.codigoCliente, savedClients]);
 
 
   // Validación de Duplicados de Producto en Tiempo Real

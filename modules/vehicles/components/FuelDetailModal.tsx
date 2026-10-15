@@ -16,10 +16,33 @@ export const FuelDetailModal: React.FC<FuelDetailModalProps> = ({ show, onClose,
         submodule: 'Detalle de Combustible',
         enabled: show
     });
+    const formatFuelDate = (fechaStr?: string | null): string => {
+        if (!fechaStr) return 'N/A';
+        // Si contiene 'T', es un timestamp ISO real: respetar significado temporal y zona horaria
+        if (fechaStr.includes('T')) {
+            const d = new Date(fechaStr);
+            return !isNaN(d.getTime()) ? d.toLocaleDateString() : fechaStr;
+        }
+        // Si es fecha formato YYYY-MM-DD: tratarla como fecha calendario sin desplazamiento por zona horaria UTC
+        if (fechaStr.includes('-')) {
+            const [year, month, day] = fechaStr.split('-').map(Number);
+            if (year && month && day) {
+                return new Date(year, month - 1, day).toLocaleDateString();
+            }
+        }
+        const d = new Date(fechaStr);
+        return !isNaN(d.getTime()) ? d.toLocaleDateString() : fechaStr;
+    };
+
     const fuelLogs = useMemo(() => {
-        return logs.filter(log => log.litros != null && log.litros !== "").sort((a, b) => 
-            new Date(b.fecha || b.createdAt || 0).getTime() - new Date(a.fecha || a.createdAt || 0).getTime()
-        );
+        return logs.filter(log => log.litros != null && log.litros !== "").sort((a, b) => {
+            const dateA = a.fecha || a.createdAt || "";
+            const dateB = b.fecha || b.createdAt || "";
+            if (dateA !== dateB) return dateB.localeCompare(dateA);
+            const timeA = a.horaSalida || "";
+            const timeB = b.horaSalida || "";
+            return timeB.localeCompare(timeA);
+        });
     }, [logs]);
 
     if (!show) return null;
@@ -50,7 +73,7 @@ export const FuelDetailModal: React.FC<FuelDetailModalProps> = ({ show, onClose,
                                     <div key={log.id} className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-slate-300 transition-colors">
                                         <div>
                                             <div className="text-[10px] font-black text-slate-400 uppercase">Fecha</div>
-                                            <div className="text-xs font-bold text-slate-900">{log.fecha ? new Date(log.fecha).toLocaleDateString() : 'N/A'}</div>
+                                            <div className="text-xs font-bold text-slate-900">{formatFuelDate(log.fecha || log.createdAt)}</div>
                                         </div>
                                         <div>
                                             <div className="text-[10px] font-black text-slate-400 uppercase">Litros / Galones</div>

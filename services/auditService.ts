@@ -25,6 +25,9 @@ class AuditService {
   }
 
   private getOrCreateSessionId(): string {
+    if (typeof sessionStorage === 'undefined') {
+      return 'session_' + crypto.randomUUID();
+    }
     let sid = sessionStorage.getItem('audit_session_id');
     if (!sid) {
       sid = crypto.randomUUID();
