@@ -2,18 +2,18 @@ import React from 'react';
 import { AnalysisPopover } from './AnalysisPopover';
 
 interface CostPerKmPopoverProps {
-  totalCost: number;
+  totalCombustible: number;
   totalKm: number;
   costPerKm: number;
   desktopAlignment?: 'left' | 'center' | 'right';
 }
 
 /**
- * Popover que muestra el detalle del costo por kilómetro.
+ * Popover que muestra el detalle del costo por kilómetro basado exclusivamente en combustible.
  * Utiliza AnalysisPopover para un posicionamiento consistente.
  */
 export const CostPerKmPopover: React.FC<CostPerKmPopoverProps> = ({ 
-  totalCost, 
+  totalCombustible, 
   totalKm, 
   costPerKm,
   desktopAlignment = 'center'
@@ -23,7 +23,7 @@ export const CostPerKmPopover: React.FC<CostPerKmPopoverProps> = ({
       <div className="p-4 sm:p-5">
         <div className="mb-3 sm:mb-4">
           <h4 className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 sm:mb-2">
-            Costo por Kilómetro
+            Costo de Combustible por Kilómetro
           </h4>
           <div className="flex items-baseline gap-1.5">
             <span className="text-2xl sm:text-3xl font-black text-blue-950 tracking-tight">
@@ -37,7 +37,7 @@ export const CostPerKmPopover: React.FC<CostPerKmPopoverProps> = ({
           <div>
             <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-tight mb-1.5 sm:mb-2 block">¿Cómo se calcula?</span>
             <p className="text-[9px] sm:text-[10px] font-medium text-slate-600 leading-relaxed italic">
-              Costo Total ÷ Total de Kilómetros Recorridos
+              Total de Combustible del Período ÷ Total de Kilómetros Recorridos
             </p>
           </div>
 
@@ -45,8 +45,8 @@ export const CostPerKmPopover: React.FC<CostPerKmPopoverProps> = ({
             <span className="text-[7px] sm:text-[8px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 sm:mb-2">Ejemplo para esta unidad:</span>
             <div className="space-y-1.5">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-[10px] gap-0.5 sm:gap-2">
-                <span className="text-slate-500">Costo Total:</span>
-                <span className="font-bold text-slate-700">₡{totalCost.toLocaleString()}</span>
+                <span className="text-slate-500">Costo de Combustible:</span>
+                <span className="font-bold text-slate-700">₡{totalCombustible.toLocaleString()}</span>
               </div>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-[10px] gap-0.5 sm:gap-2">
                 <span className="text-slate-500">Kilómetros:</span>
@@ -62,7 +62,7 @@ export const CostPerKmPopover: React.FC<CostPerKmPopoverProps> = ({
           <div>
             <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-tight mb-1 block">Interpretación</span>
             <p className="text-[9px] sm:text-[10px] text-slate-500 leading-relaxed">
-              Este indicador representa el costo promedio histórico de recorrer un kilómetro con esta unidad, considerando todos los gastos registrados.
+              Este indicador representa el costo de combustible por kilómetro recorrido para esta unidad en el período seleccionado, excluyendo mantenimientos y otros gastos operativos.
             </p>
           </div>
         </div>

@@ -24,6 +24,7 @@ import { AnalysisPopoverProvider } from './components/AnalysisPopoverContext';
 import { ActionButton, useConfirm, Select } from '../../design-system';
 
 const MONTH_NAMES = [
+  { value: "all", label: "Todos los meses" },
   { value: "1", label: "Enero" },
   { value: "2", label: "Febrero" },
   { value: "3", label: "Marzo" },
@@ -280,7 +281,6 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
 
     // Registros filtrados por Mes y Año seleccionados
     const filteredLogs = useMemo(() => {
-        const targetMonth = String(filterMonth).padStart(2, '0');
         return rawLogs.filter(log => {
             const canonical = normalizeDateToCanonical(log.fecha);
             if (!canonical) return false;
@@ -288,13 +288,17 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
             if (parts.length < 2) return false;
             const y = parseInt(parts[0], 10);
             const m = parts[1];
-            return y === filterYear && m === targetMonth;
+            if (y !== filterYear) return false;
+            if (filterMonth && filterMonth !== 'all') {
+                const targetMonth = String(filterMonth).padStart(2, '0');
+                if (m !== targetMonth) return false;
+            }
+            return true;
         });
     }, [rawLogs, filterYear, filterMonth]);
 
     // Gastos filtrados por Mes y Año seleccionados
     const filteredExpenses = useMemo(() => {
-        const targetMonth = String(filterMonth).padStart(2, '0');
         return expenses.filter(exp => {
             const canonical = normalizeDateToCanonical(exp.fecha);
             if (!canonical) return false;
@@ -302,7 +306,12 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
             if (parts.length < 2) return false;
             const y = parseInt(parts[0], 10);
             const m = parts[1];
-            return y === filterYear && m === targetMonth;
+            if (y !== filterYear) return false;
+            if (filterMonth && filterMonth !== 'all') {
+                const targetMonth = String(filterMonth).padStart(2, '0');
+                if (m !== targetMonth) return false;
+            }
+            return true;
         });
     }, [expenses, filterYear, filterMonth]);
 
@@ -316,7 +325,9 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
             })
             .reduce((acc, curr) => acc + (curr.monto || 0), 0);
 
-        const targetMonthPrefix = `${filterYear}-${String(filterMonth).padStart(2, '0')}`;
+        const targetMonthPrefix = filterMonth && filterMonth !== 'all'
+            ? `${filterYear}-${String(filterMonth).padStart(2, '0')}`
+            : `${filterYear}-`;
         const gastoMes = expenses
             .filter(e => {
                 const canon = normalizeDateToCanonical(e.fecha);
@@ -376,7 +387,7 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
     const metrics = useMemo(() => {
         let totalKm = 0;
         let totalLitros = 0;
-        let costoTotal = 0;
+        let costoCombustible = 0;
         let totalEventos = 0;
 
         filteredLogs.forEach(log => {
@@ -384,46 +395,47 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
                 ? (log.kmLlegada - log.kmSalida) 
                 : (log.totalKm || 0);
 
-            let logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
-            if (log.recargas && Array.isArray(log.recargas)) {
+            let logLitros = 0;
+            if (log.recargas && Array.isArray(log.recargas) && log.recargas.length > 0) {
                 log.recargas.forEach(r => {
                     if (r.litros != null) {
                         logLitros += parseFloat(String(r.litros)) || 0;
                     }
                 });
+            } else {
+                logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
+            }
+
+            let logCosto = 0;
+            if (log.recargas && Array.isArray(log.recargas) && log.recargas.length > 0) {
+                log.recargas.forEach(r => {
+                    if (r.monto != null) {
+                        logCosto += parseFloat(String(r.monto)) || 0;
+                    }
+                });
+            } else {
+                logCosto = log.monto || (log as any).costo || 0;
             }
 
             totalKm += km;
             totalLitros += logLitros;
+            costoCombustible += logCosto;
             if (log.eventosCarretera === 'Sí') {
                 totalEventos++;
             }
         });
 
-        // 1. Sum up all filtered expenses for this unit
+        let nonFuelCost = 0;
         filteredExpenses.forEach(exp => {
-            costoTotal += exp.monto || 0;
-        });
-
-        // 2. Add any log.monto that is NOT associated with an expense doc
-        filteredLogs.forEach(log => {
-            const hasAssociated = expenses.some(exp => exp.bitacoraId === log.id);
-            if (!hasAssociated) {
-                let logCosto = log.monto || (log as any).costo || 0;
-                if (log.recargas && Array.isArray(log.recargas)) {
-                    log.recargas.forEach(r => {
-                        if (r.monto != null) {
-                            logCosto += parseFloat(String(r.monto)) || 0;
-                        }
-                    });
-                }
-                costoTotal += logCosto;
+            if (exp.categoria !== 'Combustible') {
+                nonFuelCost += exp.monto || 0;
             }
         });
 
+        const costoTotal = costoCombustible + nonFuelCost;
         const totalGalones = totalLitros / 3.785;
         const kmPorGalon = totalLitros >= 1 && totalGalones > 0 ? totalKm / totalGalones : 0;
-        const costoPorKm = totalKm > 0 ? costoTotal / totalKm : 0;
+        const costoPorKm = totalKm > 0 ? costoCombustible / totalKm : 0;
         const costoPorGalon = totalGalones > 0 ? costoTotal / totalGalones : 0;
 
         return { 
@@ -431,6 +443,7 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
             totalLitros, 
             totalGalones, 
             costoTotal, 
+            costoCombustible,
             kmPorGalon, 
             costoPorKm,
             costoPorGalon,
@@ -511,22 +524,22 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
 
                     {/* SELECTORES DE MES Y AÑO */}
                     <div className="flex flex-row items-center gap-2 w-full md:w-auto">
-                        <div className="w-1/2 md:w-32">
-                            <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1 ml-1">Año</label>
+                        <div className="flex-1 md:w-36">
                             <Select
                                 value={filterYear}
                                 onChange={(val) => setFilterYear(Number(val))}
                                 options={yearOptions}
                                 isSearchable={false}
+                                placeholder="Año"
                             />
                         </div>
-                        <div className="w-1/2 md:w-44">
-                            <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1 ml-1">Mes</label>
+                        <div className="flex-1 md:w-52">
                             <Select
                                 value={filterMonth}
                                 onChange={(val) => setFilterMonth(String(val))}
                                 options={MONTH_NAMES}
                                 isSearchable={false}
+                                placeholder="Mes"
                             />
                         </div>
                     </div>
@@ -619,7 +632,7 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
                                 <div className="flex items-center gap-1 mb-2">
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Costo por Km</span>
                                     <CostPerKmPopover 
-                                        totalCost={metrics.costoTotal} 
+                                        totalCombustible={metrics.costoCombustible} 
                                         totalKm={metrics.totalKm} 
                                         costPerKm={metrics.costoPorKm} 
                                         desktopAlignment="right"
@@ -707,7 +720,9 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Gasto del Mes ({MONTH_NAMES.find(m => m.value === String(filterMonth))?.label || filterMonth})</span>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                        {filterMonth === 'all' ? `Gasto del Período (${filterYear})` : `Gasto del Mes (${MONTH_NAMES.find(m => m.value === String(filterMonth))?.label || filterMonth})`}
+                                    </span>
                                     <div className="text-xl font-black text-emerald-600">
                                         ₡{costSummary.gastoMes.toLocaleString()}
                                     </div>
@@ -730,7 +745,7 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest">
-                                    Historial de Registros — {MONTH_NAMES.find(m => m.value === String(filterMonth))?.label} {filterYear}
+                                    Historial de Registros — {filterMonth === 'all' ? `Año ${filterYear}` : `${MONTH_NAMES.find(m => m.value === String(filterMonth))?.label} ${filterYear}`}
                                 </h3>
                                 <div className="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold uppercase">
                                     {filteredLogs.length} {filteredLogs.length === 1 ? 'Bitácora' : 'Bitácoras'}
@@ -740,7 +755,7 @@ export const VehicleAnalysisDetail: React.FC<VehicleAnalysisDetailProps> = ({ cu
                             {filteredLogs.length === 0 ? (
                                 <div className="py-20 text-center bg-white rounded-2xl border border-slate-200">
                                     <p className="text-sm font-medium text-slate-400 italic">
-                                        No se encontraron registros de bitácora para esta unidad en {MONTH_NAMES.find(m => m.value === String(filterMonth))?.label} de {filterYear}.
+                                        No se encontraron registros de bitácora para esta unidad en {filterMonth === 'all' ? `el año ${filterYear}` : `${MONTH_NAMES.find(m => m.value === String(filterMonth))?.label} de ${filterYear}`}.
                                     </p>
                                 </div>
                             ) : (

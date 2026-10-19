@@ -33,9 +33,10 @@ const MONTH_NAMES = [
 
 interface VehicleAnalysisProps {
     currentUser: User;
+    onSetActiveModule?: (module: any) => void;
 }
 
-export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser }) => {
+export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser, onSetActiveModule }) => {
     const { authReady } = useAuth();
     const navigate = useNavigate();
     const confirm = useConfirm();
@@ -150,13 +151,15 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                 ? (log.kmLlegada - log.kmSalida) 
                 : (log.totalKm || 0);
 
-            let logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
-            if (log.recargas && Array.isArray(log.recargas)) {
+            let logLitros = 0;
+            if (log.recargas && Array.isArray(log.recargas) && log.recargas.length > 0) {
                 log.recargas.forEach(r => {
                     if (r.litros != null) {
                         logLitros += parseFloat(String(r.litros)) || 0;
                     }
                 });
+            } else {
+                logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
             }
 
             totalKm += km;
@@ -173,13 +176,15 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
         logs.forEach(log => {
             const hasAssociated = filteredExpenses.some(exp => exp.bitacoraId === log.id);
             if (!hasAssociated) {
-                let logCosto = log.monto || (log as any).costo || 0;
-                if (log.recargas && Array.isArray(log.recargas)) {
+                let logCosto = 0;
+                if (log.recargas && Array.isArray(log.recargas) && log.recargas.length > 0) {
                     log.recargas.forEach(r => {
                         if (r.monto != null) {
                             logCosto += parseFloat(String(r.monto)) || 0;
                         }
                     });
+                } else {
+                    logCosto = log.monto || (log as any).costo || 0;
                 }
                 costoTotal += logCosto;
             }
@@ -252,6 +257,7 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                     placa: placa,
                     totalKm: 0,
                     totalLitros: 0,
+                    costoCombustible: 0,
                     costoTotal: 0,
                     costBreakdown: {} as Record<string, number>,
                     totalEventos: 0,
@@ -265,17 +271,31 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                 ? (log.kmLlegada - log.kmSalida) 
                 : (log.totalKm || 0);
 
-            let logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
-            if (log.recargas && Array.isArray(log.recargas)) {
+            let logLitros = 0;
+            if (log.recargas && Array.isArray(log.recargas) && log.recargas.length > 0) {
                 log.recargas.forEach(r => {
                     if (r.litros != null) {
                         logLitros += parseFloat(String(r.litros)) || 0;
                     }
                 });
+            } else {
+                logLitros = (log.litros != null && log.litros !== "") ? parseFloat(String(log.litros)) || 0 : 0;
+            }
+
+            let logCosto = 0;
+            if (log.recargas && Array.isArray(log.recargas) && log.recargas.length > 0) {
+                log.recargas.forEach(r => {
+                    if (r.monto != null) {
+                        logCosto += parseFloat(String(r.monto)) || 0;
+                    }
+                });
+            } else {
+                logCosto = log.monto || (log as any).costo || 0;
             }
             
             groups[uid].totalKm += km;
             groups[uid].totalLitros += logLitros;
+            groups[uid].costoCombustible += logCosto;
             
             if (log.eventosCarretera === 'Sí') {
                 groups[uid].totalEventos++;
@@ -293,6 +313,7 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                     placa: '',
                     totalKm: 0,
                     totalLitros: 0,
+                    costoCombustible: 0,
                     costoTotal: 0,
                     costBreakdown: {} as Record<string, number>,
                     totalEventos: 0,
@@ -300,36 +321,25 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                 };
             }
 
-            const expMonto = exp.monto || 0;
-            const categoria = exp.categoria || 'Gasto General';
-            groups[uid].costoTotal += expMonto;
-            groups[uid].costBreakdown[categoria] = (groups[uid].costBreakdown[categoria] || 0) + expMonto;
-        });
-
-        logs.forEach(log => {
-            const uid = log.unidad || extraerUnidad(log.unidadId);
-            if (!uid || !groups[uid]) return;
-
-            const hasAssociated = filteredExpenses.some(exp => exp.bitacoraId === log.id);
-            if (!hasAssociated) {
-                let logCosto = log.monto || (log as any).costo || 0;
-                if (log.recargas && Array.isArray(log.recargas)) {
-                    log.recargas.forEach(r => {
-                        if (r.monto != null) {
-                            logCosto += parseFloat(String(r.monto)) || 0;
-                        }
-                    });
-                }
-                if (logCosto > 0) {
-                    groups[uid].costoTotal += logCosto;
-                    groups[uid].costBreakdown['Combustible'] = (groups[uid].costBreakdown['Combustible'] || 0) + logCosto;
-                }
+            if (exp.categoria !== 'Combustible') {
+                const expMonto = exp.monto || 0;
+                const categoria = exp.categoria || 'Gasto General';
+                groups[uid].costBreakdown[categoria] = (groups[uid].costBreakdown[categoria] || 0) + expMonto;
             }
         });
 
-        return Object.values(groups).map(g => {
+        return Object.values(groups).map((g: any) => {
             const totalGalones = litrosAGalones(g.totalLitros);
             g.rendimiento = g.totalLitros >= 1 && totalGalones > 0 ? (g.totalKm / totalGalones) : 0;
+            
+            let nonFuelCost = 0;
+            Object.entries(g.costBreakdown).forEach(([cat, monto]) => {
+                nonFuelCost += Number(monto) || 0;
+            });
+
+            g.costoTotal = g.costoCombustible + nonFuelCost;
+            g.costBreakdown['Combustible'] = g.costoCombustible;
+
             return g;
         }).sort((a, b) => b.totalKm - a.totalKm);
     }, [logs, filteredExpenses]);
@@ -415,7 +425,12 @@ export const VehicleAnalysis: React.FC<VehicleAnalysisProps> = ({ currentUser })
                                                 </span>
                                                 <ActionButton 
                                                     className="flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-blue-600 border border-blue-700 text-white hover:bg-blue-700 transition-colors shadow-sm !w-auto"
-                                                    onClick={() => navigate(`/analisis-flota/unidad/${unit.unidadId}`)}
+                                                    onClick={() => {
+                                                        if (onSetActiveModule) {
+                                                            onSetActiveModule({ module: 'vehicles_analysis_detail', selectedId: unit.unidadId });
+                                                        }
+                                                        navigate(`/analisis-flota/unidad/${encodeURIComponent(unit.unidadId)}`);
+                                                    }}
                                                     label={<span className="hidden md:inline">VER DETALLE</span>}
                                                     icon={<FiEye className="text-[14px]" />}
                                                 />

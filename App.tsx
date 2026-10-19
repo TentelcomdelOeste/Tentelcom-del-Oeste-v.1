@@ -130,13 +130,15 @@ const MODULE_PATHS: Record<string, string> = {
   'health_dashboard': '/admin/health',
   'vehicles_logs': '/vehicles-logs',
   'vehicles_analysis': '/vehicles-analysis',
+  'analisis_flota': '/analisis-flota',
   'analisis_costos': '/analisis-costos'
 };
 
 const PATH_TO_MODULE: Record<string, string> = Object.entries(MODULE_PATHS).reduce((acc, [mod, path]) => {
-  acc[path] = mod;
+  acc[path] = mod === 'analisis_flota' ? 'vehicles_analysis' : mod;
   return acc;
 }, {} as Record<string, string>);
+PATH_TO_MODULE['/analisis-flota'] = 'vehicles_analysis';
 
 const getModuleLabel = (modId: string): string => {
   const mapping: Record<string, string> = {
@@ -764,7 +766,11 @@ function App() {
 
     if (path.startsWith('/analisis-flota/unidad/')) {
       const parts = path.split('/').filter(Boolean);
-      routeSelectedId = parts.length > 2 ? parts[2] : undefined;
+      try {
+        routeSelectedId = parts.length > 2 ? decodeURIComponent(parts[2]) : undefined;
+      } catch {
+        routeSelectedId = parts.length > 2 ? parts[2] : undefined;
+      }
       if (parts.length > 3 && parts[3] === 'costos') {
         moduleFromPath = 'analisis_costos';
       } else {
