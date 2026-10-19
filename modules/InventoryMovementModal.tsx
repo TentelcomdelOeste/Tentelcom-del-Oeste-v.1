@@ -1072,7 +1072,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                     {/* Campos de Costo (Solo Entrada Proveedor) */}
                     {formData.type === 'Entrada' && formData.origin === 'Proveedor' && (
                         <>
-                            <div className="w-16">
+                            <div className="w-full sm:w-16">
                                 <label className="text-[9px] font-bold text-slate-400 uppercase">Moneda</label>
                                 <select 
                                     value={tempCurrency}
@@ -1084,7 +1084,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                                 </select>
                             </div>
 
-                            <div className="w-24">
+                            <div className="w-full sm:w-24">
                                 <label className="text-[9px] font-bold text-slate-400 uppercase">Precio U.</label>
                                 <div className="relative">
                                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold">{tempCurrency === 'USD' ? '$' : '₡'}</span>
@@ -1104,7 +1104,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
 
                             {isClampCondition && (
                                 <>
-                                    <div className="w-20">
+                                    <div className="w-full sm:w-20">
                                         <label className="text-[9px] font-bold text-blue-500 uppercase">Perno 4&quot;</label>
                                         <div className="relative">
                                             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-500 text-[10px] font-bold">{tempCurrency === 'USD' ? '$' : '₡'}</span>
@@ -1117,7 +1117,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                                             />
                                         </div>
                                     </div>
-                                    <div className="w-20">
+                                    <div className="w-full sm:w-20">
                                         <label className="text-[9px] font-bold text-blue-500 uppercase">Perno 3&quot;</label>
                                         <div className="relative">
                                             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-500 text-[10px] font-bold">{tempCurrency === 'USD' ? '$' : '₡'}</span>
@@ -1132,7 +1132,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                                     </div>
                                 </>
                             )}
-                            <div className="w-20">
+                            <div className="w-full sm:w-20">
                                 <label className="text-[9px] font-bold text-slate-400 uppercase">IVA (U.)</label>
                                 <div className="relative">
                                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold">{tempCurrency === 'USD' ? '$' : '₡'}</span>
@@ -1144,7 +1144,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
                                     />
                                 </div>
                             </div>
-                            <div className="w-24">
+                            <div className="w-full sm:w-24">
                                 <label className="text-[9px] font-bold text-emerald-500 uppercase">Total (U.)</label>
                                 <div className="relative">
                                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-emerald-500 text-[10px] font-bold">{tempCurrency === 'USD' ? '$' : '₡'}</span>
@@ -1162,7 +1162,7 @@ export const InventoryMovementModal: React.FC<InventoryMovementModalProps> = ({
 
                     {/* Indicador Stock (Solo visual) */}
                     {selectedItem && (
-                        <div className="bg-white border border-slate-200 px-3 py-1 rounded-lg h-[38px] flex flex-col justify-center min-w-[70px]">
+                        <div className="bg-white border border-slate-200 px-3 py-1 rounded-lg h-[38px] flex flex-col justify-center w-full sm:w-auto sm:min-w-[70px]">
                             <span className="text-[8px] text-slate-400 font-bold uppercase">Stock</span>
                             <span className={`text-[10px] font-black ${projectedStock < 0 ? 'text-red-500' : 'text-slate-700'}`}>{`${selectedItem.stock} → ${projectedStock}`}</span>
                         </div>

@@ -8,9 +8,10 @@ import { generateQuotePDF } from '../utils/pdfGenerator';
 import { triggerFileDownload } from '../utils/fileUtils';
 import useLockBodyScroll from '../hooks/useLockBodyScroll';
 import { useConfirm, ActionButton, IconButton, StatusBadge, ConfirmModal, ConflictModal, DataTable, TableColumn } from '../design-system';
-import { FiCheck, FiTrash2, FiAlertTriangle, FiFileText, FiSearch, FiX, FiBookOpen, FiPlus, FiAlertCircle, FiCheckCircle, FiInfo } from "react-icons/fi";
+import { FiCheck, FiTrash2, FiAlertTriangle, FiFileText, FiSearch, FiX, FiBookOpen, FiPlus, FiAlertCircle, FiCheckCircle, FiInfo, FiArrowUp, FiArrowDown } from "react-icons/fi";
 import { guardarCotizacionSeguro } from '../services/quoteService';
 import { useOfflineMutation } from '../hooks/useOfflineMutation';
+import { toTitleCaseSpanish, toUpperCaseSpanish, toLowerCaseSpanish } from '../utils/quoteUtils';
 
 import { useAuditPermanence } from '../hooks/useAuditPermanence';
 
@@ -31,6 +32,40 @@ interface DescriptionCellProps {
 
 const DescriptionCell = React.memo(({ item, updateItem, catalogMap }: DescriptionCellProps) => {
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+    const menuRef = React.useRef<HTMLDivElement>(null);
+    const [showFormatMenu, setShowFormatMenu] = React.useState(false);
+
+    // Cerrar menú al hacer clic fuera
+    React.useEffect(() => {
+        if (!showFormatMenu) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setShowFormatMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showFormatMenu]);
+
+    const applyFormat = React.useCallback((type: 'upper' | 'lower' | 'title') => {
+        const text = item.descripcion || '';
+        if (!text) {
+            setShowFormatMenu(false);
+            return;
+        }
+
+        let newText = text;
+        if (type === 'upper') {
+            newText = toUpperCaseSpanish(text);
+        } else if (type === 'lower') {
+            newText = toLowerCaseSpanish(text);
+        } else if (type === 'title') {
+            newText = toTitleCaseSpanish(text);
+        }
+
+        updateItem(item.id, 'descripcion', newText);
+        setShowFormatMenu(false);
+    }, [item.descripcion, item.id, updateItem]);
 
     // Ajuste de altura inicial y al cambiar contenido
     React.useLayoutEffect(() => {
@@ -65,16 +100,73 @@ const DescriptionCell = React.memo(({ item, updateItem, catalogMap }: Descriptio
     const exactMatch = codeMatch && descMatch && codeMatch.id === descMatch.id;
 
     return (
-        <div className="relative w-full">
+        <div className="relative w-full group/desc">
             <textarea
                 ref={textareaRef}
                 value={item.descripcion ?? ''}
                 onChange={e => updateItem(item.id, 'descripcion', e.target.value)}
-                className={`w-full p-2 bg-transparent border-b outline-none text-xs font-bold resize-none overflow-hidden block transition-colors leading-normal break-words whitespace-normal ${descMatch ? 'border-amber-300 text-amber-800' : 'border-transparent focus:border-blue-300 text-blue-900'}`}
+                className={`w-full p-2 pr-9 bg-transparent border-b outline-none text-xs font-bold resize-none overflow-hidden block transition-colors leading-normal break-words whitespace-normal ${descMatch ? 'border-amber-300 text-amber-800' : 'border-transparent focus:border-blue-300 text-blue-900'}`}
                 rows={1}
                 placeholder="Descripción del item..."
                 style={{ minHeight: '32px', height: '32px' }}
             />
+
+            {/* Control discreto de formato de texto */}
+            <div ref={menuRef} className="absolute right-1 top-1.5 z-20">
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setShowFormatMenu(prev => !prev);
+                    }}
+                    title="Formato de texto de la descripción"
+                    className={`px-1.5 py-0.5 text-[10px] font-black rounded border transition-all flex items-center gap-0.5 shadow-2xs ${
+                        showFormatMenu 
+                            ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-200' 
+                            : 'bg-white/95 text-slate-500 border-slate-200 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50'
+                    }`}
+                >
+                    <span>Aa</span>
+                    <span className="text-[8px] leading-none opacity-70">▾</span>
+                </button>
+
+                {showFormatMenu && (
+                    <div 
+                        className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 text-left"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-3 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                            <span>Formato de texto</span>
+                            <span className="font-mono text-[8px] text-blue-500">ES</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => applyFormat('upper')}
+                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
+                        >
+                            <span>MAYÚSCULAS</span>
+                            <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">ABC</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => applyFormat('lower')}
+                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
+                        >
+                            <span>minúsculas</span>
+                            <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">abc</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => applyFormat('title')}
+                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
+                        >
+                            <span>Primera Letra (Tipo Título)</span>
+                            <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">Abc</span>
+                        </button>
+                    </div>
+                )}
+            </div>
+
             {descMatch && !exactMatch && (
                 <div className="text-[8px] font-bold text-amber-600 bg-amber-50 px-1 rounded border border-amber-100 inline-block mt-1 self-start">
                     Descripción ya existe en catálogo
@@ -286,13 +378,18 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
         setOriginalClientData(data);
         // IMPORTANTE: Al cargar partidas existentes, marcarlas como NO nuevas y NO editadas
         // Esto evita que se validen contra el catálogo innecesariamente al guardar sin cambios.
-        setItems((quote.items || []).map(i => ({ 
+        const loadedItems = (quote.items || []).map((i, idx) => ({ 
             ...i, 
+            order: typeof i.order === 'number' ? i.order : (idx + 1),
             codigo: i.codigo ?? '',
             descripcion: i.descripcion ?? '',
             isNewLine: false, 
             isEdited: false 
-        })));
+        }));
+        if (loadedItems.some(i => typeof i.order === 'number')) {
+            loadedItems.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        }
+        setItems(loadedItems);
         setMetaData({
           fecha: quote.fecha ?? new Date().toLocaleDateString('es-GB'),
           moneda: quote.moneda ?? 'USD',
@@ -499,6 +596,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
             cantidad: 1, 
             precioUnitario: 0, 
             total: 0,
+            order: prevItems.length + 1,
             source: 'manual',
             isCustom: true,
             productId: null,
@@ -518,9 +616,35 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
     });
     
     if (confirmed) {
-        setItems(prevItems => prevItems.filter(i => i.id !== id));
+        setItems(prevItems => {
+            const filtered = prevItems.filter(i => i.id !== id);
+            return filtered.map((it, idx) => ({ ...it, order: idx + 1, isEdited: true }));
+        });
     }
   }, [items, confirm]);
+
+  // Reordenamiento vertical de filas completas
+  const handleMoveItemUp = React.useCallback((id: string) => {
+    setItems(prevItems => {
+      const index = prevItems.findIndex(i => i.id === id);
+      if (index <= 0) return prevItems;
+      const newItems = [...prevItems];
+      const [movedItem] = newItems.splice(index, 1);
+      newItems.splice(index - 1, 0, movedItem);
+      return newItems.map((item, idx) => ({ ...item, order: idx + 1, isEdited: true }));
+    });
+  }, []);
+
+  const handleMoveItemDown = React.useCallback((id: string) => {
+    setItems(prevItems => {
+      const index = prevItems.findIndex(i => i.id === id);
+      if (index === -1 || index >= prevItems.length - 1) return prevItems;
+      const newItems = [...prevItems];
+      const [movedItem] = newItems.splice(index, 1);
+      newItems.splice(index + 1, 0, movedItem);
+      return newItems.map((item, idx) => ({ ...item, order: idx + 1, isEdited: true }));
+    });
+  }, []);
 
   const updateItem = React.useCallback((id: string, field: keyof QuoteItem, value: any) => {
     setItems(prevItems => prevItems.map(item => {
@@ -598,6 +722,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
       cantidad: 1,
       precioUnitario: product.precioBase,
       total: product.precioBase,
+      order: prevItems.length + 1,
       source: 'catalog',
       isCustom: false,
       productId: product.id,
@@ -879,20 +1004,49 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({ show, onClose, onSave, o
     },
     {
         header: "",
-        width: "50px",
+        width: "95px",
         align: "center",
         mobileGrid: "full",
         mobileOrder: 6,
-        render: (item) => (
-            <IconButton 
-                onClick={() => handleRemoveItem(item.id)} 
-                icon={<FiTrash2  />}
-                variant="danger"
-                title="Eliminar Item"
-            />
-        )
+        render: (item, index) => {
+            const itemIndex = typeof index === 'number' ? index : items.findIndex(i => i.id === item.id);
+            const isFirst = itemIndex <= 0;
+            const isLast = itemIndex >= items.length - 1;
+
+            return (
+                <div className="flex items-center justify-center md:justify-center gap-1 w-full">
+                    <IconButton 
+                        onClick={() => handleMoveItemUp(item.id)} 
+                        icon={<FiArrowUp className="w-3.5 h-3.5" />}
+                        variant="neutral"
+                        disabled={isFirst}
+                        title={isFirst ? "Primera posición" : "Subir una posición"}
+                        className={`!p-1.5 !min-w-[28px] !min-h-[28px] !text-xs transition-all ${
+                            isFirst ? '!opacity-30 cursor-not-allowed' : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50'
+                        }`}
+                    />
+                    <IconButton 
+                        onClick={() => handleMoveItemDown(item.id)} 
+                        icon={<FiArrowDown className="w-3.5 h-3.5" />}
+                        variant="neutral"
+                        disabled={isLast}
+                        title={isLast ? "Última posición" : "Bajar una posición"}
+                        className={`!p-1.5 !min-w-[28px] !min-h-[28px] !text-xs transition-all ${
+                            isLast ? '!opacity-30 cursor-not-allowed' : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50'
+                        }`}
+                    />
+                    <IconButton 
+                        onClick={() => handleRemoveItem(item.id)} 
+                        icon={<FiTrash2 className="w-3.5 h-3.5" />}
+                        variant="danger"
+                        title="Eliminar partida"
+                        className="!p-1.5 !min-w-[28px] !min-h-[28px] !text-xs"
+                    />
+                </div>
+            );
+        }
     }
-  ], [catalogMap, updateItem, handleRemoveItem]);
+  ], [catalogMap, updateItem, handleRemoveItem, handleMoveItemUp, handleMoveItemDown, items]);
 
   if (!show) return null;
 

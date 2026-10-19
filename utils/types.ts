@@ -33,6 +33,7 @@ export interface QuoteItem {
   cantidad: number;
   precioUnitario: number;
   total: number;
+  order?: number; // Orden secuencial de la partida dentro de la cotización
   source?: 'catalog' | 'manual'; // Propiedad para identificar el origen del item
   productId?: string | null;     // ID del producto en catálogo (null si es manual)
   originProductId?: string | null; // ID original del producto de catálogo

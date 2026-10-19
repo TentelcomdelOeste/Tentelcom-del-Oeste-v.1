@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { User } from "../../utils/types";
 import {
   ActionButton,
@@ -568,52 +569,248 @@ const getFuelFromLog = (l: any) => {
     return Number(l.monto) || 0;
 };
 
-const GastosCell = ({ total, breakdown, isOpen, onToggle, onHover, onAnalysisClick }: { total: number, breakdown: any[], isOpen: boolean, onToggle: () => void, onHover: (hover: boolean) => void, onAnalysisClick: () => void }) => {
-    return (
-        <div className="relative inline-flex items-center">
-            <button
-                onClick={onAnalysisClick}
-                className="text-xs font-black text-emerald-600 hover:text-emerald-700 transition-colors"
-            >
-                ₡{total.toLocaleString()}
-            </button>
-            <div
-                className="inline-flex items-center"
-                onMouseEnter={() => onHover(true)}
-                onMouseLeave={() => onHover(false)}
-                onClick={(e) => { e.stopPropagation(); onToggle(); }}
-            >
-                <FiInfo className="w-4 h-4 text-slate-400 ml-1.5 cursor-pointer hover:text-emerald-600 transition-colors" />
-            </div>
-            {isOpen && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 w-52 bg-white border border-slate-200 shadow-xl text-[11px] p-3 rounded-lg z-50 text-left">
-                    <div className="font-black text-slate-800 mb-1 border-b border-slate-100 pb-1 uppercase tracking-wider">Detalle de Gastos</div>
-                    {breakdown.map((item, i) => (
-                        <div key={i} className="flex justify-between py-0.5">
-                            <span className="text-slate-600 truncate mr-2">{item.label}</span>
-                            <span className="font-mono font-medium text-slate-900 whitespace-nowrap">₡{item.monto.toLocaleString()}</span>
-                        </div>
-                    ))}
-                    <div className="border-t border-slate-200 mt-1 pt-1 flex justify-between font-black text-slate-900">
-                        <span>TOTAL:</span>
-                        <span className="font-mono">₡{total.toLocaleString()}</span>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
+const GastosCell = ({
+  total,
+  breakdown,
+  isOpen,
+  onToggle,
+  onHover,
+  onAnalysisClick
+}: {
+  total: number;
+  breakdown: any[];
+  isOpen: boolean;
+  onToggle: () => void;
+  onHover: (hover: boolean) => void;
+  onAnalysisClick: () => void;
+}) => {
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-// ... inside VehicleLogs component
-// Add this state to VehicleLogs:
-// const [activePopoverId, setActivePopoverId] = useState<string | null>(null);
-// const [hoveredPopoverId, setHoveredPopoverId] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{
+    top: number;
+    left: number;
+    placement: 'top' | 'bottom';
+    isVisible: boolean;
+  }>({
+    top: 0,
+    left: 0,
+    placement: 'bottom',
+    isVisible: false
+  });
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+
+    // Check if trigger is detached or hidden (0 size)
+    if (triggerRect.width === 0 && triggerRect.height === 0) {
+      setCoords(prev => ({ ...prev, isVisible: false }));
+      return;
+    }
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Check if trigger is scrolled completely out of the viewport
+    if (
+      triggerRect.bottom < 0 ||
+      triggerRect.top > viewportHeight ||
+      triggerRect.right < 0 ||
+      triggerRect.left > viewportWidth
+    ) {
+      setCoords(prev => ({ ...prev, isVisible: false }));
+      return;
+    }
+
+    const popoverEl = popoverRef.current;
+    const popoverWidth = popoverEl ? popoverEl.offsetWidth : 256;
+    const popoverHeight = popoverEl ? popoverEl.offsetHeight : 160;
+
+    const offsetGap = 6;
+    const padding = 12;
+
+    const spaceBelow = viewportHeight - triggerRect.bottom;
+    const spaceAbove = triggerRect.top;
+
+    let placement: 'top' | 'bottom' = 'bottom';
+    let top = 0;
+
+    // Smart vertical positioning:
+    // If sufficient space below or more space below than above, show below. Otherwise show above.
+    if (spaceBelow >= popoverHeight + offsetGap || spaceBelow >= spaceAbove) {
+      placement = 'bottom';
+      top = triggerRect.bottom + offsetGap;
+      // If bottom edge would overflow the screen, clamp it
+      if (top + popoverHeight > viewportHeight - padding) {
+        top = Math.max(padding, viewportHeight - popoverHeight - padding);
+      }
+    } else {
+      placement = 'top';
+      top = triggerRect.top - popoverHeight - offsetGap;
+      // If top edge would overflow the top screen, clamp it
+      if (top < padding) {
+        top = padding;
+      }
+    }
+
+    // Smart horizontal positioning:
+    // Center aligned with the icon
+    let left = triggerRect.left + (triggerRect.width / 2) - (popoverWidth / 2);
+
+    // If near or overflowing right edge, shift left
+    if (left + popoverWidth > viewportWidth - padding) {
+      left = viewportWidth - popoverWidth - padding;
+    }
+
+    // If near or overflowing left edge, shift right
+    if (left < padding) {
+      left = padding;
+    }
+
+    setCoords({
+      top,
+      left,
+      placement,
+      isVisible: true
+    });
+  }, []);
+
+  const handleMouseEnter = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    onHover(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = setTimeout(() => {
+      onHover(false);
+    }, 150);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCoords(prev => ({ ...prev, isVisible: false }));
+      return;
+    }
+
+    updatePosition();
+
+    const rafId = requestAnimationFrame(() => {
+      updatePosition();
+    });
+
+    const handleScrollOrResize = () => {
+      updatePosition();
+    };
+
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [isOpen, updatePosition, breakdown]);
+
+  return (
+    <div className="inline-flex items-center">
+      <button
+        onClick={onAnalysisClick}
+        className="text-xs font-black text-emerald-600 hover:text-emerald-700 transition-colors cursor-pointer"
+        title="Ver análisis de costos"
+      >
+        ₡{total.toLocaleString()}
+      </button>
+      <div
+        ref={triggerRef}
+        className="inline-flex items-center"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        title="Ver desglose de gastos"
+      >
+        <FiInfo className={`w-4 h-4 ml-1.5 cursor-pointer transition-colors ${isOpen ? 'text-emerald-600' : 'text-slate-400 hover:text-emerald-600'}`} />
+      </div>
+      {isOpen && coords.isVisible && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={popoverRef}
+          style={{
+            position: 'fixed',
+            top: `${coords.top}px`,
+            left: `${coords.left}px`,
+            zIndex: 9999,
+          }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          onClick={(e) => e.stopPropagation()}
+          className="w-64 bg-white border border-slate-200/90 shadow-2xl text-[11px] p-3 rounded-xl pointer-events-auto transition-opacity duration-150 animate-in fade-in zoom-in-95 text-left"
+        >
+          <div className="font-black text-slate-800 mb-1 border-b border-slate-100 pb-1.5 uppercase tracking-wider flex items-center justify-between text-[10px]">
+            <span className="flex items-center gap-1.5 text-slate-800">
+              <FiInfo className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+              Detalle de Gastos
+            </span>
+            <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+              {breakdown.length} {breakdown.length === 1 ? 'ítem' : 'ítems'}
+            </span>
+          </div>
+          <div className="max-h-52 overflow-y-auto space-y-1.5 py-1 pr-0.5 custom-scrollbar">
+            {breakdown.map((item, i) => (
+              <div key={i} className="flex justify-between items-start py-0.5 text-slate-700 text-[11px] gap-2">
+                <div className="flex flex-col min-w-0 flex-1 leading-tight">
+                  <span className="truncate font-semibold text-slate-800" title={item.label}>
+                    {item.label}
+                  </span>
+                  {item.sublabel && (
+                    <span className="text-[9px] font-medium text-slate-400 uppercase tracking-tight truncate" title={item.sublabel}>
+                      {item.sublabel}
+                    </span>
+                  )}
+                </div>
+                <span className="font-mono font-bold text-slate-900 whitespace-nowrap pt-0.5">
+                  ₡{item.monto.toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-slate-200 mt-1.5 pt-1.5 flex justify-between items-center font-black text-slate-900">
+            <span className="text-slate-500 uppercase text-[10px]">TOTAL:</span>
+            <span className="font-mono text-emerald-600 font-bold">₡{total.toLocaleString()}</span>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
 
   const [activePopoverId, setActivePopoverId] = useState<string | null>(null);
   const [hoveredPopoverId, setHoveredPopoverId] = useState<string | null>(null);
 
   useEffect(() => {
-    const handleClickOutside = () => setActivePopoverId(null);
+    const handleClickOutside = () => {
+      setActivePopoverId(null);
+      setHoveredPopoverId(null);
+    };
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
@@ -749,8 +946,19 @@ const GastosCell = ({ total, breakdown, isOpen, onToggle, onHover, onAnalysisCli
           const existingTotal = logExpenses.reduce((sum, e) => sum + (e.monto || 0), 0);
           const total = existingTotal + fuelAmount;
           const breakdown = [
-            ...logExpenses.map(e => ({ label: e.category || 'Gasto', monto: e.monto || 0 })),
-            ...(fuelAmount > 0 ? [{ label: 'Combustible', monto: fuelAmount }] : [])
+            ...logExpenses.map(e => {
+              const desc = (e.descripcion || (e as any).description || '').trim();
+              const cat = (e.categoria || (e as any).category || '').trim();
+              const title = desc || cat || 'Gasto';
+              const subtitle = (desc && cat && desc.toLowerCase() !== cat.toLowerCase()) ? cat : undefined;
+
+              return {
+                label: title,
+                sublabel: subtitle,
+                monto: Number(e.monto) || 0
+              };
+            }),
+            ...(fuelAmount > 0 ? [{ label: 'Combustible', sublabel: undefined, monto: fuelAmount }] : [])
           ];
           
           if (breakdown.length === 0) return <span className="text-slate-300 text-[10px] font-bold uppercase">---</span>;

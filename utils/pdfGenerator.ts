@@ -104,8 +104,12 @@ export const generateQuotePDF = async (quote: Quote) => {
   let minTotalColWidth = 0;
   const paddingSafety = 10; 
 
-  // FIX: Provide fallback array for items
-  const tableBody = (quote.items || []).map(item => {
+  // FIX: Provide fallback array for items and respect sequential order
+  const orderedItems = [...(quote.items || [])];
+  if (orderedItems.some(i => typeof i.order === 'number')) {
+    orderedItems.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }
+  const tableBody = orderedItems.map(item => {
     let precioRaw = '';
     let totalRaw = '';
 
