@@ -94,6 +94,8 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
   const [searchTerm, setSearchTerm] = useState("");
   const [filterYear, setFilterYear] = useState<number>(() => new Date().getFullYear());
   const [filterMonth, setFilterMonth] = useState<string>(() => String(new Date().getMonth() + 1));
+  const [sortField, setSortField] = useState<string>('fecha');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [selectedLog, setSelectedLog] = useState<VehicleLog | null>(null);
   const [inspectionAlertLog, setInspectionAlertLog] = useState<VehicleLog | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -482,26 +484,110 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
     );
   }, [logs, searchTerm, getConductorName, vehicleMapById, vehicleMapByName]);
 
+  function getFuelFromLog(l: any) {
+    if (Array.isArray(l.recargas) && l.recargas.length > 0) {
+      return l.recargas.reduce((sum: number, recarga: any) => sum + (Number(recarga?.monto) || 0), 0);
+    }
+    return Number(l.monto) || 0;
+  }
+
+  const getLogTotalExpenses = useCallback((log: VehicleLog) => {
+    const logExpenses = expenses.filter(e => {
+      if (e.bitacoraId === log.id) return true;
+      if (e.sourceType === 'control_vehicular_mantenimiento' && !e.bitacoraId) {
+        const lUCode = getUnitCode(log._resolvedUnidad, log.unidad, log.unidadId || log.unidadName) || extraerUnidad(log.unidadId);
+        const eUCode = getUnitCode(e.unidad, e.vehiculoId);
+        const lDate = normalizeDateToCanonical(log.fecha);
+        const eDate = normalizeDateToCanonical(e.fecha);
+        return !!(lUCode && eUCode && lUCode === eUCode && lDate && eDate && lDate === eDate);
+      }
+      return false;
+    });
+    const fuelAmount = getFuelFromLog(log);
+    const existingTotal = logExpenses.reduce((sum, e) => sum + (e.monto || 0), 0);
+    return existingTotal + fuelAmount;
+  }, [expenses]);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      if (['gastos', 'fecha', 'kilometraje'].includes(field)) {
+        setSortDirection('desc');
+      } else {
+        setSortDirection('asc');
+      }
+    }
+  };
+
+  const renderHeader = (label: string, field: string) => {
+    const isActive = sortField === field;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(field)}
+        className="flex items-center gap-1.5 w-full text-left uppercase font-black tracking-widest text-[10px] text-slate-500 hover:text-slate-800 transition-colors cursor-pointer group select-none"
+      >
+        <span className="truncate">{label}</span>
+        <span className={`transition-opacity ${isActive ? 'opacity-100 text-blue-600 font-bold' : 'opacity-30 group-hover:opacity-70'}`}>
+          {isActive ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+      </button>
+    );
+  };
+
   const sortedLogs = useMemo(() => {
-    return [...filteredLogs].sort((a, b) => {
-      // Logic for incomplete records (no return data)
-      // We want chronologically first, but within the same date, incomplete might still be relevant
-      // However, the user explicitly asked for "most recent to oldest"
+    const list = [...filteredLogs];
+    return list.sort((a, b) => {
+      if (sortField === 'fecha') {
+        const dateA = a.fecha || a.createdAt || '';
+        const dateB = b.fecha || b.createdAt || '';
+        const cmp = dateB.localeCompare(dateA);
+        return sortDirection === 'desc' ? cmp : -cmp;
+      }
+
+      if (sortField === 'kilometraje') {
+        const kmA = Number(a.totalKm || 0);
+        const kmB = Number(b.totalKm || 0);
+        const cmp = kmB - kmA;
+        return sortDirection === 'desc' ? cmp : -cmp;
+      }
+
+      if (sortField === 'gastos') {
+        const costA = getLogTotalExpenses(a);
+        const costB = getLogTotalExpenses(b);
+        const cmp = costB - costA;
+        return sortDirection === 'desc' ? cmp : -cmp;
+      }
+
+      if (sortField === 'unidad') {
+        const valA = (a._resolvedPlaca || a.unidadName || '').toLowerCase();
+        const valB = (b._resolvedPlaca || b.unidadName || '').toLowerCase();
+        const cmp = valA.localeCompare(valB);
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
+
+      if (sortField === 'conductor') {
+        const valA = (a._resolvedName || '').toLowerCase();
+        const valB = (b._resolvedName || '').toLowerCase();
+        const cmp = valA.localeCompare(valB);
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
+
+      if (sortField === 'ruta') {
+        const valA = (a.destino || '').toLowerCase();
+        const valB = (b.destino || '').toLowerCase();
+        const cmp = valA.localeCompare(valB);
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
 
       const dateA = a.fecha || "";
       const dateB = b.fecha || "";
-
-      if (dateA !== dateB) {
-        return dateB.localeCompare(dateA);
-      }
-
-      // If same date, newest createdAt first
-      const createdA = a.createdAt || "";
-      const createdB = b.createdAt || "";
-
-      return createdB.localeCompare(createdA);
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
+      return (b.createdAt || "").localeCompare(a.createdAt || "");
     });
-  }, [filteredLogs]);
+  }, [filteredLogs, sortField, sortDirection, expenses, getLogTotalExpenses]);
 
   const getRowClassName = (log: VehicleLog) => {
     const isIncomplete = !log.horaLlegada || !log.kmLlegada;
@@ -562,12 +648,7 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
 
 
 
-const getFuelFromLog = (l: any) => {
-    if (Array.isArray(l.recargas) && l.recargas.length > 0) {
-      return l.recargas.reduce((sum: number, recarga: any) => sum + (Number(recarga?.monto) || 0), 0);
-    }
-    return Number(l.monto) || 0;
-};
+
 
 const GastosCell = ({
   total,
@@ -818,7 +899,7 @@ const GastosCell = ({
   const columns = useMemo<TableColumn<VehicleLog>[]>(() => {
     return [
       {
-        header: "UNIDAD / PLACA",
+        header: renderHeader("UNIDAD / PLACA", "unidad"),
         width: "15%",
         className: "!px-2",
         headerClassName: "!px-2",
@@ -863,7 +944,7 @@ const GastosCell = ({
         },
       },
       {
-        header: "Conductor",
+        header: renderHeader("Conductor", "conductor"),
         width: "20%",
         render: (l: any) => (
           <div className="truncate w-full font-bold text-slate-800" title={l._resolvedName}>
@@ -872,7 +953,7 @@ const GastosCell = ({
         ),
       },
       {
-        header: "Fecha",
+        header: renderHeader("Fecha", "fecha"),
         width: "10%",
         render: (l: any) => {
           const isIncomplete = !l.horaLlegada || !l.kmLlegada;
@@ -900,7 +981,7 @@ const GastosCell = ({
         },
       },
       {
-        header: "Ruta / Actividad",
+        header: renderHeader("Ruta / Actividad", "ruta"),
         width: "20%",
         render: (l: any) => (
           <div
@@ -912,7 +993,7 @@ const GastosCell = ({
         ),
       },
       {
-        header: "Kilometraje",
+        header: renderHeader("Kilometraje", "kilometraje"),
         width: "10%",
         align: "center",
         className: "!px-2",
@@ -926,7 +1007,7 @@ const GastosCell = ({
         ),
       },
       {
-        header: "Gastos",
+        header: renderHeader("Gastos", "gastos"),
         width: "10%",
         align: "center",
         render: (l: any) => {

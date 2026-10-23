@@ -4,7 +4,7 @@ import { UI_TOKENS } from '../UI_TOKENS';
 import { FiLoader, FiChevronLeft, FiChevronRight, FiPlus } from "react-icons/fi";
 
 export interface TableColumn<T> {
-  header: string;
+  header: string | React.ReactNode;
   accessorKey?: keyof T; // Clave directa del objeto
   render?: (item: T, index?: number) => React.ReactNode; // Render personalizado
   align?: 'left' | 'center' | 'right';

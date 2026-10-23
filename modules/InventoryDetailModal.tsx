@@ -1,13 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { db } from '../firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { InventoryItem } from '../inventoryTypes';
 import { User } from '../utils/types';
-import { useInventoryMovements } from '../hooks/useInventoryMovements';
 import { useMaterialReports } from '../hooks/useMaterialReports';
 import useLockBodyScroll from '../hooks/useLockBodyScroll';
-import { useConfirm, DataTable, TableColumn, IconButton } from '../design-system';
+import { useConfirm, DataTable, TableColumn, IconButton, Select } from '../design-system';
 import { formatCurrency } from '../utils/formatCurrency';
 import { InventoryMovement } from '../inventoryMovementTypes';
+import { getCostaRicaCurrentMonthAndYear, getMovementMonthAndYear, MONTH_OPTIONS } from '../utils/dateUtils';
 import { 
   FiX, 
   FiMapPin, 
@@ -308,7 +310,70 @@ const MovementTraceabilityCard: React.FC<{
 
 export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show, onClose, item, currentUser, onImageUpdate, onImagesUpdate }) => {
   useLockBodyScroll(show);
-  const { movements, isLoading } = useInventoryMovements(currentUser);
+
+  // Estado para la carga de movimientos específicos del ítem (sin límite global de 50)
+  const [itemMovements, setItemMovements] = useState<InventoryMovement[]>([]);
+  const [isLoadingMovements, setIsLoadingMovements] = useState<boolean>(true);
+
+  // Inicializar selectores con Mes y Año actuales de Costa Rica por defecto
+  const defaultCR = useMemo(() => getCostaRicaCurrentMonthAndYear(), []);
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(defaultCR.month));
+  const [selectedYear, setSelectedYear] = useState<string>(String(defaultCR.year));
+
+  // Resetear filtros al cambiar de ítem o abrir modal
+  useEffect(() => {
+    if (show) {
+      const cr = getCostaRicaCurrentMonthAndYear();
+      setSelectedMonth(String(cr.month));
+      setSelectedYear(String(cr.year));
+    }
+  }, [show, item?.id]);
+
+  // Consultar todos los movimientos en Firestore que correspondan a este ítem
+  useEffect(() => {
+    if (!show || !item) {
+      setItemMovements([]);
+      return;
+    }
+
+    setIsLoadingMovements(true);
+    const q = query(
+      collection(db, "inventory_movements"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: InventoryMovement[] = [];
+      const seenIds = new Set<string>();
+
+      const targetCode = item.code ? item.code.trim().toLowerCase() : '';
+
+      snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data() as InventoryMovement;
+        const movId = docSnap.id;
+
+        const matchesId = data.inventoryItemId === item.id;
+        const matchesCode = Boolean(targetCode && data.inventoryItemCode && data.inventoryItemCode.trim().toLowerCase() === targetCode);
+        const matchesInItems = Boolean(data.items && Array.isArray(data.items) && data.items.some(
+          (i: any) => i.inventoryItemId === item.id || (targetCode && i.inventoryItemCode && i.inventoryItemCode.trim().toLowerCase() === targetCode)
+        ));
+
+        if ((matchesId || matchesCode || matchesInItems) && !seenIds.has(movId)) {
+          seenIds.add(movId);
+          list.push({ ...data, id: movId });
+        }
+      });
+
+      setItemMovements(list);
+      setIsLoadingMovements(false);
+    }, (err) => {
+      console.error("Error cargando historial del material:", err);
+      setIsLoadingMovements(false);
+    });
+
+    return () => unsubscribe();
+  }, [show, item?.id, item?.code]);
+
   const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
@@ -632,16 +697,39 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
     return map;
   }, [reports]);
 
-  const itemMovements = useMemo(() => {
-    if (!item) return [];
-    return movements.filter(m => {
-        // Legacy check
-        if (m.inventoryItemId === item.id) return true;
-        // Multi-item check
-        if (m.items && m.items.some(i => i.inventoryItemId === item.id)) return true;
-        return false;
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<number>();
+    const cr = getCostaRicaCurrentMonthAndYear();
+    yearsSet.add(cr.year);
+    yearsSet.add(2024);
+    yearsSet.add(2025);
+    yearsSet.add(2026);
+
+    itemMovements.forEach(m => {
+      const my = getMovementMonthAndYear(m);
+      if (my) yearsSet.add(my.year);
     });
-  }, [movements, item]);
+
+    const sortedYears = Array.from(yearsSet).sort((a, b) => b - a);
+    return [
+      { value: 'ALL', label: 'Todos los Años' },
+      ...sortedYears.map(y => ({ value: String(y), label: String(y) }))
+    ];
+  }, [itemMovements]);
+
+  const filteredItemMovements = useMemo(() => {
+    return itemMovements.filter(m => {
+      const my = getMovementMonthAndYear(m);
+      if (!my) return true;
+      if (selectedMonth !== 'ALL' && my.month !== parseInt(selectedMonth, 10)) {
+        return false;
+      }
+      if (selectedYear !== 'ALL' && my.year !== parseInt(selectedYear, 10)) {
+        return false;
+      }
+      return true;
+    });
+  }, [itemMovements, selectedMonth, selectedYear]);
 
   const sortedItemMovements = useMemo(() => {
     const getMovementTimestamp = (m: InventoryMovement): number => {
@@ -655,8 +743,8 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
       }
       return 0;
     };
-    return [...itemMovements].sort((a, b) => getMovementTimestamp(b) - getMovementTimestamp(a));
-  }, [itemMovements]);
+    return [...filteredItemMovements].sort((a, b) => getMovementTimestamp(b) - getMovementTimestamp(a));
+  }, [filteredItemMovements]);
 
   if (!show || !item) return null;
 
@@ -1104,16 +1192,40 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
 
                 {/* History Section con Trazabilidad Completa */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
-                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-wrap gap-2">
-                        <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                            <FiClock className="text-slate-400" /> Historial de Movimientos & Trazabilidad
-                        </h4>
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
-                            {sortedItemMovements.length} movimientos
-                        </span>
+                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-wrap gap-3">
+                        <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                                <FiClock className="text-slate-400" /> Historial de Movimientos & Trazabilidad
+                            </h4>
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
+                                {sortedItemMovements.length} {sortedItemMovements.length === 1 ? 'movimiento' : 'movimientos'}
+                            </span>
+                        </div>
+
+                        {/* Filtros por Mes y Año (Mes y Año actual por defecto en zona horaria Costa Rica) */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="w-36">
+                                <Select
+                                    options={MONTH_OPTIONS}
+                                    value={selectedMonth}
+                                    onChange={val => setSelectedMonth(val)}
+                                    className="w-full text-xs"
+                                    isSearchable={false}
+                                />
+                            </div>
+                            <div className="w-28">
+                                <Select
+                                    options={availableYears}
+                                    value={selectedYear}
+                                    onChange={val => setSelectedYear(val)}
+                                    className="w-full text-xs"
+                                    isSearchable={false}
+                                />
+                            </div>
+                        </div>
                     </div>
                     <div className="p-4 space-y-3 flex-1 overflow-y-auto max-h-[550px]">
-                        {isLoading ? (
+                        {isLoadingMovements ? (
                             <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
                                 <FiLoader className="animate-spin text-lg" />
                                 <span className="text-xs font-bold">Cargando historial de movimientos...</span>
@@ -1121,7 +1233,19 @@ export const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({ show
                         ) : sortedItemMovements.length === 0 ? (
                             <div className="text-center py-12 text-slate-400">
                                 <FiClock className="text-2xl mx-auto mb-2 opacity-50" />
-                                <p className="text-xs font-bold">No hay movimientos registrados para este material.</p>
+                                <p className="text-xs font-bold">No se encontraron movimientos registrados para este período.</p>
+                                {(selectedMonth !== 'ALL' || selectedYear !== 'ALL') && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedMonth('ALL');
+                                            setSelectedYear('ALL');
+                                        }}
+                                        className="mt-2 text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+                                    >
+                                        Ver todos los movimientos de este material
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             sortedItemMovements.map(m => (

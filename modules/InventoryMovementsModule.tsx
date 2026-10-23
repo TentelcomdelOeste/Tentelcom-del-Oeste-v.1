@@ -25,6 +25,7 @@ import {
   StatusBadge,
   Select
 } from '../design-system';
+import { getCostaRicaCurrentMonthAndYear, getMovementMonthAndYear, MONTH_OPTIONS } from '../utils/dateUtils';
 
 interface InventoryMovementsModuleProps {
   currentUser: User;
@@ -55,9 +56,32 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'Todos' | 'Entrada' | 'Salida' | 'Devolución'>('Todos');
   const [projectFilter, setProjectFilter] = useState('Todos');
-  const [dateFilter, setDateFilter] = useState('');
+  const defaultCR = useMemo(() => getCostaRicaCurrentMonthAndYear(), []);
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(defaultCR.month));
+  const [selectedYear, setSelectedYear] = useState<string>(String(defaultCR.year));
   const [showModal, setShowModal] = useState(false);
   const [editingMovement, setEditingMovement] = useState<InventoryMovement | null>(null);
+
+  // Años disponibles derivados de los movimientos más años por defecto
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<number>();
+    const cr = getCostaRicaCurrentMonthAndYear();
+    yearsSet.add(cr.year);
+    yearsSet.add(2024);
+    yearsSet.add(2025);
+    yearsSet.add(2026);
+
+    (movements || []).forEach(m => {
+      const my = getMovementMonthAndYear(m);
+      if (my) yearsSet.add(my.year);
+    });
+
+    const sortedYears = Array.from(yearsSet).sort((a, b) => b - a);
+    return [
+      { value: 'ALL', label: 'Todos los Años' },
+      ...sortedYears.map(y => ({ value: String(y), label: String(y) }))
+    ];
+  }, [movements]);
 
   // --- AUTO-OPEN AND HIGHLIGHT FROM SEARCH ---
   const autoOpenedIdRef = useRef<string | null>(null);
@@ -138,11 +162,19 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
             (m.torre && m.torre.toLowerCase().includes(search));
         const matchesType = typeFilter === 'Todos' || m.type === typeFilter;
         const matchesProject = projectFilter === 'Todos' || m.projectId === projectFilter;
-        const matchesDate = !dateFilter || m.date === dateFilter;
+        
+        const matchesDate = (() => {
+          if (selectedMonth === 'ALL' && selectedYear === 'ALL') return true;
+          const my = getMovementMonthAndYear(m);
+          if (!my) return true;
+          if (selectedMonth !== 'ALL' && my.month !== parseInt(selectedMonth, 10)) return false;
+          if (selectedYear !== 'ALL' && my.year !== parseInt(selectedYear, 10)) return false;
+          return true;
+        })();
 
         return matchesSearch && matchesType && matchesProject && matchesDate;
     });
-  }, [movements, searchTerm, typeFilter, projectFilter, dateFilter, selectedId]);
+  }, [movements, searchTerm, typeFilter, projectFilter, selectedMonth, selectedYear, selectedId]);
 
   const handleEdit = useCallback((movement: InventoryMovement) => {
       setEditingMovement(movement);
@@ -387,8 +419,8 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
           <div className="mt-6">
               {activeTab === 'history' && (
                   <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                          <SearchInput placeholder="Buscar por Proyecto, ID (SOL-XXXX), FDH o Torre..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                          <SearchInput placeholder="Buscar por Proyecto, ID (SOL-XXXX), FDH..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                           <Select
                               options={[
                                   { label: 'Todos los Tipos', value: 'Todos' },
@@ -411,7 +443,20 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
                               className="w-full"
                               isSearchable={false}
                           />
-                          <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-bold text-xs outline-none text-slate-500" />
+                          <Select
+                              options={MONTH_OPTIONS}
+                              value={selectedMonth}
+                              onChange={val => setSelectedMonth(val)}
+                              className="w-full text-xs"
+                              isSearchable={false}
+                          />
+                          <Select
+                              options={availableYears}
+                              value={selectedYear}
+                              onChange={val => setSelectedYear(val)}
+                              className="w-full text-xs"
+                              isSearchable={false}
+                          />
                       </div>
 
                       <DataTable 

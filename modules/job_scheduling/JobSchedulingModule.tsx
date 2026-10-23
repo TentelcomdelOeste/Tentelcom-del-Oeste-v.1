@@ -13,12 +13,14 @@ import { Trabajo } from './types';
 import { JobForm } from './JobForm';
 import { MobileJobView } from './MobileJobView';
 import { OperativoView } from './OperativoView';
+import { DetailedWeekView } from './DetailedWeekView';
 import OperationalLogView from './OperationalLogView';
 import { Modal, ActionButton, IconButton, ACTION_ICONS, SearchInput } from '@/design-system';
 import { ModulePage } from '@/components/ui/ModulePage';
 import { ModuleToolbar } from '@/components/ui/ModuleToolbar';
 import { FiAlertCircle, FiPlus, FiChevronLeft, FiChevronRight, FiActivity } from 'react-icons/fi';
 import { exportToPDF, exportToExcel } from '@/utils/exportUtils';
+import { exportDetailedWeekToPDF } from './utils/detailedWeekPdfExport';
 
 const locales = {
   'es': es,
@@ -308,7 +310,7 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
   const [defaultStart, setDefaultStart] = useState<Date | undefined>();
   const [defaultEnd, setDefaultEnd] = useState<Date | undefined>();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'waiting' | 'operativo'>(window.innerWidth < 768 ? 'operativo' : 'calendar');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'waiting' | 'operativo' | 'sem_detallada'>(window.innerWidth < 768 ? 'operativo' : 'sem_detallada');
   const [agendaViewMode] = useState<'day' | 'week' | 'month' | 'year'>('week');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -706,6 +708,18 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
 
   const handleExportPDF = () => {
     console.log('[TRACE][PDF] BUTTON_CLICK');
+
+    // Exportación exclusiva para SEMANA DETALLADA: reproduce la distribución semanal de la semana seleccionada
+    if (viewMode === 'sem_detallada') {
+      console.log('[TRACE][PDF] EXPORT_DETAILED_WEEK_START');
+      exportDetailedWeekToPDF({
+        trabajos: searchTerm.trim().length > 0 ? searchResults : trabajos,
+        currentDate,
+        fileName: `Semana_Detallada_${format(currentDate, 'yyyy-MM-dd')}`
+      });
+      return;
+    }
+
     const exportData = getExportData();
     if (!exportData || !exportData.data || exportData.data.length === 0) {
       console.warn('[TRACE][PDF] NO_DATA_TO_EXPORT', exportData);
@@ -1036,6 +1050,19 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
     return (
       <>
         {Array.from(openedViewModes).map(mode => {
+          if (mode === 'sem_detallada') {
+            return (
+              <div key="sem_detallada" className={viewMode !== 'sem_detallada' ? 'hidden' : ''}>
+                <DetailedWeekView
+                  trabajos={trabajos}
+                  onSelect={(t) => { setSelectedTrabajo(t); setFormMode('edit'); setIsModalOpen(true); }}
+                  currentDate={currentDate}
+                  onSetActiveModule={handleSetActiveModule}
+                  isLoading={isLoading}
+                />
+              </div>
+            );
+          }
           if (mode === 'operativo') {
             return (
               <div key="operativo" className={viewMode !== 'operativo' ? 'hidden' : ''}>
@@ -1097,131 +1124,146 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
           <div className={(!isMobile && mountedJobId && !isDayDetailOpen) ? "md:col-span-6 lg:col-span-7 xl:col-span-8 flex flex-col h-[calc(100vh-160px)] min-h-[500px] overflow-y-auto pr-2 custom-scrollbar" : "w-full"}>
             <ModuleToolbar>
               <div className="flex flex-col w-full gap-2 md:gap-2.5 p-0.5">
-                {/* Desktop layout: Unified Toolbar Row */}
-                <div className="flex flex-col md:flex-row items-center gap-2 w-full">
-                  <div className="flex items-center gap-2 w-full md:flex-1">
+                {/* Desktop layout: Unified Toolbar Row with clean responsive wrapping */}
+                <div className="flex flex-wrap xl:flex-nowrap items-center justify-between gap-2 w-full">
+                  {/* Grupo Izquierdo: Buscador + Selector de Vistas */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap min-w-0">
                     <SearchInput 
                       value={searchTerm} 
                       onChange={(e) => setSearchTerm(e.target.value)} 
                       placeholder="Buscar OT..." 
-                      className="flex-1 md:flex-none md:w-60 lg:w-64 !h-9 md:!h-10 !text-sm !rounded-xl"                
+                      className="w-full sm:w-36 lg:w-44 xl:w-52 !h-9 md:!h-9.5 !text-xs lg:!text-sm !rounded-xl"                
                     />
                     
                     {/* View Selectors - Desktop integrated */}
-                    <div className="hidden md:flex items-center bg-slate-100/80 p-0.5 rounded-xl border border-slate-200 gap-0.5 h-10">
+                    <div className="hidden md:flex items-center bg-slate-100/80 p-0.5 rounded-xl border border-slate-200 gap-0.5 h-9 md:h-9.5 shrink-0">
                       <ActionButton
                         label="Operativo"
                         variant={viewMode === 'operativo' ? 'primary' : 'secondary'}
                         onClick={() => setViewMode('operativo')}
-                        className="!py-1.5 !px-3 !text-[10px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none h-full"
+                        className="!py-1 !px-2 lg:!px-2.5 !text-[9px] lg:!text-[10px] !rounded-lg uppercase font-black tracking-tight whitespace-nowrap !border-none shadow-none h-full"
                       />
                       <ActionButton
                         label="Agenda"
                         variant={viewMode === 'list' ? 'primary' : 'secondary'}
                         onClick={() => setViewMode('list')}
-                        className="!py-1.5 !px-3 !text-[10px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none h-full"
+                        className="!py-1 !px-2 lg:!px-2.5 !text-[9px] lg:!text-[10px] !rounded-lg uppercase font-black tracking-tight whitespace-nowrap !border-none shadow-none h-full"
                       />
                       <ActionButton
                         label="Calendario"
                         variant={viewMode === 'calendar' ? 'primary' : 'secondary'}
                         onClick={() => setViewMode('calendar')}
-                        className="!py-1.5 !px-3 !text-[10px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none h-full"
+                        className="!py-1 !px-2 lg:!px-2.5 !text-[9px] lg:!text-[10px] !rounded-lg uppercase font-black tracking-tight whitespace-nowrap !border-none shadow-none h-full"
                       />
                       <ActionButton
                         label="En Espera"
                         variant={viewMode === 'waiting' ? 'primary' : 'secondary'}
                         onClick={() => setViewMode('waiting')}
-                        className="!py-1.5 !px-3 !text-[10px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none h-full"
+                        className="!py-1 !px-2 lg:!px-2.5 !text-[9px] lg:!text-[10px] !rounded-lg uppercase font-black tracking-tight whitespace-nowrap !border-none shadow-none h-full"
                       />
-                    </div>
-
-                    {/* Weekly Selector - Desktop integrated */}
-                    <div className="hidden md:flex items-center bg-white px-2 py-0.5 rounded-xl border border-slate-200 shadow-sm h-10 gap-2">
-                      <div className="flex items-center gap-1">
-                        <IconButton 
-                          icon={<FiChevronLeft size={18} />} 
-                          onClick={handleAgendaPrev} 
-                          variant="secondary" 
-                          className="!w-8 !h-8 !rounded-lg !border-none hover:bg-slate-50 transition-colors" 
-                          title="Semana Anterior"
-                        />
-                        <IconButton 
-                          icon={<FiActivity size={16} className="text-blue-600" />} 
-                          onClick={handleAgendaToday} 
-                          variant="secondary" 
-                          className="!w-8 !h-8 !rounded-lg !border-slate-100 hover:bg-slate-50" 
-                          title="Ir a Hoy / Sincronizar"
-                        />
-                      </div>
-                      
-                      <div className="flex flex-col items-center min-w-[120px]">
-                        <span className="text-[11px] font-black text-slate-900 uppercase tracking-tight whitespace-nowrap">
-                          {agendaHeaderText}
-                        </span>
-                        <span className="text-[7px] font-bold text-slate-400 uppercase tracking-[0.1em] leading-none">
-                          {viewMode === 'operativo' || agendaViewMode === 'week' ? 'Semana Actual' : 'Vista Temporal'}
-                        </span>
-                      </div>
-
-                      <IconButton 
-                        icon={<FiChevronRight size={18} />} 
-                        onClick={handleAgendaNext} 
-                        variant="secondary" 
-                        className="!w-8 !h-8 !rounded-lg !border-none hover:bg-slate-50 transition-colors" 
-                        title="Semana Siguiente"
+                      <ActionButton
+                        label="Semana Detallada"
+                        variant={viewMode === 'sem_detallada' ? 'primary' : 'secondary'}
+                        onClick={() => setViewMode('sem_detallada')}
+                        className="!py-1 !px-2 lg:!px-2.5 !text-[9px] lg:!text-[10px] !rounded-lg uppercase font-black tracking-tight whitespace-nowrap !border-none shadow-none h-full"
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0 w-full md:w-auto justify-between md:justify-start">
+                  {/* Grupo Derecho: Selector Semanal + Botones de Acción (Nuevo, PDF, Excel) */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 w-full md:w-auto justify-between md:justify-end min-w-0">
                     {/* View Selectors - Mobile only (stacked) */}
-                    <div className="flex md:hidden grid grid-cols-4 bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1 flex-1 mr-2">
+                    <div className="flex md:hidden grid grid-cols-5 bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-0.5 flex-1 mr-2">
                       <ActionButton
                         label="Op."
                         variant={viewMode === 'operativo' ? 'primary' : 'secondary'}
                         onClick={() => setViewMode('operativo')}
-                        className="!py-2 !px-0.5 !text-[8.5px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
+                        className="!py-2 !px-0.5 !text-[8px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
                       />
                       <ActionButton
                         label="Ag."
                         variant={viewMode === 'list' ? 'primary' : 'secondary'}
                         onClick={() => setViewMode('list')}
-                        className="!py-2 !px-0.5 !text-[8.5px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
+                        className="!py-2 !px-0.5 !text-[8px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
                       />
                       <ActionButton
                         label="Cal."
                         variant={viewMode === 'calendar' ? 'primary' : 'secondary'}
                         onClick={() => setViewMode('calendar')}
-                        className="!py-2 !px-0.5 !text-[8.5px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
+                        className="!py-2 !px-0.5 !text-[8px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
                       />
                       <ActionButton
                         label="Esp."
                         variant={viewMode === 'waiting' ? 'primary' : 'secondary'}
                         onClick={() => setViewMode('waiting')}
-                        className="!py-2 !px-0.5 !text-[8.5px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
+                        className="!py-2 !px-0.5 !text-[8px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
+                      />
+                      <ActionButton
+                        label="Sem."
+                        variant={viewMode === 'sem_detallada' ? 'primary' : 'secondary'}
+                        onClick={() => setViewMode('sem_detallada')}
+                        className="!py-2 !px-0.5 !text-[8px] !rounded-lg uppercase font-black tracking-tighter whitespace-nowrap !border-none shadow-none"
                       />
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    {/* Weekly Selector - Desktop integrated */}
+                    <div className="hidden md:flex items-center bg-white px-1.5 lg:px-2 py-0.5 rounded-xl border border-slate-200 shadow-sm h-9 md:h-9.5 gap-1 lg:gap-1.5 shrink-0">
+                      <div className="flex items-center gap-0.5 lg:gap-1">
+                        <IconButton 
+                          icon={<FiChevronLeft size={16} />} 
+                          onClick={handleAgendaPrev} 
+                          variant="secondary" 
+                          className="!w-7.5 !h-7.5 lg:!w-8 lg:!h-8 !rounded-lg !border-none hover:bg-slate-50 transition-colors" 
+                          title="Semana Anterior"
+                        />
+                        <IconButton 
+                          icon={<FiActivity size={15} className="text-blue-600" />} 
+                          onClick={handleAgendaToday} 
+                          variant="secondary" 
+                          className="!w-7.5 !h-7.5 lg:!w-8 lg:!h-8 !rounded-lg !border-slate-100 hover:bg-slate-50" 
+                          title="Ir a Hoy / Sincronizar"
+                        />
+                      </div>
+                      
+                      <div className="flex flex-col items-center min-w-[95px] lg:min-w-[110px] px-1">
+                        <span className="text-[10px] lg:text-[11px] font-black text-slate-900 uppercase tracking-tight whitespace-nowrap">
+                          {agendaHeaderText}
+                        </span>
+                        <span className="text-[7px] font-bold text-slate-400 uppercase tracking-[0.1em] leading-none">
+                          {viewMode === 'operativo' || viewMode === 'sem_detallada' || agendaViewMode === 'week' ? 'Semana Actual' : 'Vista Temporal'}
+                        </span>
+                      </div>
+
                       <IconButton 
-                        icon={<FiPlus size={18} />} 
+                        icon={<FiChevronRight size={16} />} 
+                        onClick={handleAgendaNext} 
+                        variant="secondary" 
+                        className="!w-7.5 !h-7.5 lg:!w-8 lg:!h-8 !rounded-lg !border-none hover:bg-slate-50 transition-colors" 
+                        title="Semana Siguiente"
+                      />
+                    </div>
+
+                    {/* Action buttons (Nuevo, PDF, Excel) */}
+                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                      <IconButton 
+                        icon={<FiPlus size={17} />} 
                         onClick={handleAddJob} 
                         variant="primary" 
-                        className="!w-9 !h-9 md:!w-10 md:!h-10 !rounded-xl shadow-sm" 
+                        className="!w-8.5 !h-8.5 sm:!w-9 sm:!h-9 md:!w-9.5 md:!h-9.5 !rounded-xl shadow-sm" 
                         title="Nuevo Trabajo"
                       />
                       <IconButton 
-                        icon={<ACTION_ICONS.pdf size={16} />} 
+                        icon={<ACTION_ICONS.pdf size={15} />} 
                         onClick={handleExportPDF} 
                         variant="danger" 
-                        className="!w-9 !h-9 md:!w-10 md:!h-10 !rounded-xl shadow-sm" 
+                        className="!w-8.5 !h-8.5 sm:!w-9 sm:!h-9 md:!w-9.5 md:!h-9.5 !rounded-xl shadow-sm" 
                         title="Exportar PDF"
                       />
                       <IconButton 
-                        icon={<ACTION_ICONS.excel size={16} />} 
+                        icon={<ACTION_ICONS.excel size={15} />} 
                         onClick={handleExportExcel} 
                         variant="success" 
-                        className="!w-9 !h-9 md:!w-10 md:!h-10 !rounded-xl shadow-sm" 
+                        className="!w-8.5 !h-8.5 sm:!w-9 sm:!h-9 md:!w-9.5 md:!h-9.5 !rounded-xl shadow-sm" 
                         title="Exportar Excel"
                       />
                     </div>
