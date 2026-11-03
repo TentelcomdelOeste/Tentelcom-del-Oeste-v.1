@@ -6,7 +6,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { Quote } from '../types';
 import { ToolAssignment } from '@/types/toolAssignment.types';
 import { Employee, PayStub } from '../financeTypes';
-import { MaterialRequest } from '../dispatchTypes';
+import { MaterialRequest, Shortage } from '../dispatchTypes';
 import { AutomaticAdjustment } from '../modules/finance/automatic_adjustments/automaticAdjustments.types';
 import { numeroALetras } from './numberToWords';
 import { formatCurrency } from './formatCurrency';
@@ -1212,7 +1212,7 @@ export const generateShortagePDF = async (shortage: Shortage) => {
     projectCode: request?.projectCode || '',
     fecha: request?.date || (shortage.date ? new Date(shortage.date).toISOString().split('T')[0] : '---'),
     fdh: request?.fdh || '---',
-    torre: request?.torre || request?.tower || '---',
+    torre: request?.torre || (request as any)?.tower || '---',
     lugar: request?.locationDetails || '---',
     solicitud: request?.requestNumber || shortage.requestNumber || 'SOL-XXXX',
     solicitante: (shortage.requestedByName || request?.requestedByName || "").split('@')[0].toUpperCase(),
@@ -1486,8 +1486,6 @@ export const generateShortagePDF = async (shortage: Shortage) => {
   const blob = docPdf.output('blob');
   triggerFileDownload(blob, fileName);
 };
-
-import { normalizeOrigin } from './originUtils';
 
 export const generateAutomaticAdjustmentPDF = async (adjustment: AutomaticAdjustment, history: any[]) => {
   const doc = new jsPDF('p', 'pt', 'letter');

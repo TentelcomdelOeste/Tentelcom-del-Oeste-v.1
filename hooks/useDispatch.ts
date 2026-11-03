@@ -17,8 +17,12 @@ import {
 import { MaterialRequest, DispatchRecord } from '../dispatchTypes';
 import { User } from '../utils/types';
 import { useUserContext } from '../contexts/UserContext';
-
 import { logger } from '../utils/logger';
+import { 
+  InventoryCostLayer, 
+  FifoLayerConsumption 
+} from '../types/fifoCostTypes';
+import { calculateFifoConsumption } from '../services/fifoCostService';
 
 export const getItemPendingQty = (item: { quantityRequested?: number; shortageQty?: number; quantityDispatched?: number; quantityPending?: number }): number => {
   const req = Number(item.quantityRequested || 0);
@@ -97,7 +101,7 @@ export const useDispatch = (currentUser: User | null) => {
     return () => unsubscribe();
   }, [currentUser?.uid, authReady]);
 
-  // 2. Transacción de Despacho (CORE LOGIC)
+  // 2. Transacción de Despacho (CORE LOGIC CON COSTEO PEPS / FIFO)
   const processDispatch = useCallback(async (
     request: MaterialRequest, 
     dispatchData: { 
@@ -109,9 +113,26 @@ export const useDispatch = (currentUser: User | null) => {
     if (!currentUser) throw new Error("No autenticado");
 
     try {
-        // ONLINE: Transacción normal con validación de stock
+        // Pre-fetch de capas de costo activas para los materiales a despachar
+        const itemsToDispatch = dispatchData.items.filter(d => d.dispatchQty > 0);
+        const preFetchedLayersByItem = new Map<string, any[]>();
+        await Promise.all(
+          itemsToDispatch.map(async (dItem) => {
+            const q = query(
+              collection(db, "inventory_cost_layers"),
+              where("inventoryItemId", "==", dItem.itemId),
+              where("status", "==", "active")
+            );
+            const snap = await getDocs(q);
+            preFetchedLayersByItem.set(dItem.itemId, snap.docs);
+          })
+        );
+
+        // ONLINE: Transacción normal con validación de stock y costeo PEPS
         await runTransaction(db, async (transaction) => {
             const movementItems: any[] = []; // Para el registro de inventory_movements
+            const costLayersToUpdate: { ref: any; data: any }[] = [];
+            const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
             
             // 1. LECTURAS (transaction.get)
             const itemDocs = [];
@@ -147,6 +168,19 @@ export const useDispatch = (currentUser: User | null) => {
                     item: { ...reqItem, itemId: reqItem.inventoryItemId, dispatchQty }, 
                     itemDoc 
                 });
+            }
+
+            // Leer capas activas en la transacción para garantizar control de concurrencia
+            const readLayersByItem = new Map<string, InventoryCostLayer[]>();
+            for (const [itemId, layerDocs] of preFetchedLayersByItem.entries()) {
+                const layers: InventoryCostLayer[] = [];
+                for (const lDoc of layerDocs) {
+                    const layerSnap = await transaction.get(lDoc.ref);
+                    if (layerSnap.exists()) {
+                        layers.push({ ...layerSnap.data(), id: layerSnap.id } as InventoryCostLayer);
+                    }
+                }
+                readLayersByItem.set(itemId, layers);
             }
 
             // 2. VALIDACIONES
@@ -192,14 +226,37 @@ export const useDispatch = (currentUser: User | null) => {
 
                 if (newPendingQty > 0) allCompleted = false;
 
-                // Solo si hubo despacho en este turno actualizamos inventario
+                // Solo si hubo despacho en este turno actualizamos inventario y costeo PEPS
                 if (dispatchQty > 0) {
                     const itemDoc = itemDocs.find(d => d.item.inventoryItemId === reqItem.inventoryItemId)?.itemDoc;
                     const currentStock = itemDoc?.data()?.stock || 0;
                     const newStock = currentStock - dispatchQty;
-                    const unitPrice = itemDoc?.data()?.price || 0;
+                    const catalogPrice = itemDoc?.data()?.price || 0;
                     const currency = itemDoc?.data()?.currency || 'USD';
-                    const subtotal = dispatchQty * unitPrice;
+
+                    // Cálculo PEPS (FIFO)
+                    const availableLayers = readLayersByItem.get(reqItem.inventoryItemId) || [];
+                    const fifoCalc = calculateFifoConsumption({
+                        availableLayers,
+                        requestedQuantity: dispatchQty,
+                        catalogFallbackPrice: catalogPrice,
+                        itemCurrency: currency,
+                        isOnline
+                    });
+
+                    fifoCalc.layerUpdates.forEach(upd => {
+                        costLayersToUpdate.push({
+                            ref: doc(db, "inventory_cost_layers", upd.layerId),
+                            data: {
+                                quantityRemaining: upd.newRemaining,
+                                status: upd.newStatus,
+                                updatedAt: new Date().toISOString()
+                            }
+                        });
+                    });
+
+                    const unitCost = fifoCalc.result.weightedUnitCost;
+                    const totalCost = fifoCalc.result.totalCost;
 
                     inventoryUpdates[reqItem.inventoryItemId] = {
                         reserved: increment(-dispatchQty),
@@ -213,11 +270,19 @@ export const useDispatch = (currentUser: User | null) => {
                         inventoryItemCode: itemDoc?.data()?.code,
                         inventoryItemName: itemDoc?.data()?.description,
                         quantity: dispatchQty,
-                        unitPrice: unitPrice,
-                        subtotal: subtotal,
+                        unitPrice: unitCost,
+                        unitCost: unitCost,
+                        costTotal: totalCost,
+                        subtotal: totalCost,
+                        total: Math.round((totalCost * 1.13) * 100) / 100,
                         currency: currency,
                         previousStock: currentStock,
-                        newStock: newStock
+                        newStock: newStock,
+                        costMethod: fifoCalc.result.costMethod,
+                        costingStatus: fifoCalc.result.costingStatus,
+                        fifoLayersConsumed: fifoCalc.result.layersConsumed,
+                        isFullyCoveredByLayers: fifoCalc.result.isFullyCoveredByLayers,
+                        uncoveredQuantity: fifoCalc.result.uncoveredQuantity
                     });
                 }
 
@@ -236,6 +301,11 @@ export const useDispatch = (currentUser: User | null) => {
                 transaction.update(itemRef, updateData);
             }
 
+            // Actualizar capas de costo consumidas
+            costLayersToUpdate.forEach(({ ref, data }) => {
+                transaction.update(ref, data);
+            });
+
             // C. Crear Registro de Despacho (material_dispatches)
             const dispatchRef = doc(collection(db, "material_dispatches"));
             const dispatchRecord: DispatchRecord = {
@@ -249,21 +319,27 @@ export const useDispatch = (currentUser: User | null) => {
                 requestNumber: request.requestNumber,
                 items: dispatchData.items.map(d => {
                     const reqItem = request.items.find(i => i.inventoryItemId === d.itemId);
+                    const mItem = movementItems.find(mi => mi.inventoryItemId === d.itemId);
                     return {
                         inventoryItemId: d.itemId,
                         code: reqItem?.code || '',
                         description: reqItem?.description || '',
-                        quantity: d.dispatchQty
+                        quantity: d.dispatchQty,
+                        unitCost: mItem?.unitCost,
+                        totalCost: mItem?.costTotal
                     };
                 }).filter(i => i.quantity > 0),
                 createdAt: new Date().toISOString()
             };
             transaction.set(dispatchRef, dispatchRecord);
 
-            // D. Generar Movimiento de Inventario
+            // D. Generar Movimiento de Inventario con Trazabilidad PEPS
             if (movementItems.length > 0) {
                 const movRef = doc(collection(db, "inventory_movements"));
                 const mainItem = movementItems[0];
+                const totalMovementCost = movementItems.reduce((acc, it) => acc + (it.costTotal || it.subtotal || 0), 0);
+                const totalMovementQty = movementItems.reduce((acc, it) => acc + it.quantity, 0);
+                const weightedMovementCost = totalMovementQty > 0 ? (totalMovementCost / totalMovementQty) : mainItem.unitPrice;
                 
                 transaction.set(movRef, {
                     type: 'Salida',
@@ -285,10 +361,17 @@ export const useDispatch = (currentUser: User | null) => {
                     inventoryItemName: movementItems.length > 1 ? `${mainItem.inventoryItemName} (+${movementItems.length - 1})` : mainItem.inventoryItemName,
                     quantity: movementItems.length > 1 ? 0 : mainItem.quantity,
                     unitPrice: mainItem.unitPrice,
-                    subtotal: mainItem.subtotal,
+                    subtotal: totalMovementCost,
                     currency: mainItem.currency,
                     previousStock: mainItem.previousStock,
                     newStock: mainItem.newStock,
+
+                    // Trazabilidad PEPS
+                    costMethod: 'FIFO',
+                    costingStatus: isOnline ? 'CONFIRMED' : 'PENDING_COSTING',
+                    totalCost: totalMovementCost,
+                    weightedUnitCost: weightedMovementCost,
+                    fifoLayersConsumed: mainItem.fifoLayersConsumed,
 
                     items: movementItems,
                     createdAt: new Date().toISOString()
@@ -454,12 +537,46 @@ export const useDispatch = (currentUser: User | null) => {
       return Array.from(map.values());
   }, []);
 
+  const returnRequestToPending = useCallback(async (requestId: string) => {
+      if (!currentUser) throw new Error("No autenticado");
+      
+      const reqRef = doc(db, "material_reports", requestId);
+      const reqSnap = await getDoc(reqRef);
+      
+      if (!reqSnap.exists()) {
+          throw new Error("La solicitud no existe.");
+      }
+      
+      const currentData = reqSnap.data() as MaterialRequest;
+      if (currentData.status !== 'Aprobada' && currentData.status !== 'Parcial') {
+          throw new Error("Solo se pueden devolver solicitudes en estado Aprobada o Parcial.");
+      }
+      
+      const hasDispatches = (currentData.items || []).some(i => Number(i.quantityDispatched || 0) > 0);
+      if (hasDispatches) {
+          throw new Error("No se puede devolver una solicitud que ya tiene despachos registrados.");
+      }
+      
+      await updateDoc(reqRef, {
+          status: 'Pendiente',
+          approvalDate: null,
+          approvedBy: null,
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser.email || currentUser.id,
+          returnedToPendingAt: new Date().toISOString(),
+          returnedToPendingBy: currentUser.email || currentUser.id
+      });
+
+      return { success: true };
+  }, [currentUser]);
+
   return {
     requests,
     isLoading,
     error,
     processDispatch,
     deleteRequest,
+    returnRequestToPending,
     getResponsibleHistory
   };
 };

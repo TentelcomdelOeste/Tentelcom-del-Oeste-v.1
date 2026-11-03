@@ -32,19 +32,109 @@ interface DescriptionCellProps {
 
 const DescriptionCell = React.memo(({ item, updateItem, catalogMap }: DescriptionCellProps) => {
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+    const buttonRef = React.useRef<HTMLButtonElement>(null);
     const menuRef = React.useRef<HTMLDivElement>(null);
     const [showFormatMenu, setShowFormatMenu] = React.useState(false);
+    const [menuCoords, setMenuCoords] = React.useState<{ top: number; left: number; placement: 'top' | 'bottom' } | null>(null);
 
-    // Cerrar menú al hacer clic fuera
+    const updatePosition = React.useCallback(() => {
+        if (!buttonRef.current) return;
+        const rect = buttonRef.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+
+        // Si el botón está fuera de la pantalla visible, cerrar el menú
+        if (rect.bottom < 0 || rect.top > viewportHeight) {
+            setShowFormatMenu(false);
+            return;
+        }
+
+        const menuWidth = 208; // w-52 = 208px
+        const menuHeight = 155; // altura del menú
+        const padding = 8;
+        const offsetGap = 4;
+
+        const spaceBelow = viewportHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        let placement: 'top' | 'bottom' = 'bottom';
+        let top = 0;
+
+        // Abrir hacia arriba (dropup) si el espacio abajo es insuficiente y hay más espacio arriba
+        if (spaceBelow < menuHeight + offsetGap + padding && spaceAbove > spaceBelow) {
+            placement = 'top';
+            top = rect.top - menuHeight - offsetGap;
+            if (top < padding) top = padding;
+        } else {
+            placement = 'bottom';
+            top = rect.bottom + offsetGap;
+            if (top + menuHeight > viewportHeight - padding) {
+                top = Math.max(padding, viewportHeight - menuHeight - padding);
+            }
+        }
+
+        // Alinear el borde derecho del menú con el borde derecho del botón
+        let left = rect.right - menuWidth;
+        if (left < padding) {
+            left = padding;
+        }
+        if (left + menuWidth > viewportWidth - padding) {
+            left = viewportWidth - menuWidth - padding;
+        }
+
+        setMenuCoords({ top, left, placement });
+    }, []);
+
+    // Actualizar posición y escuchar scroll/resize
+    React.useLayoutEffect(() => {
+        if (!showFormatMenu) {
+            setMenuCoords(null);
+            return;
+        }
+        updatePosition();
+
+        const handleScrollOrResize = () => {
+            updatePosition();
+        };
+
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+
+        return () => {
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+        };
+    }, [showFormatMenu, updatePosition]);
+
+    // Cerrar menú al hacer clic fuera o presionar Escape
     React.useEffect(() => {
         if (!showFormatMenu) return;
-        const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as Node;
+            if (buttonRef.current && buttonRef.current.contains(target)) {
+                return;
+            }
+            if (menuRef.current && menuRef.current.contains(target)) {
+                return;
+            }
+            setShowFormatMenu(false);
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
                 setShowFormatMenu(false);
             }
         };
+
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
     }, [showFormatMenu]);
 
     const applyFormat = React.useCallback((type: 'upper' | 'lower' | 'title') => {
@@ -112,8 +202,9 @@ const DescriptionCell = React.memo(({ item, updateItem, catalogMap }: Descriptio
             />
 
             {/* Control discreto de formato de texto */}
-            <div ref={menuRef} className="absolute right-1 top-1.5 z-20">
+            <div className="absolute right-1 top-1.5 z-20">
                 <button
+                    ref={buttonRef}
                     type="button"
                     onClick={(e) => {
                         e.stopPropagation();
@@ -129,43 +220,52 @@ const DescriptionCell = React.memo(({ item, updateItem, catalogMap }: Descriptio
                     <span>Aa</span>
                     <span className="text-[8px] leading-none opacity-70">▾</span>
                 </button>
-
-                {showFormatMenu && (
-                    <div 
-                        className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 text-left"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="px-3 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
-                            <span>Formato de texto</span>
-                            <span className="font-mono text-[8px] text-blue-500">ES</span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => applyFormat('upper')}
-                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
-                        >
-                            <span>MAYÚSCULAS</span>
-                            <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">ABC</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => applyFormat('lower')}
-                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
-                        >
-                            <span>minúsculas</span>
-                            <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">abc</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => applyFormat('title')}
-                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
-                        >
-                            <span>Primera Letra (Tipo Título)</span>
-                            <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">Abc</span>
-                        </button>
-                    </div>
-                )}
             </div>
+
+            {/* Menú flotante vía portal para evitar recortes por overflow en la última o penúltima fila */}
+            {showFormatMenu && menuCoords && typeof document !== 'undefined' && createPortal(
+                <div 
+                    ref={menuRef}
+                    style={{
+                        position: 'fixed',
+                        top: `${menuCoords.top}px`,
+                        left: `${menuCoords.left}px`,
+                        zIndex: 99999,
+                    }}
+                    className="w-52 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 animate-in fade-in zoom-in-95 text-left pointer-events-auto"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="px-3 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                        <span>Formato de texto</span>
+                        <span className="font-mono text-[8px] text-blue-500">ES</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => applyFormat('upper')}
+                        className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
+                    >
+                        <span>MAYÚSCULAS</span>
+                        <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">ABC</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => applyFormat('lower')}
+                        className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
+                    >
+                        <span>minúsculas</span>
+                        <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">abc</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => applyFormat('title')}
+                        className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-between group"
+                    >
+                        <span>Primera Letra (Tipo Título)</span>
+                        <span className="text-[10px] text-slate-400 group-hover:text-blue-500 font-mono">Abc</span>
+                    </button>
+                </div>,
+                document.body
+            )}
 
             {descMatch && !exactMatch && (
                 <div className="text-[8px] font-bold text-amber-600 bg-amber-50 px-1 rounded border border-amber-100 inline-block mt-1 self-start">

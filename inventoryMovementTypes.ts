@@ -1,4 +1,6 @@
 
+import { FifoLayerConsumption } from './types/fifoCostTypes';
+
 export type MovementType = 'Entrada' | 'Salida' | 'Devolución';
 
 export interface MovementItemDetail {
@@ -8,8 +10,15 @@ export interface MovementItemDetail {
   quantity: number;
   previousStock: number;
   newStock: number;
-  // Campos calculados automáticamente según proveedor
+  // Campos calculados automáticamente según proveedor o costeo PEPS
   unitPrice?: number;
+  unitCost?: number;
+  costTotal?: number;
+  costMethod?: 'FIFO' | 'CATALOG_FALLBACK';
+  costingStatus?: 'CONFIRMED' | 'PENDING_COSTING';
+  fifoLayersConsumed?: FifoLayerConsumption[];
+  isFullyCoveredByLayers?: boolean;
+  uncoveredQuantity?: number;
   iva?: number;
   total?: number;
   subtotal?: number;
@@ -53,6 +62,13 @@ export interface InventoryMovement {
   dispatchId?: string;
   requestNumber?: string;
   
+  // Trazabilidad de Costeo PEPS (FIFO)
+  costMethod?: 'FIFO' | 'CATALOG_FALLBACK';
+  costingStatus?: 'CONFIRMED' | 'PENDING_COSTING';
+  totalCost?: number;
+  weightedUnitCost?: number;
+  fifoLayersConsumed?: FifoLayerConsumption[];
+
   // Campos para trazabilidad de asignación de herramientas
   isAssignment?: boolean;
   subtype?: string;
@@ -65,3 +81,4 @@ export interface InventoryMovement {
   reason?: string;
   assignedBy?: string;
 }
+

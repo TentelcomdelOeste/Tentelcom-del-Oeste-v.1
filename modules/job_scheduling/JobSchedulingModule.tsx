@@ -309,8 +309,14 @@ export const JobSchedulingModule: React.FC<JobSchedulingModuleProps> = ({
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [defaultStart, setDefaultStart] = useState<Date | undefined>();
   const [defaultEnd, setDefaultEnd] = useState<Date | undefined>();
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'waiting' | 'operativo' | 'sem_detallada'>(window.innerWidth < 768 ? 'operativo' : 'sem_detallada');
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'waiting' | 'operativo' | 'sem_detallada'>(() => {
+    if (typeof window === 'undefined') return 'calendar';
+    const width = window.innerWidth;
+    if (width < 768) return 'operativo';
+    if (width < 1024) return 'sem_detallada';
+    return 'calendar';
+  });
   const [agendaViewMode] = useState<'day' | 'week' | 'month' | 'year'>('week');
   const [searchTerm, setSearchTerm] = useState('');
 

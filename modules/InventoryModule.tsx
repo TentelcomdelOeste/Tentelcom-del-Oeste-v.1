@@ -3,6 +3,7 @@ import { useInventory } from '../hooks/useInventory';
 import { useInventoryMovements } from '../hooks/useInventoryMovements';
 import { InventoryModal } from './InventoryModal';
 import { InventoryDetailModal } from './InventoryDetailModal';
+import { ReconcileInventoryModal } from './ReconcileInventoryModal';
 import { User } from '../utils/types';
 import { InventoryItem as InvItemType } from '../inventoryTypes';
 import { ModulePage } from '../components/ui/ModulePage';
@@ -28,6 +29,21 @@ import {
   ACTION_ICONS,
   Select
 } from '../design-system';
+import { useInventoryCostLayers } from '../hooks/useInventoryCostLayers';
+
+const EXCHANGE_RATE_LIST_VIEW = 515.0;
+
+interface InventoryValuationDetail {
+  confirmedValuationNoTax: number;
+  confirmedValuationWithTax: number;
+  coveredQty: number;
+  uncoveredQty: number;
+  averageUnitCostNoTax: number;
+  averageUnitCostWithTax: number;
+  isFullyCovered: boolean;
+  hasNoLayers: boolean;
+}
+
 
 interface InventoryModuleProps {
   currentUser: User;
@@ -54,6 +70,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'ok' | 'low' | 'critical'>('all');
   const [sortConfig, setSortConfig] = useState<{key: keyof InvItemType, direction: 'asc' | 'desc'}>({ key: "code", direction: "asc" });
   const [showModal, setShowModal] = useState(false);
+  const [showReconcileModal, setShowReconcileModal] = useState(false);
   const [editingItem, setEditingItem] = useState<InvItemType | null>(null);
   const [previewGallery, setPreviewGallery] = useState<{
     images: string[];
@@ -110,64 +127,93 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
     'Infraestructura'
   ];
 
-  // Cálculo del Valor Real del Inventario (FIFO/Ponderado según entradas)
-  const inventoryValuation = useMemo(() => {
-      const valuation = new Map<string, number>();
+  const { costLayers } = useInventoryCostLayers();
+  const [selectedCurrency, setSelectedCurrency] = useState<'CRC' | 'USD'>('CRC');
+
+  // Cálculo del Valor Real del Inventario basado en Capas PEPS Activas
+  const inventoryValuationDetails = useMemo(() => {
+      const detailsMap = new Map<string, InventoryValuationDetail>();
 
       items.forEach(item => {
-          // 1. Obtener movimientos de entrada para este item
-          const entries = movements
-              .filter(m => m.type === 'Entrada')
-              .flatMap(m => {
-                  // Soporte para estructura nueva (items array) y legacy
-                  if (m.items && m.items.length > 0) {
-                      return m.items
-                          .filter(i => i.inventoryItemId === item.id)
-                          .map(i => ({
-                              date: new Date(m.date).getTime(), // Usar timestamp para ordenamiento preciso
-                              quantity: i.quantity,
-                              price: i.unitPrice || 0, // Precio real de la entrada
-                              total: i.total || 0
-                          }));
-                  } else if (m.inventoryItemId === item.id) {
-                      // Legacy structure
-                      return [{
-                          date: new Date(m.date).getTime(),
-                          quantity: m.quantity,
-                          price: 0, // No tenemos precio en legacy, asumiremos 0 o precio admin
-                          total: 0
-                      }];
-                  }
-                  return [];
-              })
-              .sort((a, b) => b.date - a.date); // Ordenar descendente (más reciente primero)
+          const itemLayers = costLayers.filter(l => l.inventoryItemId === item.id && l.status === 'active');
+          const coveredQty = itemLayers.reduce((sum, l) => sum + (l.quantityRemaining || 0), 0);
+          const physicalStock = item.stock || 0;
+          const uncoveredQty = Math.max(0, physicalStock - coveredQty);
 
-          let remainingStock = item.stock;
-          let totalValue = 0;
+          let confirmedValuationNoTax = 0;
 
-          // 2. Recorrer entradas para cubrir el stock actual (Lógica FIFO inversa para valoración actual)
-          for (const entry of entries) {
-              if (remainingStock <= 0) break;
+          itemLayers.forEach(layer => {
+              const qty = layer.quantityRemaining || 0;
+              if (qty <= 0) return;
 
-              const quantityToValue = Math.min(remainingStock, entry.quantity);
-              
-              // Si la entrada tiene precio real, lo usamos. Si no (legacy), usamos el precio admin actual como fallback.
-              const entryPrice = entry.price > 0 ? entry.price : (item.price || 0);
-              
-              totalValue += quantityToValue * entryPrice;
-              remainingStock -= quantityToValue;
-          }
+              const layerCurrency = layer.currency || 'CRC';
+              const baseCost = layer.unitCost || 0;
+              const rate = layer.exchangeRate && layer.exchangeRate > 0 ? layer.exchangeRate : EXCHANGE_RATE_LIST_VIEW;
 
-          // 3. Si queda stock sin cubrir (ej: stock inicial sin movimientos), valorarlo a precio actual
-          if (remainingStock > 0) {
-              totalValue += remainingStock * (item.price || 0);
-          }
+              let costInTarget = baseCost;
+              if (layerCurrency === 'CRC' && selectedCurrency === 'USD') {
+                  costInTarget = baseCost / EXCHANGE_RATE_LIST_VIEW;
+              } else if (layerCurrency === 'USD' && selectedCurrency === 'CRC') {
+                  costInTarget = baseCost * rate;
+              }
 
-          valuation.set(item.id, totalValue);
+              confirmedValuationNoTax += qty * costInTarget;
+          });
+
+          const confirmedValuationWithTax = confirmedValuationNoTax * 1.13;
+          const averageUnitCostNoTax = coveredQty > 0 ? (confirmedValuationNoTax / coveredQty) : 0;
+          const averageUnitCostWithTax = averageUnitCostNoTax * 1.13;
+
+          detailsMap.set(item.id, {
+              confirmedValuationNoTax,
+              confirmedValuationWithTax,
+              coveredQty,
+              uncoveredQty,
+              averageUnitCostNoTax,
+              averageUnitCostWithTax,
+              isFullyCovered: uncoveredQty === 0 && coveredQty > 0,
+              hasNoLayers: coveredQty === 0 && physicalStock > 0
+          });
       });
 
-      return valuation;
-  }, [items, movements]);
+      return detailsMap;
+  }, [items, costLayers, selectedCurrency]);
+
+  // Resumen global de valoración
+  const globalSummary = useMemo(() => {
+      let totalConfirmedNoTax = 0;
+      let totalConfirmedWithTax = 0;
+      let totalPhysicalUnits = 0;
+      let totalItemsWithStock = 0;
+      let itemsUncoveredCount = 0;
+      let totalUncoveredUnits = 0;
+
+      items.forEach(item => {
+          const detail = inventoryValuationDetails.get(item.id);
+          if (detail) {
+              totalConfirmedNoTax += detail.confirmedValuationNoTax;
+              totalConfirmedWithTax += detail.confirmedValuationWithTax;
+              if (detail.uncoveredQty > 0) {
+                  itemsUncoveredCount += 1;
+                  totalUncoveredUnits += detail.uncoveredQty;
+              }
+          }
+          if ((item.stock || 0) > 0) {
+              totalItemsWithStock += 1;
+              totalPhysicalUnits += (item.stock || 0);
+          }
+      });
+
+      return {
+          totalConfirmedNoTax,
+          totalConfirmedWithTax,
+          totalPhysicalUnits,
+          totalItemsWithStock,
+          totalCatalogItems: items.length,
+          itemsUncoveredCount,
+          totalUncoveredUnits
+      };
+  }, [items, inventoryValuationDetails]);
 
   // Proveedores únicos para autocompletado en InventoryModal
   const uniqueProviders = useMemo(() => {
@@ -276,17 +322,30 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
   };
 
   const handleExportExcel = () => {
-      const dataToExport = filteredItems.map(item => ({
-          "Código": item.code,
-          "Descripción": item.description,
-          "Categoría": item.category,
-          "Stock Actual": item.stock,
-          "Unidad": item.unit,
-          "Precio Unitario": item.price || 0,
-          "Valor Total": inventoryValuation.get(item.id) || 0,
-          "Proveedores": item.providers?.join(', ') || ''
-      }));
-      exportToExcel(dataToExport, `Inventario_General_${new Date().toLocaleDateString().replace(/\//g, '-')}`);
+      const dataToExport = filteredItems.map(item => {
+          const detail = inventoryValuationDetails.get(item.id);
+          const valorTotalWithTax = detail?.confirmedValuationWithTax || 0;
+          const valorTotalNoTax = detail?.confirmedValuationNoTax || 0;
+          const unitCostWithTax = detail?.averageUnitCostWithTax || 0;
+          const cobertura = detail?.uncoveredQty && detail.uncoveredQty > 0
+            ? `${detail.coveredQty} cubiertas, ${detail.uncoveredQty} sin capa`
+            : (detail?.coveredQty ? '100% Cubierto PEPS' : 'Sin Capa PEPS');
+
+          return {
+              "Código": item.code,
+              "Descripción": item.description,
+              "Categoría": item.category || '',
+              "Stock Actual": item.stock || 0,
+              "Unidad": item.unit || 'und',
+              "Moneda Visualización": selectedCurrency,
+              "Costo Promedio Unitario PEPS (Con IVA)": detail?.coveredQty ? unitCostWithTax : 0,
+              "Valor Confirmado Base (Sin IVA)": valorTotalNoTax,
+              "Valor Confirmado (Con IVA 13%)": valorTotalWithTax,
+              "Cobertura Capas PEPS": cobertura,
+              "Proveedores": item.providers?.map(p => p.name).join(', ') || ''
+          };
+      });
+      exportToExcel(dataToExport, `Inventario_General_PEPS_${selectedCurrency}_${new Date().toLocaleDateString().replace(/\//g, '-')}`);
   };
 
   const handleExportPDF = async () => {
@@ -294,7 +353,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
       const margin = 40;
       
       const formatNumberOnly = (amount: number) => {
-          return new Intl.NumberFormat('es-CR', {
+          return new Intl.NumberFormat(selectedCurrency === 'CRC' ? 'es-CR' : 'en-US', {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
           }).format(amount);
@@ -324,40 +383,47 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
       textY += 20;
       doc.setFontSize(16);
       doc.setTextColor(0, 0, 0);
-      doc.text("Reporte de Inventario General", headerTextX, textY);
+      doc.text("Reporte Valoración de Inventario (PEPS / FIFO)", headerTextX, textY);
 
       textY += 15;
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString('es-CR')}`, headerTextX, textY);
+      doc.text(`Fecha: ${new Date().toLocaleDateString('es-CR')} | Moneda: ${selectedCurrency} | T.C. Referencial: ₡515.00 / USD`, headerTextX, textY);
       
       // --- TABLE ---
-      let totalCRC = 0;
-      let totalUSD = 0;
+      let grandTotalNoTax = 0;
+      let grandTotalWithTax = 0;
 
       const tableData = filteredItems.map(item => {
-          const valorTotal = inventoryValuation.get(item.id) || 0;
-          const moneda = item.currency || 'CRC';
-          
-          if (moneda === 'USD') {
-              totalUSD += valorTotal;
-          } else {
-              totalCRC += valorTotal;
+          const detail = inventoryValuationDetails.get(item.id);
+          const valorTotalWithTax = detail?.confirmedValuationWithTax || 0;
+          const valorTotalNoTax = detail?.confirmedValuationNoTax || 0;
+          const unitCostWithTax = detail?.averageUnitCostWithTax || 0;
+          grandTotalNoTax += valorTotalNoTax;
+          grandTotalWithTax += valorTotalWithTax;
+
+          let coberturaTxt = '100% PEPS';
+          if (detail?.uncoveredQty && detail.uncoveredQty > 0) {
+              coberturaTxt = `⚠️ ${detail.uncoveredQty} s/capa`;
+          } else if (!detail?.coveredQty) {
+              coberturaTxt = 's/capa';
           }
+
+          const unitCostDisplay = detail?.coveredQty ? formatNumberOnly(unitCostWithTax) : 'PENDIENTE';
 
           return [
               item.code,
               item.description,
-              item.stock.toString(),
-              moneda,
-              formatNumberOnly(item.price || 0),
-              formatNumberOnly(valorTotal)
+              (item.stock || 0).toString(),
+              coberturaTxt,
+              unitCostDisplay,
+              formatNumberOnly(valorTotalWithTax)
           ];
       });
 
       autoTable(doc, {
           startY: margin + 80,
-          head: [['Código', 'Descripción', 'Stock', 'Moneda', 'Precio Unit.', 'Valor Total']],
+          head: [['Código', 'Descripción', 'Stock', 'Estado PEPS', `P. Unit (${selectedCurrency})`, `Valor Total (${selectedCurrency})`]],
           body: tableData,
           theme: 'grid',
           headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
@@ -377,21 +443,17 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.setTextColor(30, 58, 138);
-      doc.text("GRAN TOTAL DEL INVENTARIO", margin, finalY + 30);
+      doc.text(`VALORACIÓN TOTAL CONFIRMADA PEPS (${selectedCurrency})`, margin, finalY + 25);
       
       doc.setFont("helvetica", "normal");
       doc.setTextColor(0, 0, 0);
       
-      let currentY = finalY + 45;
-      if (totalCRC > 0 || totalUSD === 0) {
-          doc.text(`Total CRC: ${formatNumberOnly(totalCRC)}`, margin, currentY);
-          currentY += 15;
-      }
-      if (totalUSD > 0) {
-          doc.text(`Total USD: ${formatNumberOnly(totalUSD)}`, margin, currentY);
-      }
+      const symbol = selectedCurrency === 'CRC' ? '₡' : '$';
+      doc.text(`Base Sin IVA: ${symbol}${formatNumberOnly(grandTotalNoTax)}`, margin, finalY + 40);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Total Con IVA 13%: ${symbol}${formatNumberOnly(grandTotalWithTax)}`, margin, finalY + 55);
 
-      const fileName = `Exportacion_Inventario_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `Exportacion_Inventario_PEPS_${selectedCurrency}_${new Date().toISOString().split('T')[0]}.pdf`;
       const blob = doc.output('blob');
       triggerFileDownload(blob, fileName);
   };
@@ -513,23 +575,52 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
         header: 'Unitario',
         accessorKey: 'price',
         align: 'right',
-        width: '120px',
+        width: '130px',
         className: 'text-right',
         mobileGrid: 'left',
         mobileOrder: 4,
         render: (item) => {
-          let displayPrice = item.price || 0;
-          if (item.providers && item.providers.length > 0) {
-              const sum = item.providers.reduce((acc, p) => acc + p.price, 0);
-              displayPrice = sum / item.providers.length;
+          const detail = inventoryValuationDetails.get(item.id);
+          const physicalStock = item.stock || 0;
+          const coveredQty = detail?.coveredQty || 0;
+          const unitCostWithTax = detail?.averageUnitCostWithTax || 0;
+
+          if (coveredQty > 0) {
+            return (
+              <div className="flex flex-col items-end">
+                <span className="font-mono font-bold text-xs text-slate-700">
+                  {selectedCurrency === 'CRC'
+                    ? `₡${unitCostWithTax.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : `$${unitCostWithTax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                </span>
+                <span className="text-[9px] font-bold text-blue-800 uppercase tracking-widest leading-none">
+                  PROMEDIO PEPS
+                </span>
+              </div>
+            );
           }
-          const priceWithTax = displayPrice * 1.13;
+
+          if (physicalStock > 0 && coveredQty === 0) {
+            return (
+              <div className="flex flex-col items-end">
+                <span className="font-mono font-bold text-xs text-amber-700">
+                  PENDIENTE PEPS
+                </span>
+                <span className="text-[9px] font-bold text-amber-500 uppercase tracking-widest leading-none">
+                  SIN CAPA
+                </span>
+              </div>
+            );
+          }
+
           return (
             <div className="flex flex-col items-end">
-                <span className="font-mono font-bold text-xs text-slate-700">
-                {new Intl.NumberFormat('en-US', { style: 'currency', currency: item.currency || 'USD' }).format(priceWithTax)}
-                </span>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Inc. IVA</span>
+              <span className="font-mono font-bold text-xs text-slate-400">
+                ---
+              </span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                SIN STOCK
+              </span>
             </div>
           );
         }
@@ -538,19 +629,34 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
       cols.push({
         header: 'Valor Total',
         align: 'right',
-        width: '150px',
+        width: '160px',
         className: 'text-right',
         mobileGrid: 'right',
         mobileOrder: 5,
         render: (item) => {
-          const realTotalValue = inventoryValuation.get(item.id) || 0;
-          const totalWithTax = realTotalValue * 1.13;
+          const detail = inventoryValuationDetails.get(item.id);
+          const totalWithTax = detail?.confirmedValuationWithTax || 0;
+          const uncoveredQty = detail?.uncoveredQty || 0;
+          const physicalStock = item.stock || 0;
+
           return (
-            <div className="flex flex-col items-end">
+            <div className="flex flex-col items-end gap-0.5">
                 <span className="font-mono font-black text-xs text-emerald-700">
-                {new Intl.NumberFormat('en-US', { style: 'currency', currency: item.currency || 'USD' }).format(totalWithTax)}
+                {selectedCurrency === 'CRC'
+                  ? `₡${totalWithTax.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : `$${totalWithTax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </span>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">FIFO BASE</span>
+                {physicalStock === 0 ? (
+                  <span className="text-[9px] font-medium text-slate-400">SIN STOCK</span>
+                ) : uncoveredQty > 0 ? (
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title={`${uncoveredQty} unidades físicas sin capa PEPS`}>
+                    ⚠️ {uncoveredQty} {item.unit || 'und'} SIN CAPA
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                    PEPS CONFIRMADO
+                  </span>
+                )}
             </div>
           );
         }
@@ -572,7 +678,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
       )
     });
     return cols;
-  }, [currentUser.role, handleEdit, handleDelete, inventoryValuation]);
+  }, [currentUser.role, handleEdit, handleDelete, inventoryValuationDetails, selectedCurrency]);
 
 
   return (
@@ -581,6 +687,115 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
       title="Inventario General" 
       subtitle="Gestión centralizada de stock, materiales e infraestructura."
     >
+          {/* Economic Summary Header Bar for Admins */}
+          {isAdmin(currentUser.role) && (
+            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Card 1: Valor Confirmado PEPS */}
+              <div className="bg-gradient-to-br from-blue-900 to-indigo-950 rounded-2xl p-4 text-white shadow-sm border border-blue-800 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold tracking-wider uppercase text-blue-200">
+                    Valor Confirmado PEPS
+                  </span>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-800/80 text-blue-100 border border-blue-700">
+                    Con IVA 13%
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-white">
+                    {selectedCurrency === 'CRC'
+                      ? `₡${globalSummary.totalConfirmedWithTax.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : `$${globalSummary.totalConfirmedWithTax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </div>
+                  <div className="text-[11px] text-blue-200/80 font-medium mt-0.5">
+                    Base sin IVA: {selectedCurrency === 'CRC' ? '₡' : '$'}
+                    {globalSummary.totalConfirmedNoTax.toLocaleString(selectedCurrency === 'CRC' ? 'es-CR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Existencias Totales */}
+              <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div className="text-[10px] font-bold tracking-wider uppercase text-slate-400">
+                  Existencias Físicas
+                </div>
+                <div className="mt-2">
+                  <div className="text-xl sm:text-2xl font-black text-slate-900">
+                    {globalSummary.totalPhysicalUnits.toLocaleString('es-CR')} <span className="text-xs font-normal text-slate-500">unidades</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                    {globalSummary.totalCatalogItems} artículos en catálogo ({globalSummary.totalItemsWithStock} con stock)
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Cobertura PEPS */}
+              <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div className="text-[10px] font-bold tracking-wider uppercase text-slate-400">
+                  Estado Cobertura PEPS
+                </div>
+                <div className="mt-2">
+                  {globalSummary.itemsUncoveredCount === 0 ? (
+                    <div>
+                      <div className="text-base sm:text-lg font-black text-emerald-600 flex items-center gap-1.5">
+                        <span>✓ 100% Cobertura Real</span>
+                      </div>
+                      <div className="text-[11px] text-emerald-700/80 font-medium mt-0.5">
+                        Todas las existencias tienen capas de costo auditables.
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-base sm:text-lg font-black text-amber-600 flex items-center gap-1.5">
+                        <span>⚠️ {globalSummary.itemsUncoveredCount} con pendientes</span>
+                      </div>
+                      <div className="text-[11px] text-amber-700/80 font-medium mt-0.5">
+                        {globalSummary.totalUncoveredUnits.toLocaleString('es-CR')} unidades físicas sin capa PEPS registrada.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 4: Moneda & T.C. Visualización */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold tracking-wider uppercase text-slate-500">
+                    Moneda Visualización
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-col gap-2">
+                  <div className="inline-flex p-1 bg-slate-200/80 rounded-xl w-full">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCurrency('CRC')}
+                      className={`flex-1 py-1 px-3 text-xs font-bold rounded-lg transition-all ${
+                        selectedCurrency === 'CRC'
+                          ? 'bg-white text-blue-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      ₡ Colones (CRC)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCurrency('USD')}
+                      className={`flex-1 py-1 px-3 text-xs font-bold rounded-lg transition-all ${
+                        selectedCurrency === 'USD'
+                          ? 'bg-white text-blue-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      $ Dólares (USD)
+                    </button>
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-bold text-center">
+                    T.C. Referencial: ₡515.00 / USD
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <ModuleToolbar>
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                   {selectedId ? (
@@ -715,6 +930,14 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               </div>
               
               <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                  {isAdmin(currentUser.role) && (
+                    <ActionButton
+                      onClick={() => setShowReconcileModal(true)}
+                      label="Conciliar Capas PEPS"
+                      variant="secondary"
+                      className="bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100 font-bold"
+                    />
+                  )}
                   <IconButton icon={<ACTION_ICONS.excel />} variant="success" onClick={handleExportExcel} title="Exportar Excel" />
                   <IconButton icon={<ACTION_ICONS.pdf />} variant="danger" onClick={handleExportPDF} title="Exportar PDF" />
                   <ActionButton 
@@ -777,14 +1000,24 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                     const isCritical = available <= 0;
                     const isLow = available > 0 && available <= item.minStock;
 
-                    let displayPrice = item.price || 0;
+                    let rawPrice = item.price || 0;
                     if (item.providers && item.providers.length > 0) {
                         const sum = item.providers.reduce((acc, p) => acc + p.price, 0);
-                        displayPrice = sum / item.providers.length;
+                        rawPrice = sum / item.providers.length;
                     }
-                    const priceWithTax = displayPrice * 1.13;
-                    const realTotalValue = inventoryValuation.get(item.id) || 0;
-                    const totalWithTax = realTotalValue * 1.13;
+                    const itemCurrency = item.currency || 'USD';
+                    let convertedPrice = rawPrice;
+                    if (itemCurrency === 'CRC' && selectedCurrency === 'USD') {
+                        convertedPrice = rawPrice / EXCHANGE_RATE_LIST_VIEW;
+                    } else if (itemCurrency === 'USD' && selectedCurrency === 'CRC') {
+                        convertedPrice = rawPrice * EXCHANGE_RATE_LIST_VIEW;
+                    }
+                    const priceWithTax = convertedPrice * 1.13;
+
+                    const detail = inventoryValuationDetails.get(item.id);
+                    const totalWithTax = detail?.confirmedValuationWithTax || 0;
+                    const uncoveredQty = detail?.uncoveredQty || 0;
+                    const physicalStock = item.stock || 0;
 
                     return (
                       <div 
@@ -885,7 +1118,7 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
                         {/* Bottom Section: Stock, Unitario, Valor Total */}
                         <div className={`grid ${isAdmin(currentUser.role) ? 'grid-cols-[68px_1fr_1fr]' : 'grid-cols-1'} gap-1.5 text-center`}>
                           {/* Stock */}
-                          <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center">
+                          <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center justify-center">
                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Stock</span>
                             <span className={`font-black text-xs sm:text-sm ${isCritical ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-slate-900'}`}>
                               {available}
@@ -902,10 +1135,12 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
 
                           {/* Unitario (Admin) */}
                           {isAdmin(currentUser.role) && (
-                            <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center">
+                            <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center justify-center">
                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Unitario</span>
-                              <span className="font-mono font-bold text-xs sm:text-sm text-slate-700 truncate w-full">
-                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: item.currency || 'USD' }).format(priceWithTax)}
+                              <span className="font-mono font-bold text-xs text-slate-700 truncate w-full">
+                                {selectedCurrency === 'CRC'
+                                  ? `₡${priceWithTax.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                  : `$${priceWithTax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                               </span>
                               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-0.5">
                                 INC. IVA
@@ -915,14 +1150,24 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
 
                           {/* Valor Total (Admin) */}
                           {isAdmin(currentUser.role) && (
-                            <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center">
+                            <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex flex-col items-center justify-center">
                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Valor Total</span>
-                              <span className="font-mono font-black text-xs sm:text-sm text-emerald-700 truncate w-full">
-                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: item.currency || 'USD' }).format(totalWithTax)}
+                              <span className="font-mono font-black text-xs text-emerald-700 truncate w-full">
+                                {selectedCurrency === 'CRC'
+                                  ? `₡${totalWithTax.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                  : `$${totalWithTax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                               </span>
-                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-0.5">
-                                FIFO BASE
-                              </span>
+                              {physicalStock === 0 ? (
+                                <span className="text-[8px] font-medium text-slate-400 mt-0.5">SIN STOCK</span>
+                              ) : uncoveredQty > 0 ? (
+                                <span className="text-[8px] font-bold text-amber-700 mt-0.5 truncate w-full">
+                                  ⚠️ {uncoveredQty} s/capa
+                                </span>
+                              ) : (
+                                <span className="text-[8px] font-bold text-emerald-700 mt-0.5">
+                                  PEPS OK
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -994,6 +1239,15 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               onClose={() => setPreviewGallery(null)}
             />
           )}
+
+          <ReconcileInventoryModal
+            show={showReconcileModal}
+            onClose={() => setShowReconcileModal(false)}
+            items={items}
+            movements={movements}
+            costLayers={costLayers}
+            currentUser={currentUser}
+          />
       </ModulePage>
     </div>
   );

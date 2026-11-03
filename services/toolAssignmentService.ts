@@ -6,8 +6,12 @@ import {
   query,
   orderBy,
   onSnapshot,
-  Unsubscribe
+  Unsubscribe,
+  where,
+  getDocs
 } from 'firebase/firestore';
+import { InventoryCostLayer } from '@/types/fifoCostTypes';
+import { calculateFifoConsumption } from '@/services/fifoCostService';
 import {
   ToolAssignment,
   CreateAssignmentDTO,
@@ -93,7 +97,14 @@ export const toolAssignmentService = {
     const itemRef = doc(db, 'inventory_items', dto.itemId);
     const counterRef = doc(db, 'counters', 'movementNumber');
 
-    const nowIso = new Date().toISOString();
+    // Pre-fetch active cost layers for the item
+    const activeLayersSnap = await getDocs(
+      query(
+        collection(db, 'inventory_cost_layers'),
+        where('inventoryItemId', '==', dto.itemId),
+        where('status', '==', 'active')
+      )
+    );
 
     await guardedWrite(() =>
       runTransaction(db, async (transaction) => {
@@ -117,6 +128,15 @@ export const toolAssignmentService = {
           vehicleItemSnap = await transaction.get(vehicleItemRef);
         }
 
+        // D. Lectura de capas de costo activas para control de concurrencia
+        const activeLayers: InventoryCostLayer[] = [];
+        for (const lDoc of activeLayersSnap.docs) {
+          const lSnap = await transaction.get(lDoc.ref);
+          if (lSnap.exists()) {
+            activeLayers.push({ ...lSnap.data(), id: lSnap.id } as InventoryCostLayer);
+          }
+        }
+
         // ==========================================
         // 2. CÁLCULOS Y VALIDACIONES
         // ==========================================
@@ -138,9 +158,21 @@ export const toolAssignmentService = {
         }
 
         const newStock = currentStock - dto.quantity;
-        const itemPrice = Number(itemData.price || 0);
+        const catalogPrice = Number(itemData.price || 0);
         const itemCurrency = (itemData.currency as 'USD' | 'CRC') || 'USD';
-        const subtotal = itemPrice * dto.quantity;
+        const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+        // Cálculo PEPS (FIFO)
+        const fifoCalc = calculateFifoConsumption({
+          availableLayers: activeLayers,
+          requestedQuantity: dto.quantity,
+          catalogFallbackPrice: catalogPrice,
+          itemCurrency,
+          isOnline
+        });
+
+        const fifoUnitPrice = fifoCalc.result.weightedUnitCost;
+        const fifoTotalCost = fifoCalc.result.totalCost;
 
         // Determinación de Proyecto / Referencia
         const hasProject = Boolean(dto.projectId && dto.projectName && dto.projectName.trim() !== '');
@@ -171,7 +203,16 @@ export const toolAssignmentService = {
           updatedBy: currentUser.email || currentUser.name || 'Sistema'
         });
 
-        // C. Registrar movimiento en historial de inventario (inventory_movements)
+        // C. Actualizar capas de costo consumidas
+        fifoCalc.layerUpdates.forEach((upd) => {
+          transaction.update(doc(db, 'inventory_cost_layers', upd.layerId), {
+            quantityRemaining: upd.newRemaining,
+            status: upd.newStatus,
+            updatedAt: nowIso
+          });
+        });
+
+        // D. Registrar movimiento en historial de inventario (inventory_movements) con trazabilidad PEPS
         transaction.set(movementRef, {
           type: 'Salida',
           subtype: 'Asignación de Herramienta',
@@ -203,11 +244,17 @@ export const toolAssignmentService = {
           inventoryItemCode: dto.itemCode || itemData.code || '',
           inventoryItemName: dto.itemDescription || itemData.description || '',
           quantity: dto.quantity,
-          unitPrice: itemPrice,
-          subtotal: subtotal,
+          unitPrice: fifoUnitPrice,
+          subtotal: fifoTotalCost,
           currency: itemCurrency,
           previousStock: currentStock,
           newStock: newStock,
+          // Metadatos PEPS
+          costMethod: 'FIFO',
+          costingStatus: isOnline ? 'CONFIRMED' : 'PENDING_COSTING',
+          totalCost: fifoTotalCost,
+          weightedUnitCost: fifoUnitPrice,
+          fifoLayersConsumed: fifoCalc.result.layersConsumed,
           // Estructura de items detallada
           items: [
             {
@@ -217,10 +264,17 @@ export const toolAssignmentService = {
               quantity: dto.quantity,
               previousStock: currentStock,
               newStock: newStock,
-              unitPrice: itemPrice,
-              subtotal: subtotal,
-              total: subtotal,
-              currency: itemCurrency
+              unitPrice: fifoUnitPrice,
+              unitCost: fifoUnitPrice,
+              costTotal: fifoTotalCost,
+              subtotal: fifoTotalCost,
+              total: fifoTotalCost,
+              currency: itemCurrency,
+              costMethod: fifoCalc.result.costMethod,
+              costingStatus: fifoCalc.result.costingStatus,
+              fifoLayersConsumed: fifoCalc.result.layersConsumed,
+              isFullyCoveredByLayers: fifoCalc.result.isFullyCoveredByLayers,
+              uncoveredQuantity: fifoCalc.result.uncoveredQuantity
             }
           ]
         });

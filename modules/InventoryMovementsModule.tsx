@@ -475,7 +475,14 @@ const InventoryMovementsModule: React.FC<InventoryMovementsModuleProps> = ({ cur
                   </div>
               )}
 
-              {activeTab === 'consumption' && <ProjectConsumptionModule movements={movements} inventoryItems={inventoryItems} currentUser={currentUser} />}
+              {activeTab === 'consumption' && (
+                  <ProjectConsumptionModule 
+                      movements={movements} 
+                      inventoryItems={inventoryItems} 
+                      currentUser={currentUser} 
+                      initialSearch={searchTerm}
+                  />
+              )}
               {activeTab === 'dispatch' && <DispatchModule currentUser={currentUser} inventoryItems={inventoryItems} />}
           </div>
 

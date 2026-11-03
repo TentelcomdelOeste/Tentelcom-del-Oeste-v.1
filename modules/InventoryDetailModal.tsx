@@ -71,12 +71,18 @@ const MovementTraceabilityCard: React.FC<{
   let itemQty = movement.quantity || 0;
   let itemUnitPrice = movement.unitPrice;
   let itemCurrency: 'USD' | 'CRC' | undefined = undefined;
+  let itemDetail: any = null;
   
   if (movement.items && movement.items.length > 0) {
     const detail = movement.items.find(i => i.inventoryItemId === item.id);
     if (detail) {
+      itemDetail = detail;
       itemQty = detail.quantity;
-      if (detail.unitPrice !== undefined) itemUnitPrice = detail.unitPrice;
+      if (detail.unitCost !== undefined) {
+        itemUnitPrice = detail.unitCost;
+      } else if (detail.unitPrice !== undefined) {
+        itemUnitPrice = detail.unitPrice;
+      }
       if (detail.currency) itemCurrency = detail.currency;
     }
   }
@@ -174,35 +180,75 @@ const MovementTraceabilityCard: React.FC<{
           
           {/* CASO 1: SALIDA POR SOLICITUD / DESPACHO */}
           {isSalida && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-rose-50/30 p-3 rounded-lg border border-rose-100/60">
-              <div>
-                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">N° Solicitud</span>
-                <span className="font-mono font-black text-blue-700 text-xs">
-                  {movement.requestNumber || (movement.linkedRequestId ? `SOL-${movement.linkedRequestId.slice(0, 6)}` : 'N/D')}
-                </span>
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-rose-50/30 p-3 rounded-lg border border-rose-100/60">
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">N° Solicitud</span>
+                  <span className="font-mono font-black text-blue-700 text-xs">
+                    {movement.requestNumber || (movement.linkedRequestId ? `SOL-${movement.linkedRequestId.slice(0, 6)}` : 'N/D')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Solicitante</span>
+                  <span className="font-bold text-slate-800">{requesterName}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Proyecto / Origen</span>
+                  <span className="font-bold text-slate-800">
+                    {movement.projectName || movement.projectCode ? `${movement.projectCode ? movement.projectCode + ' - ' : ''}${movement.projectName || ''}` : movement.origin || 'N/D'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">FDH / Torre</span>
+                  <span className="font-bold text-slate-800">{movement.fdh || movement.torre || 'N/D'}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Lugar / Distrito</span>
+                  <span className="font-bold text-slate-800">{movement.locationDetails || 'N/D'}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Despachado / Registrado Por</span>
+                  <span className="font-bold text-slate-800">{movement.userName || 'N/D'}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Solicitante</span>
-                <span className="font-bold text-slate-800">{requesterName}</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Proyecto / Origen</span>
-                <span className="font-bold text-slate-800">
-                  {movement.projectName || movement.projectCode ? `${movement.projectCode ? movement.projectCode + ' - ' : ''}${movement.projectName || ''}` : movement.origin || 'N/D'}
-                </span>
-              </div>
-              <div>
-                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">FDH / Torre</span>
-                <span className="font-bold text-slate-800">{movement.fdh || movement.torre || 'N/D'}</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Lugar / Distrito</span>
-                <span className="font-bold text-slate-800">{movement.locationDetails || 'N/D'}</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Despachado / Registrado Por</span>
-                <span className="font-bold text-slate-800">{movement.userName || 'N/D'}</span>
-              </div>
+
+              {/* DESGLOSE COSTEO PEPS (FIFO) */}
+              {(itemDetail?.fifoLayersConsumed && itemDetail.fifoLayersConsumed.length > 0) || (movement.fifoLayersConsumed && movement.fifoLayersConsumed.length > 0) ? (
+                <div className="pt-2 border-t border-rose-100 bg-rose-50/40 p-3 rounded-lg border">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] font-black uppercase text-rose-800 tracking-wider flex items-center gap-1.5">
+                      <FiCheckCircle className="text-emerald-600" />
+                      Desglose de Capas Consumidas (PEPS / FIFO)
+                    </span>
+                    <span className="text-[9px] font-bold text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded font-mono">
+                      {itemDetail?.costMethod || movement.costMethod || 'FIFO'}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {((itemDetail?.fifoLayersConsumed || movement.fifoLayersConsumed) as any[]).map((layer: any, idx: number) => (
+                      <div key={idx} className="flex flex-wrap items-center justify-between text-[11px] font-mono bg-white p-2 rounded border border-rose-100">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-700">{layer.date}</span>
+                          {layer.invoiceReference && (
+                            <span className="text-slate-400 text-[10px]">Ref: {layer.invoiceReference}</span>
+                          )}
+                          {layer.provider && (
+                            <span className="text-slate-500 font-semibold text-[10px] truncate max-w-[140px]">({layer.provider})</span>
+                          )}
+                        </div>
+                        <div className="font-bold text-slate-800">
+                          {layer.quantityConsumed} {item.unit || 'und'} × {formatCurrency(layer.unitCost, effectiveCurrency)} = {formatCurrency(layer.subtotal, effectiveCurrency)}
+                        </div>
+                      </div>
+                    ))}
+                    {itemDetail?.uncoveredQuantity && itemDetail.uncoveredQuantity > 0 && (
+                      <div className="text-[10px] text-amber-800 bg-amber-50 p-2 rounded border border-amber-200 font-medium">
+                        ⚠️ {itemDetail.uncoveredQuantity} {item.unit || 'und'} valoradas con precio de referencia del catálogo (saldo inicial sin compras registradas en el sistema).
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
 

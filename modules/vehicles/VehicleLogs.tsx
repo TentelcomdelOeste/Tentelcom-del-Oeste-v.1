@@ -243,6 +243,47 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
     }
   }, [logs, selectedId, setSelectedLog, setIsModalOpen]);
 
+  // Carga rápida e inmediata directamente desde el servidor al ingresar o reenfocar el módulo
+  const fetchFreshServerLogs = useCallback(async () => {
+    if (!authReady || !currentUser) return;
+    try {
+      const { getDocsFromServer } = await import('firebase/firestore');
+      const qFresh = query(
+        collection(db, "bitacora_vehiculos"),
+        orderBy("fecha", "desc"),
+        limit(300)
+      );
+
+      const timeoutPromise = new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new Error("TIMEOUT_SERVER_FETCH")), 4000)
+      );
+
+      const freshSnap = await Promise.race([
+        getDocsFromServer(qFresh),
+        timeoutPromise
+      ]);
+
+      if (freshSnap && !freshSnap.empty) {
+        const freshLogs = freshSnap.docs
+          .map((doc) => ({ ...doc.data(), id: doc.id }) as VehicleLog)
+          .filter(log => !log.isDeleted);
+
+        await localDocStore.saveLocalDocsBatch("bitacora_vehiculos", freshLogs);
+
+        const serverDocIds = new Set(freshSnap.docs.map(d => d.id));
+        await localDocStore.reconcileServerCollection("bitacora_vehiculos", serverDocIds);
+
+        freshLogs.forEach(log => {
+          globalSearchEngine.upsertDocument(vehicleLogSearchPlugin.mapToSearchableItem(log));
+        });
+
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.log("[VehicleLogs] Fast server pull bypassed or offline:", err);
+    }
+  }, [authReady, currentUser]);
+
   useEffect(() => {
     if (localDocuments.length > 0) {
       setIsLoading(false);
@@ -263,9 +304,23 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
       setIsLoading(true);
     }
 
+    // 1. FORZAR BÚSQUEDA DIRECTA Y RÁPIDA DESDE EL SERVIDOR AL INGRESAR O REENFOCAR
+    fetchFreshServerLogs();
+
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchFreshServerLogs();
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+    // 2. MANTENER SUSCRIPCIÓN EN TIEMPO REAL
     const q = query(
       collection(db, "bitacora_vehiculos"),
-      orderBy("fecha", "desc")
+      orderBy("fecha", "desc"),
+      limit(500)
     );
 
     const unsubscribe = onSnapshot(
@@ -341,11 +396,13 @@ export const VehicleLogs: React.FC<VehicleLogsProps> = ({ currentUser, onSetActi
     });
 
     return () => {
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
       unsubscribe();
       unsubscribeIncomplete();
       unsubscribeExpenses();
     };
-  }, [authReady, currentUser]);
+  }, [authReady, currentUser, fetchFreshServerLogs]);
 
   // ELIMINACIÓN DE REPAIR HOOKS LEGADOS
   // La integridad ahora la garantiza SyncEngine y VersionControl

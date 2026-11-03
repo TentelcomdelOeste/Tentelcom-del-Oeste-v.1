@@ -1,0 +1,2424 @@
+{
+  "targetReport": {
+    "id": "0b8819f6-d0d8-4884-b5b2-c32f78a18c2b",
+    "requestNumber": "SOL-0148",
+    "status": "Despachada",
+    "fecha": "2026-10-01T16:28:41.713Z",
+    "solicitante": "zHULugx4V7eqgDWQlZeZ17WsZ683",
+    "proyecto": "FDH0102 MTR104 DESAMPARADOS DE ALAJUELA",
+    "items": [
+      {
+        "shortageQty": 0,
+        "comment": "",
+        "status": "completed",
+        "code": "TC004",
+        "quantityDispatched": 1,
+        "unit": "unidad",
+        "quantityRequested": 1,
+        "inventoryItemId": "e2319925-e16b-48af-a3c2-42d6d0f58b2b",
+        "description": "ABRAZADERA DE 4\" (110-130)",
+        "quantityPending": 0
+      },
+      {
+        "shortageQty": 0,
+        "comment": "",
+        "quantityDispatched": 14,
+        "code": "TC007",
+        "quantityPending": 0,
+        "inventoryItemId": "77b92dfd-ee40-4f67-a302-f5d0b2ffd218",
+        "description": "ABRAZADERA DE 6\" (155-175)",
+        "quantityRequested": 14,
+        "unit": "unidad",
+        "status": "completed"
+      },
+      {
+        "description": "ABRAZADERA DE 7\" (170-190)",
+        "unit": "Unidad",
+        "quantityRequested": 22,
+        "shortageQty": 0,
+        "code": "TC008",
+        "comment": "",
+        "quantityPending": 0,
+        "quantityDispatched": 22,
+        "inventoryItemId": "wdZqFvusuD0LhFdgZuRJ",
+        "status": "completed"
+      },
+      {
+        "quantityDispatched": 10,
+        "description": "ABRAZADERA DE 8\" (200-220)",
+        "code": "TC010",
+        "inventoryItemId": "89e1762c-09f6-4dcf-aab9-9addb1ed3d1f",
+        "comment": "",
+        "quantityPending": 0,
+        "unit": "unidad",
+        "status": "completed",
+        "quantityRequested": 10,
+        "shortageQty": 0
+      },
+      {
+        "quantityRequested": 2,
+        "unit": "Unidad",
+        "shortageQty": 0,
+        "status": "completed",
+        "comment": "",
+        "description": "ABRAZADERA DE 9\" (230-250)",
+        "code": "TC012",
+        "inventoryItemId": "e7ExxZezTKpcWObrGpo5",
+        "quantityPending": 0,
+        "quantityDispatched": 2
+      },
+      {
+        "comment": "",
+        "unit": "Unidad",
+        "quantityPending": 0,
+        "description": "PERNO DE 4\"X 5/8\"",
+        "inventoryItemId": "EiwUAvgBCSPb3lgexBBg",
+        "status": "completed",
+        "quantityRequested": 98,
+        "shortageQty": 0,
+        "code": "TC056",
+        "quantityDispatched": 98
+      },
+      {
+        "inventoryItemId": "MCkuuEJiyaajIJ52IEa8",
+        "quantityRequested": 93,
+        "status": "completed",
+        "quantityPending": 0,
+        "unit": "Unidad",
+        "description": "PERNO DE 3\"X5/8\"",
+        "shortageQty": 0,
+        "code": "TC055",
+        "quantityDispatched": 93,
+        "comment": ""
+      },
+      {
+        "code": "TC022",
+        "quantityDispatched": 16,
+        "quantityRequested": 16,
+        "shortageQty": 0,
+        "comment": "",
+        "description": "ANILLO PARA CRUCE SIN APOYO",
+        "quantityPending": 0,
+        "status": "completed",
+        "inventoryItemId": "6qz9t3bto5VAX8mBWiKn",
+        "unit": "Unidad"
+      }
+    ]
+  },
+  "itemAnalysis": [
+    {
+      "itemInReport": {
+        "shortageQty": 0,
+        "comment": "",
+        "status": "completed",
+        "code": "TC004",
+        "quantityDispatched": 1,
+        "unit": "unidad",
+        "quantityRequested": 1,
+        "inventoryItemId": "e2319925-e16b-48af-a3c2-42d6d0f58b2b",
+        "description": "ABRAZADERA DE 4\" (110-130)",
+        "quantityPending": 0
+      },
+      "inventoryMatchedById": {
+        "id": "e2319925-e16b-48af-a3c2-42d6d0f58b2b",
+        "code": "TC004",
+        "description": "ABRAZADERA DE 4\" (110-130)",
+        "stock": 69.5,
+        "reserved": 0,
+        "availableCalculated": 69.5
+      },
+      "inventoryMatchedByCode": {
+        "id": "e2319925-e16b-48af-a3c2-42d6d0f58b2b",
+        "code": "TC004",
+        "description": "ABRAZADERA DE 4\" (110-130)",
+        "stock": 69.5,
+        "reserved": 0,
+        "availableCalculated": 69.5
+      }
+    },
+    {
+      "itemInReport": {
+        "shortageQty": 0,
+        "comment": "",
+        "quantityDispatched": 14,
+        "code": "TC007",
+        "quantityPending": 0,
+        "inventoryItemId": "77b92dfd-ee40-4f67-a302-f5d0b2ffd218",
+        "description": "ABRAZADERA DE 6\" (155-175)",
+        "quantityRequested": 14,
+        "unit": "unidad",
+        "status": "completed"
+      },
+      "inventoryMatchedById": {
+        "id": "77b92dfd-ee40-4f67-a302-f5d0b2ffd218",
+        "code": "TC007",
+        "description": "ABRAZADERA DE 6\" (155-175)",
+        "stock": 32,
+        "reserved": 0,
+        "availableCalculated": 32
+      },
+      "inventoryMatchedByCode": {
+        "id": "77b92dfd-ee40-4f67-a302-f5d0b2ffd218",
+        "code": "TC007",
+        "description": "ABRAZADERA DE 6\" (155-175)",
+        "stock": 32,
+        "reserved": 0,
+        "availableCalculated": 32
+      }
+    },
+    {
+      "itemInReport": {
+        "description": "ABRAZADERA DE 7\" (170-190)",
+        "unit": "Unidad",
+        "quantityRequested": 22,
+        "shortageQty": 0,
+        "code": "TC008",
+        "comment": "",
+        "quantityPending": 0,
+        "quantityDispatched": 22,
+        "inventoryItemId": "wdZqFvusuD0LhFdgZuRJ",
+        "status": "completed"
+      },
+      "inventoryMatchedById": null,
+      "inventoryMatchedByCode": null
+    },
+    {
+      "itemInReport": {
+        "quantityDispatched": 10,
+        "description": "ABRAZADERA DE 8\" (200-220)",
+        "code": "TC010",
+        "inventoryItemId": "89e1762c-09f6-4dcf-aab9-9addb1ed3d1f",
+        "comment": "",
+        "quantityPending": 0,
+        "unit": "unidad",
+        "status": "completed",
+        "quantityRequested": 10,
+        "shortageQty": 0
+      },
+      "inventoryMatchedById": {
+        "id": "89e1762c-09f6-4dcf-aab9-9addb1ed3d1f",
+        "code": "TC010",
+        "description": "ABRAZADERA DE 8\" (200-220)",
+        "stock": 49,
+        "reserved": 0,
+        "availableCalculated": 49
+      },
+      "inventoryMatchedByCode": {
+        "id": "89e1762c-09f6-4dcf-aab9-9addb1ed3d1f",
+        "code": "TC010",
+        "description": "ABRAZADERA DE 8\" (200-220)",
+        "stock": 49,
+        "reserved": 0,
+        "availableCalculated": 49
+      }
+    },
+    {
+      "itemInReport": {
+        "quantityRequested": 2,
+        "unit": "Unidad",
+        "shortageQty": 0,
+        "status": "completed",
+        "comment": "",
+        "description": "ABRAZADERA DE 9\" (230-250)",
+        "code": "TC012",
+        "inventoryItemId": "e7ExxZezTKpcWObrGpo5",
+        "quantityPending": 0,
+        "quantityDispatched": 2
+      },
+      "inventoryMatchedById": null,
+      "inventoryMatchedByCode": null
+    },
+    {
+      "itemInReport": {
+        "comment": "",
+        "unit": "Unidad",
+        "quantityPending": 0,
+        "description": "PERNO DE 4\"X 5/8\"",
+        "inventoryItemId": "EiwUAvgBCSPb3lgexBBg",
+        "status": "completed",
+        "quantityRequested": 98,
+        "shortageQty": 0,
+        "code": "TC056",
+        "quantityDispatched": 98
+      },
+      "inventoryMatchedById": {
+        "id": "EiwUAvgBCSPb3lgexBBg",
+        "code": "TC056",
+        "description": "PERNO DE 4\"X 5/8\"",
+        "stock": 609,
+        "reserved": 0,
+        "availableCalculated": 609
+      },
+      "inventoryMatchedByCode": {
+        "id": "EiwUAvgBCSPb3lgexBBg",
+        "code": "TC056",
+        "description": "PERNO DE 4\"X 5/8\"",
+        "stock": 609,
+        "reserved": 0,
+        "availableCalculated": 609
+      }
+    },
+    {
+      "itemInReport": {
+        "inventoryItemId": "MCkuuEJiyaajIJ52IEa8",
+        "quantityRequested": 93,
+        "status": "completed",
+        "quantityPending": 0,
+        "unit": "Unidad",
+        "description": "PERNO DE 3\"X5/8\"",
+        "shortageQty": 0,
+        "code": "TC055",
+        "quantityDispatched": 93,
+        "comment": ""
+      },
+      "inventoryMatchedById": {
+        "id": "MCkuuEJiyaajIJ52IEa8",
+        "code": "TC055",
+        "description": "PERNO DE 3\"X5/8\"",
+        "stock": 751,
+        "reserved": 0,
+        "availableCalculated": 751
+      },
+      "inventoryMatchedByCode": {
+        "id": "MCkuuEJiyaajIJ52IEa8",
+        "code": "TC055",
+        "description": "PERNO DE 3\"X5/8\"",
+        "stock": 751,
+        "reserved": 0,
+        "availableCalculated": 751
+      }
+    },
+    {
+      "itemInReport": {
+        "code": "TC022",
+        "quantityDispatched": 16,
+        "quantityRequested": 16,
+        "shortageQty": 0,
+        "comment": "",
+        "description": "ANILLO PARA CRUCE SIN APOYO",
+        "quantityPending": 0,
+        "status": "completed",
+        "inventoryItemId": "6qz9t3bto5VAX8mBWiKn",
+        "unit": "Unidad"
+      },
+      "inventoryMatchedById": {
+        "id": "6qz9t3bto5VAX8mBWiKn",
+        "code": "TC022",
+        "description": "ANILLO PARA CRUCE SIN APOYO",
+        "stock": 125,
+        "reserved": 20,
+        "availableCalculated": 105
+      },
+      "inventoryMatchedByCode": {
+        "id": "6qz9t3bto5VAX8mBWiKn",
+        "code": "TC022",
+        "description": "ANILLO PARA CRUCE SIN APOYO",
+        "stock": 125,
+        "reserved": 20,
+        "availableCalculated": 105
+      }
+    }
+  ],
+  "allInventoryItemsSummary": [
+    {
+      "id": "00456f54-bfe4-44d0-b79c-f184742ae90a",
+      "code": "TC307",
+      "description": "REGLETA DE 6 TOMAS NEGRA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0168887d-28a7-45b2-b0c5-2f32d8ba728b",
+      "code": "TC333",
+      "description": "EQUPO FLUKE REMOTO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "040ffa88-2e57-4043-93f6-77d273f4bd7c",
+      "code": "TC228",
+      "description": "TALADRO DEWALT DCD796 (PEQUEÑO)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "04c9a2b2-64ff-42e7-938c-4291ed61604e",
+      "code": "TC330",
+      "description": "ESCALERA ARTICULADA 5.4 M / 18FT",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0500b9f2-8835-440e-9391-5110cf4f9ef5",
+      "code": "TC147",
+      "description": "LINEA DE POSICIONAMIENTO AJUSTABLE DE 6FT SAFEWAZE",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "054d358e-cdc5-4d1b-b023-ca5adfd48bad",
+      "code": "TC177",
+      "description": "MICROFILTRO ADSL",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "05a345dd-7246-4424-bb44-481cd6112fad",
+      "code": "TC175",
+      "description": "CAJA DE MONTAJE SUPERFICIAL PARA JACKS DE RED O TELECOMUNICACIONES",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "06ce6dfd-852c-4106-9643-335c0a0e149c",
+      "code": "TC194",
+      "description": "JACK CAT6A SIEMON AZUL MACHO",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "0730d7e5-b1cf-4318-9203-00c539e34ef8",
+      "code": "TC171",
+      "description": "ANGULO PLANO PARA CANALETA 110X50 MM EAGLE",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "076e7dc2-38a7-4e97-a846-934e6acd87c8",
+      "code": "TC325",
+      "description": "VELCRO 1/2 LANTEK",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "09808244-a03d-4dc1-9a18-cae8cf011d86",
+      "code": "TC242",
+      "description": "DISCOS PARA ESMERILADORA PUNTA DIAMANTE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "09e3cc5e-2dae-421a-aaa8-48b8d0844cd2",
+      "code": "TC280",
+      "description": "CUBOS PARA RASH VARIOS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0a00d38b-dd40-4cf3-bd42-e7be52ef424c",
+      "code": "TC026",
+      "description": "UNION IMC 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0a10b68c-36c6-49e4-99fa-3af4980164dd",
+      "code": "TC094",
+      "description": "PATCH CORD CAT 6 5FT SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0a301dd4-a2a5-4921-aa48-a922c77df6fc",
+      "code": "TC035",
+      "description": "TRANSICION A CANASTA (ARAÑA)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0c5484f4-6c2f-4625-bbc2-c4e1def1f0a9",
+      "code": "TC041",
+      "description": "GAZA CHANEL PARA RIEL B LINE 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0c90822e-0801-4803-ad19-90b62c86ba27",
+      "code": "TC139",
+      "description": "TIJERA JORNAD ROJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0cfc0b1e-55ad-4579-a96b-01222820db2f",
+      "code": "TC032",
+      "description": "CONECTOR BIEX RECTO CON FORRO 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0db2ecf2-10a4-4d7a-9919-7197fe197019",
+      "code": "TC240",
+      "description": "DISCOS PARA ESMERILADORA DE METTAL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0de802e9-12d3-4fcf-bc5c-82f9195a7eaf",
+      "code": "TC140",
+      "description": "ETIQUETAS ENVOLVENTES AUTOLAMINABLES M21-750-427",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0e27c3c1-47f2-4ff8-b984-d6be1713744a",
+      "code": "TC301",
+      "description": "LAMPARA PORTATIL 110",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0e4ff0dd-05de-4e7f-bebf-1fe7c3b67341",
+      "code": "TC281",
+      "description": "ADAPTADOR DE CUBOS PARA TALADRO  ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0e73e758-9f99-429d-afca-f211b224ae98",
+      "code": "TC209",
+      "description": "CONECTOR CONDUIT DE 1/2\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "0ff5a733-4cde-41b9-add0-f1cfd7149b01",
+      "code": "TC304",
+      "description": "RADIOS ICOM",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "103a9287-aa60-4464-bbc0-6e9804cc2249",
+      "code": "TC306",
+      "description": "BOLSO PARA ARNES INECO",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "103b2eac-fc72-4160-a970-41af17dd2fe2",
+      "code": "TC169",
+      "description": "ANGULO INTERIOR PARA 40X17 EAGLE",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "104eb4e6-e4df-4ff3-a1c1-5c1424ec291f",
+      "code": "TC332",
+      "description": "LENTE DE PROTECCION TRANSPARENTE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "1055fe63-9c06-41b1-91d2-121601f18769",
+      "code": "TC167",
+      "description": "TAPA CIEGA PARA TOMA DE RED ELECTRONICA",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "135ec87b-e2b3-460d-84be-81db7614e9ec",
+      "code": "TC038",
+      "description": " RIEL B-LINE PERFIL ALTO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "143ccf96-2de8-4211-9a47-5c9cf616a047",
+      "code": "TC258",
+      "description": "CINTA METRICA TRUPER",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "14797ef1-40bf-475d-a788-42ebfc578976",
+      "code": "TC088",
+      "description": "PONCHADORA SIEMON Z-TOOL-ZP",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "14f563b5-fdf0-4c2a-99ac-1a25351f1499",
+      "code": "TC043",
+      "description": "BEAM CLAMP-GAZA VIGA H",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "15a553bf-b41e-4587-aa6d-a86ce595d070",
+      "code": "TC125",
+      "description": "CAMISA CON REFLECTIVO TALLA 2XL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "168ee7a5-c0e6-4522-8e89-95a855b30f98",
+      "code": "TC345",
+      "description": "PATCH CORD LC/LC CON MONOMODO FLUKE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "17309ad0-bb37-4844-8497-992e6db203e6",
+      "code": "TC277",
+      "description": "BROCA PARA MADERA 3/4",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "173cb7f7-4340-4ca8-96d8-cf425a3fc251",
+      "code": "TC023",
+      "description": "CONDULETA BOTAGUA EMT 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "174acfd3-444a-499a-b76e-f6ebf77c6435",
+      "code": "TC090",
+      "description": "PATCH CORD CAT 6 1FT SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "179d6e9f-3aff-4d55-ad65-f277060f3f17",
+      "code": "TC305",
+      "description": "BOLSO PARA ARNES STANLEY",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "197c178b-e6c5-45f6-8e4f-43a049431bd9",
+      "code": "TC200",
+      "description": "UNION DE PRESION EMT DE 1 ½\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "1a635d1b-c1f0-48fd-a6a4-f67bdbdb8aed",
+      "code": "TC279",
+      "description": "CUBOS PARA TALADRO VARIOS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "1b9acc96-0bef-4a8b-8d61-16da39cb3060",
+      "code": "TC137",
+      "description": "GANCHO TENSOR PARA ACOMETIDA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "1cd4e2f5-2b2b-4a09-bbbe-2ee462c03523",
+      "code": "TC256",
+      "description": "CORTADORA DE CABLE AZUL CON VERDE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "1e5aca3b-0d6c-4446-b085-95ffaff6d8c1",
+      "code": "TC164",
+      "description": "ADAPTADOR DE ENCHUFE RADIOSHACK",
+      "stock": 5,
+      "reserved": 0
+    },
+    {
+      "id": "1fd6f729-e892-48ee-b985-3a6cdfb1a383",
+      "code": "TC049",
+      "description": "CAJA 4X4 INTEMPERIE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "20f5e475-bce8-4dba-b5a4-28fc7d3d5e58",
+      "code": "TC119",
+      "description": "PANTALON JEAN CON REFLECTIVO TALLA 38",
+      "stock": 6,
+      "reserved": 0
+    },
+    {
+      "id": "20fa8ed9-bc46-4faa-bae1-2ef4a3c491e1",
+      "code": "TC299",
+      "description": "CIERRE PARA FIBRA OPTICA DE 48 OPTICUBO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "22a50df2-c7be-4d54-ae46-6aeeae84aaf0",
+      "code": "TC354",
+      "description": "TORNILLO PUNTA FINA PARA TECHO 2\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "246c207c-5c6e-4e42-89c1-680cd1255918",
+      "code": "TC024",
+      "description": "CONDULETA LB EMT 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "24b776a7-5601-4f6d-b26d-c65a97925ddd",
+      "code": "TC170",
+      "description": "TAPA FINAL PARA 40X17 EAGLE",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "24ccfdbe-2695-4f3c-a3f7-1a8a8280ab04",
+      "code": "TC145",
+      "description": "LINEA DE VIDA RETRACTIL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2526b82e-46ec-4089-8e1c-a3e5b61791c8",
+      "code": "TC337",
+      "description": "ADAPTADOR DE CANAL FLUKE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "264a015d-44cf-4177-a160-0cf9cb52656b",
+      "code": "TC227",
+      "description": "TALADRO DEWALT DCD996",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2687c79f-3aea-43e4-be2e-1bc931904f72",
+      "code": "TC207",
+      "description": "CONECTOR CONDUIT DE 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "26b2e769-f510-4a54-ada3-b890c4fc770c",
+      "code": "TC347",
+      "description": "GUANTE DE SEGURIDAD",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "277614ab-947c-460f-bafe-2853dc40a3dc",
+      "code": "TC212",
+      "description": "CONECTOR DE MANGUITO 1/2\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2865788d-14d2-400d-aa4f-fbea504153df",
+      "code": "TC084",
+      "description": "PONCHADORA SIEMON Z-TOOL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "28b61ae8-f0dd-4963-b0cf-60862f22c9c6",
+      "code": "TC187",
+      "description": "PATCH CORD DUPLEX SC-SC UPC OM3 1 MTS",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "28ffab5d-bedc-4840-9c3e-b55b39ac96cc",
+      "code": "TC278",
+      "description": "KIT DE LLAVES ALLEN VARIAS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2a640eb7-c37f-4ef3-a660-9a3ca45da4d3",
+      "code": "TC155",
+      "description": "EXPANDER PLASTICO #7",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2ab7e133-ee53-49ff-bd4c-b248696c71cf",
+      "code": "TC244",
+      "description": "LLAVES DE CAÑERIA 12\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2ac45e4b-f4ee-4607-9783-9ee6c79148ed",
+      "code": "TC063",
+      "description": "CAJA 4X4 UL, DOBLE FONDO CON SALIDAS DE 3/4\".",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2b539b43-05c3-46f2-805a-557de6e4ffc1",
+      "code": "TC144",
+      "description": "CIERRE DE EMPALME TIPO NAP; 24 FUS, 16 FLAT DROP",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2cac386a-1bd3-47ca-bd6c-4fb42981c5e4",
+      "code": "TC183",
+      "description": "PIGTAIL LC OM4 NITROTEL 3 MTS",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "2cbd3a6a-1c84-4686-8d16-cb51ac08f7ff",
+      "code": "TC317",
+      "description": "BOTE PEQUEÑO SPRAY PARA ALCOHOL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2dd5c8e0-81ee-4580-98d3-c17d672a6d5d",
+      "code": "TC106",
+      "description": "ABRAZADERA P/CABLE WIREVISE",
+      "stock": 93,
+      "reserved": 0
+    },
+    {
+      "id": "2ea770fd-0427-4133-89ce-c8aaaca6e90f",
+      "code": "TC204",
+      "description": "UNION HG DE 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "2fb7f8ae-0926-4ea2-9f46-c6b9f2aca90d",
+      "code": "TC131",
+      "description": "CABLE UTP INTEMPERIE CAT6 SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "30557202-0bed-4ed4-9681-1dcd2e4cc1d1",
+      "code": "TC123",
+      "description": "PANTALON JEAN STRETCH TALLA 32",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "30f09a75-b232-4e4f-ac4d-a561d7622b9d",
+      "code": "TC323",
+      "description": "CORTADORA DE CABLE ROJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "311f102a-bb52-4acd-9687-2b09a32e7da2",
+      "code": "TC271",
+      "description": "ALICATE TIPO PICO DE LORO AZUL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "31bed238-fe56-4fd0-981b-a1637e8b49ab",
+      "code": "TC306",
+      "description": "CHALECO EPSILON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "328311db-864f-48e8-b0ed-68604ff58930",
+      "code": "TC302",
+      "description": "PEINADORA DE CABLE UTP",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "32defeb0-200b-4cdc-8df2-1b3e4ff7e337",
+      "code": "TC262",
+      "description": "DESOTO TOTAL ESTRELLA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "32e27586-5b32-4c27-af82-5c6b183d056d",
+      "code": "TC034",
+      "description": "CONECTOR BIEX RECTO CON FORRO 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "32e33f7a-95b8-4e13-9bef-569422958e26",
+      "code": "TC329",
+      "description": "ESCALERA TIPO A 4 PELDAÑOS ROJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "33893aa7-c7af-4dd5-90c7-6c372bce65d7",
+      "code": "TC314",
+      "description": "CUCHILLA CORTADORA FUJICURA CT30",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "35a58b1a-fe8e-4cc6-a473-1be98e1c092a",
+      "code": "TC036",
+      "description": "TUBO BIEX DE 3/4\" EMT, UL, CON FORRO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "35abc19e-8aaa-4a24-bc05-5e21828a9d67",
+      "code": "TC285",
+      "description": "DURETAN BLANCO EMPEZADO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "35de028d-6a08-4682-a178-33d677395174",
+      "code": "TC324",
+      "description": "EMPALMADORA FUJIKURA 70S+",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "37811526-51a1-4c65-8d96-0177f91a0083",
+      "code": "TC072",
+      "description": "TORNILLO PUNTA BROCA PARA TECHO 2\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "394de57d-36a3-41ca-bbe5-6ca74929095e",
+      "code": "TC087",
+      "description": "CORTADORA DE TUBO HOLGADO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "39aa6174-efaf-40ff-9d96-7fb9622347c2",
+      "code": "TC290",
+      "description": "TORNILLOS MISELANEOS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "39d211c6-5b17-4ab8-9142-e2bb44c5fcdd",
+      "code": "TC222",
+      "description": "CAJA METALICA 6X6",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "3a64969c-6d40-482c-b397-fdedc2811f8a",
+      "code": "TC186",
+      "description": "PIGTAIL LC/UPC OM3 1 MTS",
+      "stock": 12,
+      "reserved": 0
+    },
+    {
+      "id": "3a978e73-833f-470f-8f9a-a0ce8450d309",
+      "code": "TC309",
+      "description": "AMARRA BLANCA DE 14\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "3abe2184-8fad-414c-affb-4bc4bb720b62",
+      "code": "TC351",
+      "description": "LINEA DE VIDA CON AMORTIGUADOR DE ENERGIA 6FT MARCA VANGARD",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "3b838a74-b047-49e2-a1de-df93addb0287",
+      "code": "TC344",
+      "description": "PATCH CORD LC/SC MONOMODO FLUKE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "3c0c1408-6cf3-4e03-a068-b3c8435f737e",
+      "code": "TC120",
+      "description": "PANTALON JEAN CON REFLECTIVO TALLA 36",
+      "stock": 6,
+      "reserved": 0
+    },
+    {
+      "id": "3c9b3ffc-c56b-4793-a1c5-561e30d0258b",
+      "code": "TC353",
+      "description": "EXPANDER MARIPOSA DE 3\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "3df4554c-ee79-49be-93b5-60f86582b001",
+      "code": "TC255",
+      "description": "CORTADORA DE CABLE PEQUEÑA VERDE ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "3ebf244f-58d3-424c-927f-075d8c74f11a",
+      "code": "TC005",
+      "description": "ABRAZADERA DE 5\" (130-150)",
+      "stock": 66,
+      "reserved": 0
+    },
+    {
+      "id": "3f47cbec-3ee7-4131-8db6-db69400826fe",
+      "code": "TC316",
+      "description": "BATERIA Y CARGADOR FUJIKURA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "3f9c23f8-d729-4b08-8aa4-fc6aa0cd5e37",
+      "code": "TC127",
+      "description": "CAMISA CON REFLECTIVO TALLA L",
+      "stock": 11,
+      "reserved": 0
+    },
+    {
+      "id": "403e8c7d-02d3-4045-99bd-242d0204dbc0",
+      "code": "TC357",
+      "description": "PREFORMADO FIBRA 144",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "4175f661-e165-4b1b-a00c-204404d69e67",
+      "code": "TC114",
+      "description": "TUBO PVC DE 1\"",
+      "stock": 11,
+      "reserved": 0
+    },
+    {
+      "id": "41c0bd73-fb9c-430b-a59f-24766bc2c894",
+      "code": "TC238",
+      "description": "PONCHADORA PANDUIT MORADA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "42a32028-f347-459a-acad-e176ec179463",
+      "code": "TC091",
+      "description": "PATCH CORD CAT 6 3FT SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "443949d9-5f7b-4d01-80ec-d2ecc54df99f",
+      "code": "TC189",
+      "description": "PIGTAIL LC/UPC OM4 6 PUNTAS 1M LANTEK PURPURA",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "446cacc0-9698-4654-ba92-e8f2d4210b29",
+      "code": "TC082",
+      "description": "PELADORA DE FIBRA ÓPTICA ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "448c0f94-701a-4979-b7c7-4c4cec379f05",
+      "code": "TC037",
+      "description": "TAPA PARA RIEL B-LINE BAJO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "45a47b25-4da9-4a23-9339-c19f3892b9a1",
+      "code": "TC153",
+      "description": "ABRAZADERA TIPO CLIP 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "45daa098-0a0c-48e0-bb7e-9fbfc101a896",
+      "code": "TC342",
+      "description": "PATCH CORD LC/SC CON BOBINA MULTIMODO FLUKE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "46777e65-bfb2-4c36-8a40-40d828fc7259",
+      "code": "TC190",
+      "description": "PIGTAIL MONOMODO SC/UPC 1.5 MTS",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "46f22914-326a-4054-886c-29ad212a1b93",
+      "code": "TC196",
+      "description": "CONECTOR DE PRESION EMT DE 2",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "47c64725-cb22-4ab9-b820-2dbef079ec4b",
+      "code": "TC148",
+      "description": "GAZA TIPO PERA 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "49e3ec33-a9a3-4217-90a7-f5370b386573",
+      "code": "TC146",
+      "description": "LINEA DE VIDA EN Y CON GANCHOS DE ANDAMIO MARCA VANGARD 6PIES",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "4X9yuXizR7dLE4qhEWt4",
+      "code": "TC013",
+      "description": "ABRAZADERA DE 10\" (260-280)",
+      "stock": 39.5,
+      "reserved": 0
+    },
+    {
+      "id": "4b0d4939-e08f-46fe-8fa5-41ad7947d0b0",
+      "code": "TC328",
+      "description": "ESCALERA TIPO A 7 PELDAÑOS AMARILLA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "4bc2c82d-0c56-46f6-803a-c0f15d98f0ae",
+      "code": "TC152",
+      "description": "PONCHADORA HIDRÁULICA MODELO YQK-70",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "4c011dcb-2338-4b63-8bdd-9e6a11792f03",
+      "code": "TC074",
+      "description": "VERTIGO HORIZONTAL VERTICAL DE 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "4cf50d23-120c-45a3-9f7e-3872c5a71c41",
+      "code": "TC062",
+      "description": "PREFORMADO DE ACERO AMARILLO CURVO DE 1/4\" PLP",
+      "stock": 73,
+      "reserved": 0
+    },
+    {
+      "id": "4dbcf612-c0db-4afb-8eb1-4b437ec15745",
+      "code": "TC226",
+      "description": "TALADRO DEWALT 42592 (VIEJO)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "4ef21451-9cf2-467c-ba26-57e9e859acf1",
+      "code": "TC352",
+      "description": "INVERSOR DE CORRIENTE PARA VEHICULO 100W CON PUERTO USB TRUPER INCO-100 / 10447",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "4f255916-faba-4d00-abfc-b8a16667d700",
+      "code": "TC020",
+      "description": "UNION PARA CANASTA ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "4lV1XROGnXJnItw6VtrD",
+      "code": "TC017",
+      "description": "AMARRA PLASTICA NEGRA 16\"X7.6",
+      "stock": 1147,
+      "reserved": 0
+    },
+    {
+      "id": "52c70286-7d30-4a1e-bcfa-846ee74daf28",
+      "code": "TC115",
+      "description": "TUBO PVC DE 3/4\"",
+      "stock": 10,
+      "reserved": 0
+    },
+    {
+      "id": "52ccbde1-e402-4146-ace1-541ad9183d74",
+      "code": "TC193",
+      "description": "JACK CAT6A PANDUIT AZUL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "53505950-a8d8-4843-a337-d27c9ccb8c09",
+      "code": "TC122",
+      "description": "PANTALON JEAN STRETCH TALLA 30",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "548f1100-5b4d-4a55-a5a6-4ee8c2432005",
+      "code": "TC042",
+      "description": "GAZA CHANEL PARA RIEL B LINE 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "55a632ad-19e3-4e09-a0a2-c9152178edda",
+      "code": "TC273",
+      "description": "PICO DE LORA GRANDE TOTAL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "57062a30-84cb-4a0b-847f-06f08790b935",
+      "code": "TC264",
+      "description": "DESOTO AZUL PLANO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "579444cd-5d06-4564-a4aa-ccf1571d3478",
+      "code": "TC293",
+      "description": "LINEA DE VIDA 2 GANCHO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "5b67e460-1c71-4efd-a044-83ec1211193e",
+      "code": "TC078",
+      "description": "CINTA BANDIT 1/2\" X 30 MTS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "5bcc4cf5-7a23-4a31-a03b-f7021abb7492",
+      "code": "FO-144",
+      "description": "FIBRA ÓPTICA 144 HILOS CARRETE U2TD5072",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "5d1af0cc-3066-4d63-8be6-e69561c56700",
+      "code": "TC268",
+      "description": "DESOTO ROJO ESTRELLA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "5e0170ec-54cf-4592-ab12-cadd9a9691f2",
+      "code": "TC291",
+      "description": "PISTOLA PARA DURETAN",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "607a4163-f7bd-49f6-9404-e443c512438f",
+      "code": "TC180",
+      "description": "PATCH CORD DE FIBRA ÓPTICA ST-ST 1 MTS",
+      "stock": 3,
+      "reserved": 0
+    },
+    {
+      "id": "60dc3977-1e7c-401d-8fbb-a7cda769ed94",
+      "code": "TC173",
+      "description": "SOCKET SENCILLO EAGLE",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "628dc03f-45e0-4757-aae5-f377d140c9ee",
+      "code": "TC079",
+      "description": "LINTERNA MILWAUKEE PARA MONTAJE EN CASCO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "62b32648-bdb3-4a45-b425-1c0f663fc7b7",
+      "code": "TC110",
+      "description": "THINNER CORRIENTE 1,00 LT",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "648e4b21-4fad-40e2-947e-59f704c54511",
+      "code": "TC247",
+      "description": "NIVEL PEQUEÑO INKO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "64d24b97-bc41-4cd0-ac67-d7ee02f73a7a",
+      "code": "TC191",
+      "description": "PIGTAIL SC/APC 2MTS",
+      "stock": 12,
+      "reserved": 0
+    },
+    {
+      "id": "6535a014-e6f6-4f4d-a999-7d58ddabdc89",
+      "code": "TC112",
+      "description": "MASKIN TAPE NACIONAL  50,00 MM",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "667aa351-4c6e-46b5-85bb-19651bf29eb0",
+      "code": "TC229",
+      "description": "ESMERIL ANGULAR DEWALT DCG413",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "67cbd959-a99d-4213-b802-467233bc365f",
+      "code": "TC060",
+      "description": "SEGURO FASTRUT FS41 (MURCIELAGO)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "67e94060-a70e-4316-92c1-16053be1382f",
+      "code": "TC182",
+      "description": "PIGTAIL MULTIMODO PANDUIT 2 MTS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "6876e229-41ba-4513-aeca-a746e278ea41",
+      "code": "TC188",
+      "description": "PIGTAIL LC/UPC 2 MTS 4 PUNTAS MULTICOLOR LANTEK",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "687c387c-d74a-4d92-a627-a9566fec1880",
+      "code": "TC274",
+      "description": "SEGUETA TRUPER",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "68d7c121-fc59-4523-88a9-82eaf37cf142",
+      "code": "TC202",
+      "description": "GAZA CHANEL PARA RIEL B LINE 1 ¼\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "69521539-dd2c-4974-ba38-b75a06a7535b",
+      "code": "TC295",
+      "description": "PUNTO DE ANCLAJE AZUL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "6a557c94-2cfc-4bbd-8174-06bf3b34ba8c",
+      "code": "TC150",
+      "description": "CABLE VERDE THHN #6",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "6a93f909-d608-48cc-9bc9-817c2306082d",
+      "code": "TC095",
+      "description": "IMPRESORA PORTÁTIL BROTHER ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "6b071719-5f97-4575-9632-4664517948cd",
+      "code": "TC021",
+      "description": "TUBO DE 1\" EMT, UL.",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "6c1804d4-b98c-4300-b0ee-16d76de540f4",
+      "code": "TC165",
+      "description": "PLACA DOBLE SIGNAMAX",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "6e4dbea8-82a1-4dc6-bcfd-efac51f4974c",
+      "code": "TC308",
+      "description": "CASCO COLOR ROJO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "6ed4269a-3621-4856-8ec5-4650c048f61e",
+      "code": "TC054",
+      "description": "GAZA DOBLE OJO 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "6qz9t3bto5VAX8mBWiKn",
+      "code": "TC022",
+      "description": "ANILLO PARA CRUCE SIN APOYO",
+      "stock": 125,
+      "reserved": 20
+    },
+    {
+      "id": "70669ec1-1d1b-4e9b-95c0-3ed176ac1f60",
+      "code": "TC168",
+      "description": "TAPA FINAL PARA CANALETA DE 4\"",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "70cc2f2b-329c-43f1-8b88-7ed4bd8045cc",
+      "code": "TC128",
+      "description": "CAMISA CON REFLECTIVO TALLA S",
+      "stock": 8,
+      "reserved": 0
+    },
+    {
+      "id": "70d97909-83a2-4cdc-93e0-7cdc530430ff",
+      "code": "TC126",
+      "description": "CAMISA CON REFLECTIVO TALLA XL",
+      "stock": 9,
+      "reserved": 0
+    },
+    {
+      "id": "70ff8c67-f4d1-4264-b647-b6cfdf43c25a",
+      "code": "TC124",
+      "description": "PANTALON JEAN STRETCH TALLA 34",
+      "stock": 5,
+      "reserved": 0
+    },
+    {
+      "id": "716266df-d960-412b-98ee-cf6e574acaa1",
+      "code": "TC249",
+      "description": "CORTADORA DE CABLE AMARILLA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "71735ec1-ba0d-4697-a085-268cd1d8ec3c",
+      "code": "TC322",
+      "description": "PELADORA DE FIBRA ÓPTICA NARANJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "7249d90d-0576-443b-918f-07fbb35ff4f4",
+      "code": "TC350",
+      "description": "LINEA DE VIDA CON ABSORCION DE IMPACTO  1.80MTS MARCA VANGARD",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "725e5718-26f4-4d6f-be12-44e649f9738a",
+      "code": "TC292",
+      "description": "LINEA DE VIDA 1 GANCHO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "73eb009e-77ee-4264-9b49-2e89e2e66263",
+      "code": "TC130",
+      "description": "CABLE UTP CAT6 SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "749b697a-1c32-4392-ad8f-e6f8aa9095b3",
+      "code": "TC052",
+      "description": "ARO DE REPELLO EMT 1 GANG",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "768fc245-e4d3-467b-bc15-a82dec9cb8ae",
+      "code": "TC220",
+      "description": "TORNILLO VERTIGO VERTICAR",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "76c3731a-50ac-4025-a2d6-488a001b165b",
+      "code": "TC257",
+      "description": "PONCHADORA DE RJ45",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "77b92dfd-ee40-4f67-a302-f5d0b2ffd218",
+      "code": "TC007",
+      "description": "ABRAZADERA DE 6\" (155-175)",
+      "stock": 32,
+      "reserved": 0
+    },
+    {
+      "id": "77bef203-9397-4639-8025-5161bcfd1a2a",
+      "code": "TC158",
+      "description": "PLACA CUDRIPLE HUBBELL",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "77e13b1e-d98b-4fc9-bf9d-749807d03c82",
+      "code": "TC149",
+      "description": "GAZA TIPO PERA 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "7823b3b9-79b1-4c18-8a25-045ced0cd500",
+      "code": "TC261",
+      "description": "LIMA INCO QUEBRADA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "7b765b7d-cfbe-4360-8403-5fad82169a43",
+      "code": "TC199",
+      "description": "CONECTOR DE PRESION EMT DE 1 ½\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "7bf88a6a-09a2-4d6e-880a-76fc36a106f8",
+      "code": "TC340",
+      "description": "CABLE USB A / USB MICRO TRANFERIR ARCHIVOS FLUKE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "7c414f68-0e3d-4302-8a01-191b486623a2",
+      "code": "TC211",
+      "description": "CONECTOR DE MANGUITO PG21",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "7d2a20eb-b3a6-4ec0-b37d-960bd9e76df4",
+      "code": "TC174",
+      "description": "CAJA DE MONTAJE SUPERFICIAL DE 1 PUERTO HUBBELL",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "7f134257-ef25-4260-bbfe-6199228e1d5c",
+      "code": "TC061",
+      "description": "PREFORMADO CURVO 3/16 ROJO",
+      "stock": 129,
+      "reserved": 0
+    },
+    {
+      "id": "7f675c0b-1b74-41e2-a4fe-c86a12d5e3dc",
+      "code": "TC216",
+      "description": "MANGUITO TERMOCONTRACTIL ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "7fd2c8aa-e96a-4785-96c3-d06940adaf88",
+      "code": "TC046",
+      "description": "TUERCA HEXAGONAL 3/8\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "80dfe7e5-bef0-497d-b13c-c44d8236ca79",
+      "code": "TC288",
+      "description": "TORNILLO GIPSON PUNTA FINA NEGRO DE 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "81efe02a-239d-4645-a26f-a55af659aaf6",
+      "code": "TC141",
+      "description": "LÁMPARA RECARGABLE MAGNÉTICA TECNOLITE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "828b19b4-bbcd-486b-82de-18e25679b91c",
+      "code": "TC313",
+      "description": "RASGADORA DE TUBO HOLGADO AZUL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "82e2f039-ccf1-4137-97d4-b6bd99d1895d",
+      "code": "TC303",
+      "description": "EXTENCION 110 NEGRA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "83b31dcf-6fb3-4839-97c4-36516782f3f9",
+      "code": "TC296",
+      "description": "PUNTO DE ANCLAJE VERDE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "845daf5e-188b-4441-aefa-dceccb443b8a",
+      "code": "TC267",
+      "description": "DESOTO ESTRELLA NARANJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "85c1b454-b384-475c-b1f1-57edb14e1532",
+      "code": "TC105",
+      "description": "AMARRA PLASTICA NEGRA 4\" X 2.5 NYLON",
+      "stock": 300,
+      "reserved": 0
+    },
+    {
+      "id": "860ea368-27f7-4187-8b9e-a2a96321209d",
+      "code": "TC246",
+      "description": "PONCHADORA DE IMPACTO AZUL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "8644c2de-2cb1-48f3-999c-9125dd1aaba8",
+      "code": "TC009",
+      "description": "SOPORTE EN L PARA CANASTA DE 200",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "869245eb-f2d3-4f04-8585-e8f917ea6d88",
+      "code": "TC203",
+      "description": "CONECTOR DE PRESIÓN DE 3/4\" EMT, UL.",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "86af668f-ecd5-4152-931e-0a78595ccd50",
+      "code": "TC300",
+      "description": "TOPOMETRO AMARILLO CONTADOR 5 DIGITOS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "86ccd6c8-2909-4f0a-924b-0de7cda7aafe",
+      "code": "TC250",
+      "description": "ALICATE AMARILLO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "89e1762c-09f6-4dcf-aab9-9addb1ed3d1f",
+      "code": "TC010",
+      "description": "ABRAZADERA DE 8\" (200-220)",
+      "stock": 49,
+      "reserved": 0
+    },
+    {
+      "id": "8b83e6ba-9049-4fbe-90b5-a1ecd9e7be02",
+      "code": "TC234",
+      "description": "CUBOS PARA TORNILLO 3/8",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "8b98c07e-2dfe-4a2f-8ee5-3f96ec520674",
+      "code": "TC310",
+      "description": "CASCO DE SEGURIDAD NARANJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "8c8ff122-04ac-45f6-9446-b0096294536e",
+      "code": "TC205",
+      "description": "UNION HG DE 3/4\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "8e27e526-a32e-4279-ab50-79dda64ce496",
+      "code": "TC011",
+      "description": "ABRAZADERA DE 8.3\" (210-230)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "8e9626e4-97dd-4e78-994e-d27008213e2e",
+      "code": "TC181",
+      "description": "PIGTAIL DE FIBRA ÓPTICA SC ",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "8f1fa9ba-0a05-4012-8a8f-4b3aa2e98cd9",
+      "code": "TC312",
+      "description": "TIJERA AMARILLA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "8fdede3b-8f13-48f1-913b-3b707ae46896",
+      "code": "TC018",
+      "description": " CANASTA 300MM X 3 MTS LARGO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "914fe354-0015-4542-b949-082a9f7d756c",
+      "code": "TC059",
+      "description": "VARILLA ROSCADA 3/8 DE 3 M",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "919ded4d-15bd-4c7b-a899-2ffdd87dfaeb",
+      "code": "TC272",
+      "description": "PICO DE LORA PEQUEÑA TOTAL ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "9203db1f-047d-4572-a956-57d904ef6f03",
+      "code": "TC349",
+      "description": "ARNÉS DIELÉCTRICO DE CUERPO COMPLETO DE 4 ARGOLLAS CON CINTURÓN LUMBAR, VANGARD",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "93fde29f-39ba-402a-88b6-c8ca451995b2",
+      "code": "TC121",
+      "description": "PANTALON JEAN STRETCH TALLA 43",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "9580d17a-1b50-43d6-8bba-fbf514597334",
+      "code": "TC339",
+      "description": "CARGADORES DE EQUIPO FLUKE",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "96342416-be87-4153-a75c-ca31e9cb5f5e",
+      "code": "TC237",
+      "description": "HOJAS PARA CEGETA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "97fb9df9-7a7c-43fb-a750-7250e08d66a2",
+      "code": "TC206",
+      "description": "CONDULETA BOTAGUA EMT 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "9824ee0e-a4eb-41a1-9ec8-30e440068e9b",
+      "code": "TC157",
+      "description": "EXPANDER PLASTICO #10",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "998bf8c9-534b-4da7-bdc6-8326e46067af",
+      "code": "TC276",
+      "description": "KIT DE DESATORNILLADORES PEQUEÑOS FALTA 1",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "9e68bfeb-55b5-4083-a1b0-cc6d70e44103",
+      "code": "TC068",
+      "description": "PREFORMADO SISCOAX NARANJA",
+      "stock": 188,
+      "reserved": 0
+    },
+    {
+      "id": "9f2d146c-2f92-4748-b1d7-be876e50ece4",
+      "code": "TC251",
+      "description": "CINTA METRICA INKO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "EiwUAvgBCSPb3lgexBBg",
+      "code": "TC056",
+      "description": "PERNO DE 4\"X 5/8\"",
+      "stock": 609,
+      "reserved": 0
+    },
+    {
+      "id": "I9NHsacHrzp7980JdLmF",
+      "code": "TC016",
+      "description": "ABRAZADERA DE 16\" (386-406)",
+      "stock": 8,
+      "reserved": 0
+    },
+    {
+      "id": "M7QCjOYr52gxNCx0YwuO",
+      "code": "TC101",
+      "description": "PERNO DE 10\"X5/8",
+      "stock": 15,
+      "reserved": 0
+    },
+    {
+      "id": "MCkuuEJiyaajIJ52IEa8",
+      "code": "TC055",
+      "description": "PERNO DE 3\"X5/8\"",
+      "stock": 751,
+      "reserved": 0
+    },
+    {
+      "id": "MekDYv3WnJHYy2dHXnOI",
+      "code": "TC069",
+      "description": "PREFORMADO (12-24) SISCOAX ROJO",
+      "stock": 222,
+      "reserved": 54
+    },
+    {
+      "id": "NrHEIe0VRFRg6RJo6tIK",
+      "code": "TC015",
+      "description": "ABRAZADERA DE 14\" (354-406)",
+      "stock": 21,
+      "reserved": 0
+    },
+    {
+      "id": "UGtaF0bhxMclft93bANx",
+      "code": "TC071",
+      "description": "PREFORMADO (24-48) SISCOAX VERDE",
+      "stock": 125,
+      "reserved": 50
+    },
+    {
+      "id": "a0cb19f2-880b-4d7f-86e6-82f61fc8d2b9",
+      "code": "TC058",
+      "description": "NAVAJA PICO LORA TRUPER",
+      "stock": 3,
+      "reserved": 0
+    },
+    {
+      "id": "a389da90-1138-4bc3-bd1c-c235a21a93d0",
+      "code": "TC162",
+      "description": "PLACA PARA CANALETA DE 4\"",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "a393d012-9d3c-42ae-a3a2-6660728240b3",
+      "code": "TC297",
+      "description": "MECATE DE SEGURIDAD",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "a3c56795-72b8-48ee-93bc-73155efa1e63",
+      "code": "TC077",
+      "description": "CANASTA 100MM X 3 MTS LARGO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "a40591d6-40f0-48bc-ba07-c2e4c37c5fc6",
+      "code": "TC218",
+      "description": "TRANSICION A CANASTA VARIAS ANCHOS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "a4149334-d8e2-4a13-8c58-1c8712ae9750",
+      "code": "TC355",
+      "description": "ESPANDER PLASTICO FICHER PARA GYPSUM TIPO MARIPOSA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "a4eb4780-37bd-4f53-b6ea-d1004386ed4b",
+      "code": "TC331",
+      "description": "OTDR ANRITSU INCLUYE CARGADOR",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "a4f4fb07-0f70-4a85-8a6b-b477371e36fd",
+      "code": "TC089",
+      "description": "ALICATE TIPO PICO DE LORO (NARANJA)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "a691f0e8-db4b-4b92-a75b-fbd9c3a31587",
+      "code": "TC215",
+      "description": "PAÑO LIBRE DE PELO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "a6bd5a19-1699-4274-844c-b014f07b3db2",
+      "code": "TC081",
+      "description": "SPRAY ROJO",
+      "stock": 8,
+      "reserved": 0
+    },
+    {
+      "id": "a7d6f7f5-c6f2-4909-9cdf-a2ce7156e4c6",
+      "code": "TC298",
+      "description": "DESLIZADOR ANTICAIDAS PARA RIEL VERTICAL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "a8931691-31a1-4b4a-9eff-baa19007a16c",
+      "code": "TC156",
+      "description": "ANCLAJE ROSCA INTERNA MINI DROP-IN 1/4",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "aHRHM2upydiDaqPHnH3s",
+      "code": "TC047",
+      "description": "GUARDACABO PARA C\\1/2 (CASQUILLO)",
+      "stock": 29,
+      "reserved": 29
+    },
+    {
+      "id": "aab6a537-2b85-4d27-aa8d-7a62b500bd77",
+      "code": "TC045",
+      "description": "ARANDELA PLANA 3/8\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "ab57c393-4dde-4f8d-a573-2919c5b45465",
+      "code": "TC151",
+      "description": "CONECTOR BARRIL CABLE 6",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "aba740d3-d637-43c7-bb8a-4743fdd8f48b",
+      "code": "TC133",
+      "description": "PLACA CUÁDRUPLE PUERTO SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "ac281a30-44b9-4223-953f-e59ef9cc0e7c",
+      "code": "TC245",
+      "description": "PONCHADORA DE IMPACTO NARANJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "acd27a48-7251-41dd-9b8f-317d947f00a2",
+      "code": "TC113",
+      "description": "RIEL B-LINE PERFIL BAJO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "ad415c3b-d132-4682-8177-214d7767c20a",
+      "code": "TC185",
+      "description": "PIGTAIL SC/APC 12 PUNTAS MULTICOLOR YAAX 3 MTS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "add64c5e-7fd2-4588-a8fc-3679f7f0e19e",
+      "code": "TC053",
+      "description": "GAZA DOBLE OJO 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b0d93bfe-0730-4b1d-82ff-306090d40d83",
+      "code": "TC275",
+      "description": "BROCAS PARA CONCRETO VARIAS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b1716f67-b9a8-4b58-9769-6fc1bcd974ce",
+      "code": "TC284",
+      "description": "TORNILLO GIPSON PUNTA BROCA NEGRO DE 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b2887824-4ae3-44ae-a97f-48cbb516566f",
+      "code": "TC259",
+      "description": "CINTA METRICA KNIGHT",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b2b71010-3d43-48c0-bd11-6f78c5311982",
+      "code": "TC132",
+      "description": "PLACA DOBLE PUERTO SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b420f5c6-6fce-4935-beac-3c9707219f61",
+      "code": "TC294",
+      "description": "LINEA DE POSICIONAMIENTO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b4665aa0-6ce3-47a7-ab89-6d4ed58df066",
+      "code": "TC039",
+      "description": "TAPA CIEGA 4X4 EMT",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b48ba7b5-f5d2-45f3-8727-b072924869ba",
+      "code": "TC117",
+      "description": "VARILLA DE COBRE DE 3 MTS",
+      "stock": 3,
+      "reserved": 0
+    },
+    {
+      "id": "b4bb1f92-9f39-48cd-ab97-60883192c75d",
+      "code": "TC109",
+      "description": "PERNO DE 14\"X 5/8\"",
+      "stock": 15,
+      "reserved": 0
+    },
+    {
+      "id": "b4e32209-4b0d-4d12-849d-dd49caaddcbb",
+      "code": "TC096",
+      "description": "PATCH PANEL 24 PUERTOS SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b5aa22ae-472f-4240-8b9b-4202510617fc",
+      "code": "TC235",
+      "description": "CUBOS 13 PARA ABRIR CIERRES ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b5b304a1-3382-48d7-b348-2096e57753a7",
+      "code": "TC029",
+      "description": "TORNILLO PUNTA FINA #8",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b608158b-d790-4624-a4ea-962c29c477ed",
+      "code": "TC083",
+      "description": "ALICATE DE PRESIÓN (PERRO)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b6dc7859-160a-496a-95fd-1d8817d7cc00",
+      "code": "TC269",
+      "description": "ALICATE DE PRESIÓN (PERRO) TOTAL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b85a2a43-d985-4f57-a83f-77d254cf7bc8",
+      "code": "TC232",
+      "description": "PUNTAS PARA TALADRO ESTRELLA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b86d74e9-4239-442d-bad9-c5468df00cbe",
+      "code": "TC031",
+      "description": "TUBO BIEX DE 1\" EMT, UL, CON FORRO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "b94be25c-5aab-404f-b860-7986fbcf6912",
+      "code": "TC283",
+      "description": "TORNILLO PUNTA FINA FRIJOLILLO 1/2\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "ba2fda3f-c513-47e9-bdd4-5b366fb3cd80",
+      "code": "TC138",
+      "description": "ETIQUETA DE VINIL BLANCA M21-500-595-WT",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "ba83596f-f9b0-46f9-bedc-2d4f068f24dd",
+      "code": "TC118",
+      "description": "PANTALON JEAN CON REFLECTIVO TALLA 40",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "bd1eb6c4-ab1f-455c-9d2c-005a8442270b",
+      "code": "TC210",
+      "description": "UNION CONDUIT 1/2\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "bdaf6e26-636a-41d0-8f8f-187cea21a6c8",
+      "code": "TC093",
+      "description": "PATCH CORD CAT 6 10FT SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "be4734c2-952e-4a79-9181-3d29813a6f3a",
+      "code": "TC134",
+      "description": "IMPRESORA BRADY KIT ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "be50bdff-63a2-4a53-97a7-9727c92c6b37",
+      "code": "TC159",
+      "description": "PLACA CUADRUPLE SIEMON",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "be628b94-07f4-4873-95cd-179a9e8c26a2",
+      "code": "TC136",
+      "description": "DOBLADORA DE TUBO EMT 1\" PULG MILWAUKEE ",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "bebb745c-d5f6-4c38-be3a-3eda03845887",
+      "code": "TC315",
+      "description": "EMPALMADORA FUJIKURA 70S",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "bef7f520-59a3-4134-964e-3217fbc8b0c8",
+      "code": "TC067",
+      "description": "UNION DE PRESIÓN DE 3/4\" EMT, UL.",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "bf240a9f-58b3-4d64-ab0d-f1963d628493",
+      "code": "TC019",
+      "description": "CANASTA 200MM X 3 MTS LARGO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "bfd7f8e7-3080-4aaa-b962-5223c9780402",
+      "code": "TC098",
+      "description": "PATCH CORD CAT 6 7FT SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "bff9a5a5-e060-4bf4-8386-71bef14fc837",
+      "code": "TC065",
+      "description": "CONECTOR DE PRESIÓN DE 3/4\" EMT, UL.",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c1a953ad-419d-4053-8721-3ae9c608d342",
+      "code": "TC335",
+      "description": "EQUIPO FLUKE PRINCIPAL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c267a25c-5e5c-4cdc-80bc-4d530f4b0bc0",
+      "code": "TC219",
+      "description": "CUADRARACKS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c30db953-13a6-420a-8360-8414a41a5fed",
+      "code": "TC336",
+      "description": "MODULOS FLUKE FIBRA OPTICA PAREJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c35fd6ba-d9fd-45e2-b1e6-3bfe106716c3",
+      "code": "TC044",
+      "description": "ARANDELA PRESIÓN 3/8\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c3ae0e19-d52a-4914-9328-4da4d0a7ea41",
+      "code": "TC172",
+      "description": "UNIÓN PARA CANALETA 110X50 MM EAGLE",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "c414f169-a237-45a5-85d2-bf9f91805298",
+      "code": "TC108",
+      "description": "BASE CON ADHESIVO",
+      "stock": 100,
+      "reserved": 0
+    },
+    {
+      "id": "c4918134-f03c-4795-a235-f24e7583b3ab",
+      "code": "TC178",
+      "description": "CONECTOR Z-MAX, UTP CAT 6 JACKS MACHO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c5a1e1a5-4e4a-4444-8671-7b3688dda5af",
+      "code": "TC129",
+      "description": "CAMISA CON REFLECTIVO TALLA M",
+      "stock": 19,
+      "reserved": 0
+    },
+    {
+      "id": "c6bbbead-b36d-4127-8330-faedad1edd13",
+      "code": "TC179",
+      "description": "RJ45 MACHO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c717ec64-2208-4d4c-9ac0-14eabcedb91e",
+      "code": "TC327",
+      "description": "ESCALERA DE EXTENCION 28 FT NARANJA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c797ed13-cad9-4984-9179-f742652edac5",
+      "code": "TC176",
+      "description": "TAPA PARA PLACA TOBLE HUBBELL (10 UNIDADES)",
+      "stock": 2,
+      "reserved": 0
+    },
+    {
+      "id": "c814056e-6e90-4742-bc76-0129eb882b0b",
+      "code": "TC040",
+      "description": "TERMINAL UN OJO, UL, CABLE #6 AWG",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c952e5f7-d950-490e-8c0a-06fd31260fdb",
+      "code": "TC287",
+      "description": "TORNILLO PUNTA FINA PARA TECHO 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "c970a60e-4f9b-4d9e-8ae3-34d34727cc62",
+      "code": "TC318",
+      "description": "CUCHILLA CORTADORA FUJICURA CT50",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "cRxR17dFyVm5GWpfuCOO",
+      "code": "TC100",
+      "description": "REMATE DE ACERO CURVO DE 1/4\"",
+      "stock": 24,
+      "reserved": 24
+    },
+    {
+      "id": "ca3f489f-c7dc-4f25-97c3-3870f86fa87a",
+      "code": "TC028",
+      "description": "TORNILLO PUNTA BROCA PARA TECHO 1\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "ca57d78e-94f2-476c-a03c-ade94cc86345",
+      "code": "TC048",
+      "description": "GUARDACABO PARA C\\1/4 ( CASQUILLO)",
+      "stock": 83,
+      "reserved": 25
+    },
+    {
+      "id": "cac2e52f-f371-4f0c-ab3c-18fed63d30ac",
+      "code": "TC263",
+      "description": "DESOTO NEGRO Y NARANJA ESTRELLA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "cce39fb1-b503-44ee-b6c1-8c7fd7b46e88",
+      "code": "TC253",
+      "description": "LLAVE FRANCESA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "d16491b6-af5f-4892-8cdd-14d683f4526e",
+      "code": "TC184",
+      "description": "PATCH CORD SC-LC OM4 DUPLEX LANTEK 3 MTS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "d18a8eff-61b6-4122-8687-9c5314222c5c",
+      "code": "TC311",
+      "description": "AMARRA DE MIXTAS DE 8\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "d4290a8b-dcd9-457c-96ef-af009bca23f0",
+      "code": "TC239",
+      "description": "PELADORAS DE UTP AMARILLAS SIEMON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "d4c61f4d-9a2e-4c98-ba69-e74b63355ea3",
+      "code": "TC289",
+      "description": "ALCOHOL ISOPROPILICO (EMPEZADO)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "d6357c8c-6321-4392-88b3-edd987b27f18",
+      "code": "TC058",
+      "description": "NAVAJA PICO LORA TRUPER",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "d661d725-e35b-4a0e-8a49-a4ca19f6fd63",
+      "code": "TC080",
+      "description": "TIJERA JORNAD AZUL",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "d725f6a0-bace-406a-ba35-ea3f60b52260",
+      "code": "TC003",
+      "description": "ABRAZADERA DE 3 ½ (90-110)",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "d8c9a57b-1fbb-4352-99ea-8171e9fc3cb8",
+      "code": "TC195",
+      "description": "JACK CAT6A SIEMON AZUL HEMBRA",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "d91c4d02-f25f-4027-8179-1a7ff16e406d",
+      "code": "TC076",
+      "description": "HEBILLA CINTA BANDIT 1/2\"",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "d9da03e1-d61f-491b-acb2-7dd19fc619f9",
+      "code": "TC348",
+      "description": "BOLSOS PARA HERRAMIENTAS ARNES",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "da181981-3ed8-4618-ba8e-64fb4cb7d279",
+      "code": "TC027",
+      "description": "CABLE DE ACERO DE 1/4\" CLASE A",
+      "stock": 2000,
+      "reserved": 0
+    },
+    {
+      "id": "dac745a9-acb5-47c3-9d37-0cef9c2d188c",
+      "code": "TC334",
+      "description": "BOBINA DE LANZAMIENTO",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "db0a7665-e97a-4739-90b6-964e1112c322",
+      "code": "TC097",
+      "description": "CONECTOR Z-MAX, UTP CAT 6 JACKS HEMBRA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "db96f3c9-1a63-4418-82b8-4b595eac18ca",
+      "code": "TC102",
+      "description": "PERNO DE 12\"X5/8",
+      "stock": 4,
+      "reserved": 0
+    },
+    {
+      "id": "dbdaec66-eba1-4e10-867c-176f456c56ee",
+      "code": "TC116",
+      "description": "TUBO EMT DE 1 1/2\"",
+      "stock": 4,
+      "reserved": 0
+    },
+    {
+      "id": "dc0e7898-1fa0-43ad-aff3-d99bd11e014c",
+      "code": "TC321",
+      "description": "RASGADORA DE CHAQUETA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "dc958bbe-4cda-4557-95c3-08ec724726b9",
+      "code": "TC066",
+      "description": "PREFORMADO RECTO DE 1/4\"",
+      "stock": 1.5,
+      "reserved": 0
+    },
+    {
+      "id": "dce36200-95d7-4cb6-8ac7-e9b96014adc3",
+      "code": "TC154",
+      "description": "CABLE UTP CAT 6 INTEMPERIE LEVINTON",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "dd4e7782-9a95-44fc-b8c2-3f27d038e65b",
+      "code": "TC166",
+      "description": "PLACA TOMA DE RED ELECTRICA ",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "de96afa3-1fbd-4586-bd9d-122ffd8c154c",
+      "code": "TC326",
+      "description": "ESCALERA METALICA TIPO A 9 PELDAÑOS",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "dec3b680-1bd6-4d74-9f92-ca4289f10777",
+      "code": "TC161",
+      "description": "PLACA SENCILLA PANDUIT",
+      "stock": 1,
+      "reserved": 0
+    },
+    {
+      "id": "dfda66f0-c1f3-4cf7-84d3-676ec76f2c2c",
+      "code": "TC051",
+      "description": "TUBO DE 3/4\" EMT, UL.",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "e1eadb61-c3ea-4332-b158-093e99ccfd96",
+      "code": "TC236",
+      "description": "BROCA ESCALONADA",
+      "stock": 0,
+      "reserved": 0
+    },
+    {
+      "id": "e2319925-e16b-48af-a3c2-42d6d0f58b2b",
+      "code": "TC004",
+      "description": "ABRAZADERA DE 4\" (110-130)",
+      "stock": 69.5,
+      "reserved": 0
+    },
+    {
+      "id": "e3325308-56d9-4948-bbfd-bf0f1b50fb40",
+      "code": "TC266",
+      "description": "DESOTO STANKEY ESTRELLA",
+      "stock": 0,
+      "reserved": 0
+    }
+  ]
+}

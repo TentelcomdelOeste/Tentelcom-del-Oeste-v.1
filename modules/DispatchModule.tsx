@@ -6,7 +6,7 @@ import { useDispatch, getItemPendingQty } from '../hooks/useDispatch';
 import { MaterialRequest } from '../dispatchTypes';
 import { normalizeOrigin } from '../utils/originUtils';
 import { DataTable, TableColumn, IconButton, ACTION_ICONS, StatusBadge, ActionButton, SearchInput, Select } from '../design-system';
-import { FiPackage, FiInfo, FiX, FiAlertCircle, FiAlertTriangle } from "react-icons/fi";
+import { FiPackage, FiInfo, FiX, FiAlertCircle, FiAlertTriangle, FiRotateCcw } from "react-icons/fi";
 import { generateMaterialRequestPDF } from '../utils/pdfGenerator';
 
 interface DispatchModuleProps {
@@ -15,7 +15,7 @@ interface DispatchModuleProps {
 }
 
 export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inventoryItems }) => {
-  const { requests, isLoading, processDispatch, deleteRequest, getResponsibleHistory } = useDispatch(currentUser);
+  const { requests, isLoading, processDispatch, deleteRequest, returnRequestToPending, getResponsibleHistory } = useDispatch(currentUser);
   
   const [selectedRequest, setSelectedRequest] = useState<MaterialRequest | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -62,6 +62,10 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
 
   // Estado para confirmación de eliminación
   const [confirmDeleteModal, setConfirmDeleteModal] = useState<{ show: boolean, request: MaterialRequest | null }>({ show: false, request: null });
+
+  // Estado para confirmación de devolución a solicitudes (para edición)
+  const [confirmReturnModal, setConfirmReturnModal] = useState<{ show: boolean, request: MaterialRequest | null }>({ show: false, request: null });
+  const [isReturning, setIsReturning] = useState(false);
 
   // Formulario del Modal
   const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().split('T')[0]);
@@ -186,6 +190,25 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
       }
   };
 
+  const handleConfirmReturn = async () => {
+      if (confirmReturnModal.request) {
+          setIsReturning(true);
+          setErrorMsg(null);
+          try {
+              await returnRequestToPending(confirmReturnModal.request.id);
+              const reqCode = confirmReturnModal.request.requestNumber || confirmReturnModal.request.id;
+              setConfirmReturnModal({ show: false, request: null });
+              setSuccessMsg(`Solicitud ${reqCode} devuelta a Solicitudes en estado Pendiente para su edición.`);
+              setTimeout(() => setSuccessMsg(null), 4000);
+          } catch (error: any) {
+              setErrorMsg(error?.message || "Error al devolver la solicitud.");
+              setTimeout(() => setErrorMsg(null), 4000);
+          } finally {
+              setIsReturning(false);
+          }
+      }
+  };
+
   // Filtrado y ordenado de solicitudes
   const filteredRequests = useMemo(() => {
     let result = requests.filter(req => req.status === 'Aprobada' || req.status === 'Parcial');
@@ -212,6 +235,7 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
   const columns = useMemo<TableColumn<MaterialRequest>[]>(() => [
     {
       header: 'ID Solicitud',
+      width: '130px',
       render: (req) => (
         <div className="flex flex-col">
           <span className="text-[10px] font-mono text-blue-600 font-bold">{req.requestNumber || 'SOL-XXXX'}</span>
@@ -230,11 +254,13 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
     },
     {
       header: 'Tipo / Origen',
+      width: '140px',
       accessorKey: 'origin',
       className: 'font-bold text-xs text-slate-500'
     },
     {
       header: 'Estado',
+      width: '120px',
       align: 'center',
       render: (req) => {
         let variant: 'success' | 'warning' | 'neutral' = 'neutral';
@@ -245,23 +271,34 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
     },
     {
       header: 'Fecha Solicitud',
+      width: '130px',
       align: 'center',
       render: (req) => <span className="text-xs font-bold text-slate-500">{req.date}</span>
     },
     {
       header: 'Acción',
+      width: '270px',
       align: 'center',
       render: (req) => {
         const isDownloading = downloadingPdfId === req.id;
+        const isDespachada = req.status.toUpperCase() === 'DESPACHADA';
+        const hasDispatches = isDespachada || (req.items || []).some(item => Number(item.quantityDispatched || 0) > 0);
         return (
-          <div className="flex justify-center items-center gap-2">
+          <div className="flex justify-center items-center gap-1.5 md:gap-2">
               <ActionButton 
                   onClick={() => handleOpenModal(req)}
-                  variant={req.status.toUpperCase() === 'DESPACHADA' ? 'ghost' : 'primary'}
-                  label={req.status.toUpperCase() === 'DESPACHADA' ? 'Despachada' : 'Despachar'}
+                  variant={isDespachada ? 'ghost' : 'primary'}
+                  label={isDespachada ? 'Despachada' : 'Despachar'}
                   icon={<FiPackage />}
                   size="sm"
-                  disabled={req.status.toUpperCase() === 'DESPACHADA'}
+                  disabled={isDespachada}
+              />
+              <IconButton 
+                  icon={<FiRotateCcw />} 
+                  onClick={() => setConfirmReturnModal({ show: true, request: req })} 
+                  variant="warning" 
+                  title={hasDispatches ? "No se puede devolver: ya cuenta con despachos parciales registrados" : "Devolver a Solicitudes (para editar)"}
+                  disabled={hasDispatches}
               />
               <IconButton 
                   icon={<ACTION_ICONS.pdf />} 
@@ -504,6 +541,41 @@ export const DispatchModule: React.FC<DispatchModuleProps> = ({ currentUser, inv
                           variant="danger"
                           label="Eliminar"
                           className="flex-1"
+                      />
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE DEVOLUCIÓN A SOLICITUDES */}
+      {confirmReturnModal.show && confirmReturnModal.request && (
+          <div className="fixed inset-0 bg-blue-950/80 backdrop-blur-sm flex justify-center items-center z-[250] p-4">
+              <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 text-center animate-in zoom-in-95">
+                  <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <FiRotateCcw className="text-2xl" />
+                  </div>
+                  <h3 className="text-xl font-black text-blue-950 mb-2">¿Devolver a Solicitudes?</h3>
+                  <p className="text-slate-600 text-sm font-semibold mb-3">
+                      La solicitud <span className="font-mono font-bold text-blue-700">{confirmReturnModal.request.requestNumber || confirmReturnModal.request.id}</span> cambiará su estado a <span className="font-bold text-amber-600">Pendiente</span> y se retirará de la lista de despacho.
+                  </p>
+                  <p className="text-slate-500 text-xs font-medium mb-8 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      Podrás editar sus ítems, cantidades y especificaciones directamente en el módulo de <span className="font-bold text-slate-700">Solicitudes</span> para volver a aprobarla cuando esté lista.
+                  </p>
+                  <div className="flex gap-3">
+                      <ActionButton 
+                          onClick={() => setConfirmReturnModal({ show: false, request: null })} 
+                          variant="secondary"
+                          label="Cancelar"
+                          className="flex-1"
+                          disabled={isReturning}
+                      />
+                      <ActionButton 
+                          onClick={handleConfirmReturn} 
+                          variant="primary"
+                          label={isReturning ? "Devolviendo..." : "Devolver a Solicitudes"}
+                          className="flex-1 bg-amber-500 hover:bg-amber-600 text-white border-amber-600"
+                          isLoading={isReturning}
+                          disabled={isReturning}
                       />
                   </div>
               </div>
