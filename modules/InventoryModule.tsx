@@ -321,15 +321,238 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
       }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+      // 1. Consultar historial completo de movimientos y capas de costo desde Firestore
+      let allMovements: any[] = [];
+      let allCostLayers: any[] = [];
+
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const snapMovements = await getDocs(collection(db, "inventory_movements"));
+        allMovements = snapMovements.docs.map(d => ({ ...d.data(), id: d.id }));
+
+        const snapLayers = await getDocs(collection(db, "inventory_cost_layers"));
+        allCostLayers = snapLayers.docs.map(d => ({ ...d.data(), id: d.id }));
+      } catch (err) {
+        console.warn("[ExcelExport] Error consultando historial desde Firestore:", err);
+      }
+
+      // Helper para convertir cualquier formato de fecha/timestamp a milisegundos para comparación cronológica
+      const parseToTimeMs = (dateVal: any, createdAtVal: any): number => {
+        if (createdAtVal && typeof createdAtVal === 'object' && typeof createdAtVal.seconds === 'number') {
+          return createdAtVal.seconds * 1000;
+        }
+        if (dateVal && typeof dateVal === 'object' && typeof dateVal.seconds === 'number') {
+          return dateVal.seconds * 1000;
+        }
+
+        const parseStr = (s: any): number => {
+          if (!s || typeof s !== 'string') return 0;
+          const str = s.trim();
+          if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(str)) {
+            const parts = str.split('/');
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const year = parseInt(parts[2], 10);
+            return new Date(year, month, day).getTime();
+          }
+          const t = Date.parse(str);
+          return isNaN(t) ? 0 : t;
+        };
+
+        const tCreatedAt = parseStr(createdAtVal);
+        if (tCreatedAt > 0) return tCreatedAt;
+
+        const tDate = parseStr(dateVal);
+        if (tDate > 0) return tDate;
+
+        return 0;
+      };
+
+      const isEntradaType = (typeStr?: string): boolean => {
+        if (!typeStr) return false;
+        const t = typeStr.trim().toLowerCase();
+        return t === 'entrada' || t.includes('entrada') || t === 'compra' || t.includes('compra');
+      };
+
+      interface EntryCandidate {
+        timeMs: number;
+        dateStr: string;
+        createdAtStr: string;
+        id: string;
+        unitPrice: number;
+        taxIncluded: boolean;
+        currency: 'CRC' | 'USD';
+      }
+
+      // Mapas de candidatos por ID y por Código (minúsculas)
+      const candidateById = new Map<string, EntryCandidate>();
+      const candidateByCode = new Map<string, EntryCandidate>();
+
+      const processCandidate = (itemId?: string, itemCode?: string, cand?: EntryCandidate) => {
+        if (!cand || !cand.unitPrice || cand.unitPrice <= 0) return;
+
+        const updateMap = (key: string, map: Map<string, EntryCandidate>) => {
+          const existing = map.get(key);
+          if (!existing) {
+            map.set(key, cand);
+            return;
+          }
+
+          // Regla de desempate cronológico:
+          // 1. timeMs (timestamp/milisegundos)
+          if (cand.timeMs > existing.timeMs) {
+            map.set(key, cand);
+          } else if (cand.timeMs === existing.timeMs) {
+            // 2. dateStr
+            const dComp = cand.dateStr.localeCompare(existing.dateStr);
+            if (dComp > 0) {
+              map.set(key, cand);
+            } else if (dComp === 0) {
+              // 3. createdAtStr
+              const cComp = cand.createdAtStr.localeCompare(existing.createdAtStr);
+              if (cComp > 0) {
+                map.set(key, cand);
+              } else if (cComp === 0) {
+                if (cand.id.localeCompare(existing.id) > 0) {
+                  map.set(key, cand);
+                }
+              }
+            }
+          }
+        };
+
+        if (itemId) updateMap(itemId, candidateById);
+        if (itemCode) updateMap(itemCode.trim().toLowerCase(), candidateByCode);
+      };
+
+      // Recorrer movimientos de tipo Entrada
+      allMovements.forEach(m => {
+        if (!isEntradaType(m.type)) return;
+
+        const mDate = m.date || (m.createdAt ? String(m.createdAt).split('T')[0] : '2026-01-01');
+        const mCreatedAt = m.createdAt ? String(m.createdAt) : mDate;
+        const timeMs = parseToTimeMs(m.date, m.createdAt);
+        const mCurrency = (m.currency || m.moneda || 'CRC') as 'CRC' | 'USD';
+
+        if (m.items && Array.isArray(m.items) && m.items.length > 0) {
+          m.items.forEach((it: any) => {
+            const rawPrice = Number(it.unitCost !== undefined ? it.unitCost : (it.unitPrice !== undefined ? it.unitPrice : (it.price !== undefined ? it.price : m.unitPrice)));
+            const curr = (it.currency || mCurrency || 'CRC') as 'CRC' | 'USD';
+            const taxInc = Boolean(it.priceIncludesTax || it.isTaxIncluded);
+
+            processCandidate(it.inventoryItemId || it.itemId, it.inventoryItemCode || it.itemCode || it.code, {
+              timeMs,
+              dateStr: String(mDate),
+              createdAtStr: String(mCreatedAt),
+              id: m.id || '',
+              unitPrice: rawPrice,
+              taxIncluded: taxInc,
+              currency: curr
+            });
+          });
+        }
+
+        if (m.inventoryItemId || m.inventoryItemCode) {
+          const rawPrice = Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost !== undefined ? m.unitCost : m.price));
+          const curr = mCurrency;
+          processCandidate(m.inventoryItemId || m.itemId, m.inventoryItemCode || m.itemCode || m.code, {
+            timeMs,
+            dateStr: String(mDate),
+            createdAtStr: String(mCreatedAt),
+            id: m.id || '',
+            unitPrice: rawPrice,
+            taxIncluded: false,
+            currency: curr
+          });
+        }
+      });
+
+      // Recorrer capas de costo
+      allCostLayers.forEach(l => {
+        const lDate = l.date || (l.createdAt ? String(l.createdAt).split('T')[0] : '2026-01-01');
+        const lCreatedAt = l.createdAt ? String(l.createdAt) : lDate;
+        const timeMs = parseToTimeMs(l.date, l.createdAt);
+        const rawPrice = Number(l.unitCost !== undefined ? l.unitCost : (l.unitCostNormalized !== undefined ? l.unitCostNormalized : l.unitPrice));
+        const curr = (l.currency || 'CRC') as 'CRC' | 'USD';
+
+        processCandidate(l.inventoryItemId || l.itemId, l.inventoryItemCode || l.itemCode || l.code, {
+          timeMs,
+          dateStr: String(lDate),
+          createdAtStr: String(lCreatedAt),
+          id: l.id || '',
+          unitPrice: rawPrice,
+          taxIncluded: false,
+          currency: curr
+        });
+      });
+
+      // Mapear cada material utilizando Prioridad 1 -> Prioridad 2 -> Respaldo final
       const dataToExport = filteredItems.map(item => {
-          const detail = inventoryValuationDetails.get(item.id);
-          const valorTotalWithTax = detail?.confirmedValuationWithTax || 0;
-          const valorTotalNoTax = detail?.confirmedValuationNoTax || 0;
-          const unitCostWithTax = detail?.averageUnitCostWithTax || 0;
-          const cobertura = detail?.uncoveredQty && detail.uncoveredQty > 0
-            ? `${detail.coveredQty} cubiertas, ${detail.uncoveredQty} sin capa`
-            : (detail?.coveredQty ? '100% Cubierto PEPS' : 'Sin Capa PEPS');
+          let cand = candidateById.get(item.id);
+          if (!cand && item.code) {
+            cand = candidateByCode.get(item.code.trim().toLowerCase());
+          }
+
+          let latestPriceDisplay: string | number = "Sin precio disponible";
+
+          if (cand && cand.unitPrice > 0) {
+            // PRIORIDAD 1: Última entrada con precio registrado
+            const rawPrice = cand.unitPrice;
+            const priceWithTax = cand.taxIncluded ? rawPrice : rawPrice * 1.13;
+            const entryCurrency = cand.currency || 'CRC';
+
+            let convertedPrice = priceWithTax;
+            if (entryCurrency === 'CRC' && selectedCurrency === 'USD') {
+              convertedPrice = priceWithTax / EXCHANGE_RATE_LIST_VIEW;
+            } else if (entryCurrency === 'USD' && selectedCurrency === 'CRC') {
+              convertedPrice = priceWithTax * EXCHANGE_RATE_LIST_VIEW;
+            }
+
+            latestPriceDisplay = Math.round(convertedPrice * 100) / 100;
+          } else {
+            // PRIORIDAD 2: Precio base del catálogo (sin IVA)
+            const basePriceNum = Number(item.price);
+            if (!isNaN(basePriceNum) && basePriceNum > 0) {
+              const priceWithTax = basePriceNum * 1.13;
+              const itemCurrency = (item.currency || 'USD') as 'CRC' | 'USD';
+
+              let convertedPrice = priceWithTax;
+              if (itemCurrency === 'CRC' && selectedCurrency === 'USD') {
+                convertedPrice = priceWithTax / EXCHANGE_RATE_LIST_VIEW;
+              } else if (itemCurrency === 'USD' && selectedCurrency === 'CRC') {
+                convertedPrice = priceWithTax * EXCHANGE_RATE_LIST_VIEW;
+              }
+
+              latestPriceDisplay = Math.round(convertedPrice * 100) / 100;
+            } else {
+              // Respaldo secundario de proveedor en catálogo si existe
+              let provPriceNum = 0;
+              let provCurr: 'CRC' | 'USD' = 'USD';
+              if (item.providers && Array.isArray(item.providers) && item.providers.length > 0) {
+                for (const p of item.providers) {
+                  const pVal = Number(p.price);
+                  if (!isNaN(pVal) && pVal > 0) {
+                    provPriceNum = pVal;
+                    provCurr = (p.currency || item.currency || 'USD') as 'CRC' | 'USD';
+                    break;
+                  }
+                }
+              }
+
+              if (provPriceNum > 0) {
+                const priceWithTax = provPriceNum * 1.13;
+                let convertedPrice = priceWithTax;
+                if (provCurr === 'CRC' && selectedCurrency === 'USD') {
+                  convertedPrice = priceWithTax / EXCHANGE_RATE_LIST_VIEW;
+                } else if (provCurr === 'USD' && selectedCurrency === 'CRC') {
+                  convertedPrice = priceWithTax * EXCHANGE_RATE_LIST_VIEW;
+                }
+
+                latestPriceDisplay = Math.round(convertedPrice * 100) / 100;
+              }
+            }
+          }
 
           return {
               "Código": item.code,
@@ -338,14 +561,12 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               "Stock Actual": item.stock || 0,
               "Unidad": item.unit || 'und',
               "Moneda Visualización": selectedCurrency,
-              "Costo Promedio Unitario PEPS (Con IVA)": detail?.coveredQty ? unitCostWithTax : 0,
-              "Valor Confirmado Base (Sin IVA)": valorTotalNoTax,
-              "Valor Confirmado (Con IVA 13%)": valorTotalWithTax,
-              "Cobertura Capas PEPS": cobertura,
+              "ÚLTIMO COSTO UNITARIO DE COMPRA (CON IVA)": latestPriceDisplay,
               "Proveedores": item.providers?.map(p => p.name).join(', ') || ''
           };
       });
-      exportToExcel(dataToExport, `Inventario_General_PEPS_${selectedCurrency}_${new Date().toLocaleDateString().replace(/\//g, '-')}`);
+
+      exportToExcel(dataToExport, `Inventario_General_${selectedCurrency}_${new Date().toLocaleDateString().replace(/\//g, '-')}`);
   };
 
   const handleExportPDF = async () => {
@@ -687,115 +908,6 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
       title="Inventario General" 
       subtitle="Gestión centralizada de stock, materiales e infraestructura."
     >
-          {/* Economic Summary Header Bar for Admins */}
-          {isAdmin(currentUser.role) && (
-            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* Card 1: Valor Confirmado PEPS */}
-              <div className="bg-gradient-to-br from-blue-900 to-indigo-950 rounded-2xl p-4 text-white shadow-sm border border-blue-800 flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold tracking-wider uppercase text-blue-200">
-                    Valor Confirmado PEPS
-                  </span>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-800/80 text-blue-100 border border-blue-700">
-                    Con IVA 13%
-                  </span>
-                </div>
-                <div className="mt-2">
-                  <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-white">
-                    {selectedCurrency === 'CRC'
-                      ? `₡${globalSummary.totalConfirmedWithTax.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : `$${globalSummary.totalConfirmedWithTax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                  </div>
-                  <div className="text-[11px] text-blue-200/80 font-medium mt-0.5">
-                    Base sin IVA: {selectedCurrency === 'CRC' ? '₡' : '$'}
-                    {globalSummary.totalConfirmedNoTax.toLocaleString(selectedCurrency === 'CRC' ? 'es-CR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 2: Existencias Totales */}
-              <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
-                <div className="text-[10px] font-bold tracking-wider uppercase text-slate-400">
-                  Existencias Físicas
-                </div>
-                <div className="mt-2">
-                  <div className="text-xl sm:text-2xl font-black text-slate-900">
-                    {globalSummary.totalPhysicalUnits.toLocaleString('es-CR')} <span className="text-xs font-normal text-slate-500">unidades</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    {globalSummary.totalCatalogItems} artículos en catálogo ({globalSummary.totalItemsWithStock} con stock)
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 3: Cobertura PEPS */}
-              <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
-                <div className="text-[10px] font-bold tracking-wider uppercase text-slate-400">
-                  Estado Cobertura PEPS
-                </div>
-                <div className="mt-2">
-                  {globalSummary.itemsUncoveredCount === 0 ? (
-                    <div>
-                      <div className="text-base sm:text-lg font-black text-emerald-600 flex items-center gap-1.5">
-                        <span>✓ 100% Cobertura Real</span>
-                      </div>
-                      <div className="text-[11px] text-emerald-700/80 font-medium mt-0.5">
-                        Todas las existencias tienen capas de costo auditables.
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="text-base sm:text-lg font-black text-amber-600 flex items-center gap-1.5">
-                        <span>⚠️ {globalSummary.itemsUncoveredCount} con pendientes</span>
-                      </div>
-                      <div className="text-[11px] text-amber-700/80 font-medium mt-0.5">
-                        {globalSummary.totalUncoveredUnits.toLocaleString('es-CR')} unidades físicas sin capa PEPS registrada.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Card 4: Moneda & T.C. Visualización */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold tracking-wider uppercase text-slate-500">
-                    Moneda Visualización
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-col gap-2">
-                  <div className="inline-flex p-1 bg-slate-200/80 rounded-xl w-full">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCurrency('CRC')}
-                      className={`flex-1 py-1 px-3 text-xs font-bold rounded-lg transition-all ${
-                        selectedCurrency === 'CRC'
-                          ? 'bg-white text-blue-900 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      ₡ Colones (CRC)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCurrency('USD')}
-                      className={`flex-1 py-1 px-3 text-xs font-bold rounded-lg transition-all ${
-                        selectedCurrency === 'USD'
-                          ? 'bg-white text-blue-900 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      $ Dólares (USD)
-                    </button>
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-bold text-center">
-                    T.C. Referencial: ₡515.00 / USD
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           <ModuleToolbar>
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                   {selectedId ? (
@@ -930,14 +1042,6 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({ currentUser, selected
               </div>
               
               <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
-                  {isAdmin(currentUser.role) && (
-                    <ActionButton
-                      onClick={() => setShowReconcileModal(true)}
-                      label="Conciliar Capas PEPS"
-                      variant="secondary"
-                      className="bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100 font-bold"
-                    />
-                  )}
                   <IconButton icon={<ACTION_ICONS.excel />} variant="success" onClick={handleExportExcel} title="Exportar Excel" />
                   <IconButton icon={<ACTION_ICONS.pdf />} variant="danger" onClick={handleExportPDF} title="Exportar PDF" />
                   <ActionButton 
